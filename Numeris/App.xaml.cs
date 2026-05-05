@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
+using Numeris.Services.Api;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.MockData;
@@ -46,11 +47,16 @@ public partial class App : Application
         services.AddSingleton<SearchConsoleRepository>();
         services.AddSingleton<SitemapRepository>();
         services.AddSingleton<WebAnalyticsRepository>();
+        services.AddSingleton<HealthRepository>();
+
+        services.AddSingleton<UptimeClient>();
+        services.AddSingleton<SitemapClient>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<CloudflareViewModel>();
         services.AddTransient<SearchConsoleViewModel>();
+        services.AddTransient<HealthViewModel>();
 
         services.AddSingleton<MainWindow>();
 
