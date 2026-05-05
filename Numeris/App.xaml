@@ -3,13 +3,16 @@
     x:Class="Numeris.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:Numeris">
+    xmlns:local="using:Numeris"
+    xmlns:converters="using:Numeris.Converters">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="ms-appx:///Themes/Tokens.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <converters:PercentConverter x:Key="PercentConverter" />
+            <converters:OneDecimalConverter x:Key="OneDecimalConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

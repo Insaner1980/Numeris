@@ -50,6 +50,7 @@ public partial class App : Application
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<CloudflareViewModel>();
+        services.AddTransient<SearchConsoleViewModel>();
 
         services.AddSingleton<MainWindow>();
 
