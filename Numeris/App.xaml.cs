@@ -55,8 +55,10 @@ public partial class App : Application
         services.AddSingleton<UptimeClient>();
         services.AddSingleton<SitemapClient>();
         services.AddSingleton<CloudflareGraphqlClient>();
+        services.AddSingleton<CloudflareRumClient>();
         services.AddSingleton<CredentialVault>();
         services.AddSingleton<CloudflareSyncService>();
+        services.AddSingleton<WebAnalyticsSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();

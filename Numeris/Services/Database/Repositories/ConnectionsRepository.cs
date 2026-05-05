@@ -115,4 +115,63 @@ public sealed class ConnectionsRepository
     }
 
     public string FormatNow() => DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+
+    public Task<WebAnalyticsConnectionInfo?> GetWebAnalyticsAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                """
+                SELECT status AS Status, config AS Config, last_sync AS LastSync
+                FROM connections WHERE id = 'wa'
+                """);
+            WebAnalyticsConnectionConfig? cfg = null;
+            if (!string.IsNullOrEmpty(row.Config))
+            {
+                try { cfg = JsonSerializer.Deserialize<WebAnalyticsConnectionConfig>(row.Config, JsonOptions); }
+                catch { }
+            }
+            return (WebAnalyticsConnectionInfo?)new WebAnalyticsConnectionInfo
+            {
+                Id = "wa",
+                AccountId = cfg?.AccountId ?? "",
+                HasToken = !string.IsNullOrEmpty(_vault.GetWebAnalyticsToken(cfg?.AccountId ?? "")),
+                Status = row.Status ?? "mock",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertWebAnalyticsAsync(WebAnalyticsConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('wa', 'web_analytics', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdateWebAnalyticsLastSyncAsync(string accountId, string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "UPDATE connections SET status = @status, last_sync = @lastSync WHERE id = 'wa'",
+                new { status, lastSync });
+        });
+    }
+
+    public Task DeleteWebAnalyticsAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'wa'");
+        });
+    }
 }

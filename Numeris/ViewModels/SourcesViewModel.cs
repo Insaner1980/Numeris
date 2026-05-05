@@ -18,6 +18,8 @@ public partial class SourcesViewModel : ObservableObject
     private readonly CredentialVault _vault;
     private readonly CloudflareGraphqlClient _cfClient;
     private readonly CloudflareSyncService _cfSync;
+    private readonly CloudflareRumClient _rumClient;
+    private readonly WebAnalyticsSyncService _waSync;
 
     [ObservableProperty] private ObservableCollection<CloudflareConnectionInfo> _cloudflareConnections = new();
 
@@ -28,16 +30,28 @@ public partial class SourcesViewModel : ObservableObject
     [ObservableProperty] private bool _isCfBusy;
     [ObservableProperty] private int _cfSyncDays = 90;
 
+    [ObservableProperty] private WebAnalyticsConnectionInfo? _webAnalytics;
+    [ObservableProperty] private ObservableCollection<WebAnalyticsSite> _waSites = new();
+    [ObservableProperty] private string _newWaAccountId = "";
+    [ObservableProperty] private string _newWaToken = "";
+    [ObservableProperty] private string _waStatusMessage = "";
+    [ObservableProperty] private bool _isWaBusy;
+    [ObservableProperty] private int _waSyncDays = 30;
+
     public SourcesViewModel(
         ConnectionsRepository connectionsRepo,
         CredentialVault vault,
         CloudflareGraphqlClient cfClient,
-        CloudflareSyncService cfSync)
+        CloudflareSyncService cfSync,
+        CloudflareRumClient rumClient,
+        WebAnalyticsSyncService waSync)
     {
         _connectionsRepo = connectionsRepo;
         _vault = vault;
         _cfClient = cfClient;
         _cfSync = cfSync;
+        _rumClient = rumClient;
+        _waSync = waSync;
     }
 
     [RelayCommand]
@@ -46,6 +60,12 @@ public partial class SourcesViewModel : ObservableObject
         var list = await _connectionsRepo.ListCloudflareConnectionsAsync();
         CloudflareConnections.Clear();
         foreach (var c in list) CloudflareConnections.Add(c);
+
+        WebAnalytics = await _connectionsRepo.GetWebAnalyticsAsync();
+        if (WebAnalytics is { AccountId.Length: > 0 })
+        {
+            NewWaAccountId = WebAnalytics.AccountId;
+        }
     }
 
     [RelayCommand]
@@ -150,5 +170,110 @@ public partial class SourcesViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(NewCfZoneId)) { CfStatusMessage = "Zone ID is required"; return false; }
         if (requireToken && string.IsNullOrWhiteSpace(NewCfToken)) { CfStatusMessage = "API token is required"; return false; }
         return true;
+    }
+
+    [RelayCommand]
+    public async Task SaveWebAnalyticsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewWaAccountId)) { WaStatusMessage = "Account ID is required"; return; }
+        IsWaBusy = true;
+        WaStatusMessage = "Saving...";
+        try
+        {
+            var accountId = NewWaAccountId.Trim();
+            var token = NewWaToken.Trim();
+            if (!string.IsNullOrEmpty(token))
+            {
+                _vault.SetWebAnalyticsToken(accountId, token);
+            }
+            else if (string.IsNullOrEmpty(_vault.GetWebAnalyticsToken(accountId)))
+            {
+                WaStatusMessage = "API token is required on first save";
+                return;
+            }
+            var config = new WebAnalyticsConnectionConfig
+            {
+                AccountId = accountId,
+                LastValidatedAt = _connectionsRepo.FormatNow(),
+            };
+            await _connectionsRepo.UpsertWebAnalyticsAsync(config, "configured");
+            await LoadAsync();
+            NewWaToken = "";
+            WaStatusMessage = "Saved. Press Discover sites to load site tags.";
+        }
+        catch (Exception ex)
+        {
+            WaStatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsWaBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DiscoverWebAnalyticsSitesAsync()
+    {
+        if (WebAnalytics is null || !WebAnalytics.HasToken)
+        {
+            WaStatusMessage = "Save credentials first";
+            return;
+        }
+        IsWaBusy = true;
+        WaStatusMessage = "Discovering sites...";
+        try
+        {
+            var sites = await _waSync.DiscoverSitesAsync(WebAnalytics.AccountId);
+            WaSites.Clear();
+            foreach (var s in sites) WaSites.Add(s);
+            WaStatusMessage = $"Found {sites.Count} site(s)";
+        }
+        catch (Exception ex)
+        {
+            WaStatusMessage = $"Discovery failed: {ex.Message}";
+        }
+        finally
+        {
+            IsWaBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SyncWebAnalyticsAsync()
+    {
+        if (WebAnalytics is null || !WebAnalytics.HasToken)
+        {
+            WaStatusMessage = "Save credentials first";
+            return;
+        }
+        IsWaBusy = true;
+        WaStatusMessage = "Syncing...";
+        try
+        {
+            var result = await _waSync.SyncAccountAsync(WebAnalytics.AccountId, WaSyncDays);
+            WaStatusMessage = $"Synced {result.Domain}, {result.RecordsUpserted} rows";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            WaStatusMessage = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsWaBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteWebAnalyticsAsync()
+    {
+        if (WebAnalytics is null) return;
+        if (!string.IsNullOrEmpty(WebAnalytics.AccountId))
+        {
+            _vault.SetWebAnalyticsToken(WebAnalytics.AccountId, "");
+        }
+        await _connectionsRepo.DeleteWebAnalyticsAsync();
+        await LoadAsync();
+        WaStatusMessage = "Removed";
     }
 }

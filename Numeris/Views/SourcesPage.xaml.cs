@@ -42,4 +42,16 @@ public sealed partial class SourcesPage : Page
             await ViewModel.DeleteCloudflareAsync(info);
         }
     }
+
+    private async void SaveWaButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SaveWebAnalyticsAsync();
+
+    private async void DiscoverWaButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.DiscoverWebAnalyticsSitesAsync();
+
+    private async void SyncWaButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SyncWebAnalyticsAsync();
+
+    private async void DeleteWaButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.DeleteWebAnalyticsAsync();
 }
