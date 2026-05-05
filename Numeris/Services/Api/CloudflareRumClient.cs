@@ -78,13 +78,18 @@ public sealed class CloudflareRumClient
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
 
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
-        var body = await response.Content.ReadFromJsonAsync<SiteInfoListResponse>(JsonOptions).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Could not parse Cloudflare RUM site response");
+        var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode || !body.Success)
+        SiteInfoListResponse? body = null;
+        try { body = JsonSerializer.Deserialize<SiteInfoListResponse>(rawBody, JsonOptions); } catch { }
+
+        if (!response.IsSuccessStatusCode || body is null || !body.Success)
         {
-            var msg = body.Errors?.Count > 0 ? body.Errors[0].Message : $"Cloudflare returned HTTP {(int)response.StatusCode}";
-            throw new InvalidOperationException(msg);
+            var apiMsg = body?.Errors?.Count > 0 ? body.Errors[0].Message : "(no error message)";
+            var apiCode = body?.Errors?.Count > 0 ? $" code={body.Errors[0].Code}" : "";
+            throw new InvalidOperationException(
+                $"Cloudflare RUM site list HTTP {(int)response.StatusCode}: {apiMsg}{apiCode}. " +
+                "Token needs 'Account Analytics: Read' permission and account ID must match the token's account.");
         }
 
         var result = new List<WebAnalyticsSite>();
@@ -194,7 +199,11 @@ public sealed class CloudflareRumClient
         public List<SiteInfo>? Result { get; set; }
         public List<ApiError>? Errors { get; set; }
     }
-    private sealed class ApiError { public string Message { get; set; } = ""; }
+    private sealed class ApiError
+    {
+        public string Message { get; set; } = "";
+        public int Code { get; set; }
+    }
     private sealed class SiteInfo
     {
         [JsonPropertyName("site_tag")] public string? SiteTag { get; set; }
