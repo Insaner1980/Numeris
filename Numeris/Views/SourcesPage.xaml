@@ -155,7 +155,7 @@
                 </StackPanel>
             </Expander>
 
-            <!-- Search Console panel (placeholder) -->
+            <!-- Search Console panel -->
             <Expander HorizontalAlignment="Stretch">
                 <Expander.Header>
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -163,9 +163,41 @@
                         <TextBlock Text="Google Search Console" FontWeight="SemiBold" />
                     </StackPanel>
                 </Expander.Header>
-                <TextBlock Text="OAuth integration coming in next phase. Currently shows mock data."
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Padding="0,8,0,0" />
+                <StackPanel Spacing="12" Padding="0,8,0,0">
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Create a Desktop OAuth client at console.cloud.google.com → Credentials. Enable Search Console API. Add http://127.0.0.1 as authorized redirect URI." />
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBox Grid.Row="0" Grid.Column="0" Header="Client ID"
+                                 PlaceholderText="xxxxx.apps.googleusercontent.com"
+                                 Text="{x:Bind ViewModel.NewScClientId, Mode=TwoWay}" />
+                        <PasswordBox Grid.Row="0" Grid.Column="1" Header="Client secret"
+                                     Password="{x:Bind ViewModel.NewScClientSecret, Mode=TwoWay}" />
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+                            <Button Content="Save"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    Click="SaveScButton_Click" />
+                            <Button Content="Connect Google account"
+                                    Click="ConnectScButton_Click" />
+                            <Button Content="Sync"
+                                    Click="SyncScButton_Click" />
+                            <Button Content="Delete" Click="DeleteScButton_Click" />
+                            <ProgressRing IsActive="{x:Bind ViewModel.IsScBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.ScStatusMessage, Mode=OneWay}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Expander>
         </StackPanel>
     </ScrollViewer>

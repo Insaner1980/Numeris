@@ -54,4 +54,16 @@ public sealed partial class SourcesPage : Page
 
     private async void DeleteWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DeleteWebAnalyticsAsync();
+
+    private async void SaveScButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SaveSearchConsoleAsync();
+
+    private async void ConnectScButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.ConnectSearchConsoleAsync();
+
+    private async void SyncScButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SyncSearchConsoleAsync();
+
+    private async void DeleteScButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.DeleteSearchConsoleAsync();
 }

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Numeris.Services.Api;
+using Numeris.Services.Auth;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.MockData;
@@ -56,9 +57,12 @@ public partial class App : Application
         services.AddSingleton<SitemapClient>();
         services.AddSingleton<CloudflareGraphqlClient>();
         services.AddSingleton<CloudflareRumClient>();
+        services.AddSingleton<SearchConsoleClient>();
+        services.AddSingleton<GoogleOAuthFlow>();
         services.AddSingleton<CredentialVault>();
         services.AddSingleton<CloudflareSyncService>();
         services.AddSingleton<WebAnalyticsSyncService>();
+        services.AddSingleton<SearchConsoleSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();

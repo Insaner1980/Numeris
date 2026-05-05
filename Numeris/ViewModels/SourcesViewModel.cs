@@ -6,9 +6,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Numeris.Models;
 using Numeris.Services.Api;
+using Numeris.Services.Auth;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Secrets;
 using Numeris.Services.Sync;
+using Windows.System;
 
 namespace Numeris.ViewModels;
 
@@ -20,6 +22,9 @@ public partial class SourcesViewModel : ObservableObject
     private readonly CloudflareSyncService _cfSync;
     private readonly CloudflareRumClient _rumClient;
     private readonly WebAnalyticsSyncService _waSync;
+    private readonly SearchConsoleClient _scClient;
+    private readonly GoogleOAuthFlow _oauth;
+    private readonly SearchConsoleSyncService _scSync;
 
     [ObservableProperty] private ObservableCollection<CloudflareConnectionInfo> _cloudflareConnections = new();
 
@@ -38,13 +43,23 @@ public partial class SourcesViewModel : ObservableObject
     [ObservableProperty] private bool _isWaBusy;
     [ObservableProperty] private int _waSyncDays = 30;
 
+    [ObservableProperty] private SearchConsoleConnectionInfo? _searchConsole;
+    [ObservableProperty] private string _newScClientId = "";
+    [ObservableProperty] private string _newScClientSecret = "";
+    [ObservableProperty] private string _scStatusMessage = "";
+    [ObservableProperty] private bool _isScBusy;
+    [ObservableProperty] private int _scSyncDays = 30;
+
     public SourcesViewModel(
         ConnectionsRepository connectionsRepo,
         CredentialVault vault,
         CloudflareGraphqlClient cfClient,
         CloudflareSyncService cfSync,
         CloudflareRumClient rumClient,
-        WebAnalyticsSyncService waSync)
+        WebAnalyticsSyncService waSync,
+        SearchConsoleClient scClient,
+        GoogleOAuthFlow oauth,
+        SearchConsoleSyncService scSync)
     {
         _connectionsRepo = connectionsRepo;
         _vault = vault;
@@ -52,6 +67,9 @@ public partial class SourcesViewModel : ObservableObject
         _cfSync = cfSync;
         _rumClient = rumClient;
         _waSync = waSync;
+        _scClient = scClient;
+        _oauth = oauth;
+        _scSync = scSync;
     }
 
     [RelayCommand]
@@ -65,6 +83,12 @@ public partial class SourcesViewModel : ObservableObject
         if (WebAnalytics is { AccountId.Length: > 0 })
         {
             NewWaAccountId = WebAnalytics.AccountId;
+        }
+
+        SearchConsole = await _connectionsRepo.GetSearchConsoleAsync();
+        if (SearchConsole is { ClientId.Length: > 0 })
+        {
+            NewScClientId = SearchConsole.ClientId;
         }
     }
 
@@ -275,5 +299,123 @@ public partial class SourcesViewModel : ObservableObject
         await _connectionsRepo.DeleteWebAnalyticsAsync();
         await LoadAsync();
         WaStatusMessage = "Removed";
+    }
+
+    [RelayCommand]
+    public async Task SaveSearchConsoleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewScClientId))
+        {
+            ScStatusMessage = "Client ID is required";
+            return;
+        }
+        IsScBusy = true;
+        ScStatusMessage = "Saving...";
+        try
+        {
+            var clientId = NewScClientId.Trim();
+            var secret = NewScClientSecret.Trim();
+            if (!string.IsNullOrEmpty(secret))
+            {
+                _vault.SetSearchConsoleClientSecret(clientId, secret);
+            }
+            else if (string.IsNullOrEmpty(_vault.GetSearchConsoleClientSecret(clientId)))
+            {
+                ScStatusMessage = "Client secret is required on first save";
+                return;
+            }
+            var config = new SearchConsoleConnectionConfig
+            {
+                ClientId = clientId,
+                LastValidatedAt = _connectionsRepo.FormatNow(),
+            };
+            await _connectionsRepo.UpsertSearchConsoleAsync(config, "configured");
+            await LoadAsync();
+            NewScClientSecret = "";
+            ScStatusMessage = "Saved. Press Connect Google account to authorize.";
+        }
+        catch (Exception ex)
+        {
+            ScStatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ConnectSearchConsoleAsync()
+    {
+        if (SearchConsole is null || string.IsNullOrEmpty(SearchConsole.ClientId) || !SearchConsole.HasClientSecret)
+        {
+            ScStatusMessage = "Save client ID and secret first";
+            return;
+        }
+        IsScBusy = true;
+        ScStatusMessage = "Opening browser for Google consent...";
+        try
+        {
+            var clientSecret = _vault.GetSearchConsoleClientSecret(SearchConsole.ClientId)
+                ?? throw new InvalidOperationException("Missing client secret");
+            var tokens = await _oauth.AuthorizeAsync(
+                SearchConsole.ClientId,
+                clientSecret,
+                uri => _ = Launcher.LaunchUriAsync(uri));
+            if (!string.IsNullOrEmpty(tokens.RefreshToken))
+            {
+                _vault.SetSearchConsoleRefreshToken(SearchConsole.ClientId, tokens.RefreshToken);
+            }
+            await LoadAsync();
+            ScStatusMessage = "Authorized. Press Sync to fetch live data.";
+        }
+        catch (Exception ex)
+        {
+            ScStatusMessage = $"Authorization failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SyncSearchConsoleAsync()
+    {
+        if (SearchConsole is null || !SearchConsole.HasRefreshToken)
+        {
+            ScStatusMessage = "Connect Google account first";
+            return;
+        }
+        IsScBusy = true;
+        ScStatusMessage = "Syncing...";
+        try
+        {
+            var result = await _scSync.SyncAsync(SearchConsole.ClientId, ScSyncDays);
+            ScStatusMessage = $"Synced {result.RecordsUpserted} rows";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ScStatusMessage = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteSearchConsoleAsync()
+    {
+        if (SearchConsole is null) return;
+        if (!string.IsNullOrEmpty(SearchConsole.ClientId))
+        {
+            _vault.SetSearchConsoleClientSecret(SearchConsole.ClientId, "");
+            _vault.SetSearchConsoleRefreshToken(SearchConsole.ClientId, "");
+        }
+        await _connectionsRepo.DeleteSearchConsoleAsync();
+        await LoadAsync();
+        ScStatusMessage = "Removed";
     }
 }

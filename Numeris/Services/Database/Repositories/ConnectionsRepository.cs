@@ -174,4 +174,62 @@ public sealed class ConnectionsRepository
             connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'wa'");
         });
     }
+
+    public Task<SearchConsoleConnectionInfo?> GetSearchConsoleAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'sc'");
+            SearchConsoleConnectionConfig? cfg = null;
+            if (!string.IsNullOrEmpty(row.Config))
+            {
+                try { cfg = JsonSerializer.Deserialize<SearchConsoleConnectionConfig>(row.Config, JsonOptions); }
+                catch { }
+            }
+            var clientId = cfg?.ClientId ?? "";
+            return (SearchConsoleConnectionInfo?)new SearchConsoleConnectionInfo
+            {
+                Id = "sc",
+                ClientId = clientId,
+                HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleClientSecret(clientId)),
+                HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleRefreshToken(clientId)),
+                Status = row.Status ?? "mock",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertSearchConsoleAsync(SearchConsoleConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('sc', 'search_console', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdateSearchConsoleLastSyncAsync(string clientId, string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "UPDATE connections SET status = @status, last_sync = @lastSync WHERE id = 'sc'",
+                new { status, lastSync });
+        });
+    }
+
+    public Task DeleteSearchConsoleAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'sc'");
+        });
+    }
 }
