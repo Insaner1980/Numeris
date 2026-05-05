@@ -4,6 +4,8 @@ using Numeris.Services.Api;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.MockData;
+using Numeris.Services.Secrets;
+using Numeris.Services.Sync;
 using Numeris.ViewModels;
 using Numeris.Views;
 using System;
@@ -48,15 +50,20 @@ public partial class App : Application
         services.AddSingleton<SitemapRepository>();
         services.AddSingleton<WebAnalyticsRepository>();
         services.AddSingleton<HealthRepository>();
+        services.AddSingleton<ConnectionsRepository>();
 
         services.AddSingleton<UptimeClient>();
         services.AddSingleton<SitemapClient>();
+        services.AddSingleton<CloudflareGraphqlClient>();
+        services.AddSingleton<CredentialVault>();
+        services.AddSingleton<CloudflareSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<CloudflareViewModel>();
         services.AddTransient<SearchConsoleViewModel>();
         services.AddTransient<HealthViewModel>();
+        services.AddTransient<SourcesViewModel>();
 
         services.AddSingleton<MainWindow>();
 
