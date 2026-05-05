@@ -64,14 +64,14 @@ public sealed class CloudflareSyncService
                     new
                     {
                         domain,
-                        row.Date,
-                        row.Pageviews,
+                        date = row.Date,
+                        pageviews = row.Pageviews,
                         uniqueVisitors = row.UniqueVisitors,
-                        row.Requests,
+                        requests = row.Requests,
                         cachedRequests = row.CachedRequests,
                         cachedBytes = row.CachedBytes,
                         totalBytes = row.TotalBytes,
-                        row.Threats,
+                        threats = row.Threats,
                         fetchedAt = nowStr,
                     });
                 count++;
@@ -84,7 +84,7 @@ public sealed class CloudflareSyncService
                     VALUES (@domain, @date, @statusCode, @requests)
                     ON CONFLICT(domain, date, status_code) DO UPDATE SET requests = excluded.requests
                     """,
-                    new { domain, s.Date, statusCode = s.StatusCode, s.Requests });
+                    new { domain, date = s.Date, statusCode = s.StatusCode, requests = s.Requests });
                 count++;
             }
             return count;
