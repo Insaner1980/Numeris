@@ -2,16 +2,246 @@
 <Page
     x:Class="Numeris.Views.CloudflarePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Numeris.Controls">
+
     <Grid Padding="{StaticResource PagePadding}" RowSpacing="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="Cloudflare" Style="{ThemeResource TitleTextBlockStyle}" />
-        <TextBlock Grid.Row="1"
-                   Text="Cloudflare-välilehdet (Traffic, Cache, Security, Status codes, Web Analytics) tulossa Vaihe 2:ssa."
-                   Style="{ThemeResource BodyTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0"
+                       Text="Cloudflare"
+                       Style="{ThemeResource TitleTextBlockStyle}"
+                       VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <ComboBox x:Name="DomainCombo" MinWidth="160" SelectionChanged="DomainCombo_SelectionChanged" />
+                <ComboBox x:Name="PeriodCombo" MinWidth="100" SelectionChanged="PeriodCombo_SelectionChanged" />
+                <Button x:Name="RefreshButton" Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh">
+                    <FontIcon Glyph="&#xE72C;" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <NavigationView Grid.Row="1"
+                        x:Name="TabBar"
+                        PaneDisplayMode="Top"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="False"
+                        SelectionChanged="TabBar_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Tag="traffic" Content="Traffic" />
+                <NavigationViewItem Tag="cache" Content="Cache" />
+                <NavigationViewItem Tag="security" Content="Security" />
+                <NavigationViewItem Tag="status" Content="Status codes" />
+                <NavigationViewItem Tag="webanalytics" Content="Web Analytics" />
+            </NavigationView.MenuItems>
+        </NavigationView>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <!-- Traffic -->
+                <Grid x:Name="TrafficPanel" Visibility="Visible" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="320" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0"
+                            x:Name="TrafficChartHost"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="12" />
+                    <Grid Grid.Row="1" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Top countries"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <controls:HorizontalBars Items="{x:Bind ViewModel.TrafficCountries, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Top pages"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <controls:HorizontalBars Items="{x:Bind ViewModel.TrafficPages, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- Cache -->
+                <Grid x:Name="CachePanel" Visibility="Collapsed" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="320" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Average hit ratio"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.CacheHitRatioText, Mode=OneWay}"
+                                           Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Bandwidth saved"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{x:Bind ViewModel.CacheBytesSavedText, Mode=OneWay}"
+                                           Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                    <Border Grid.Row="1"
+                            x:Name="CacheChartHost"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="12" />
+                </Grid>
+
+                <!-- Security -->
+                <Grid x:Name="SecurityPanel" Visibility="Collapsed" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="320" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="16">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Total threats blocked"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.TotalThreatsText, Mode=OneWay}"
+                                       Style="{ThemeResource SubtitleTextBlockStyle}" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1"
+                            x:Name="SecurityChartHost"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="12" />
+                </Grid>
+
+                <!-- Status codes -->
+                <Border x:Name="StatusPanel" Visibility="Collapsed"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource CardCornerRadius}"
+                        Padding="12"
+                        Height="380">
+                    <Border x:Name="StatusChartHost" />
+                </Border>
+
+                <!-- Web Analytics -->
+                <Grid x:Name="WaPanel" Visibility="Collapsed" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="320" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0"
+                            x:Name="WaChartHost"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource CardCornerRadius}"
+                            Padding="12" />
+                    <Grid Grid.Row="1" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Top referrers"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <controls:HorizontalBars Items="{x:Bind ViewModel.WaReferrers, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Top pages"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <controls:HorizontalBars Items="{x:Bind ViewModel.WaPages, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource CardCornerRadius}"
+                                Padding="16">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="Top countries"
+                                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <controls:HorizontalBars Items="{x:Bind ViewModel.WaCountries, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </ScrollViewer>
     </Grid>
 </Page>

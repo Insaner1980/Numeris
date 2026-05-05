@@ -45,9 +45,11 @@ public partial class App : Application
         services.AddSingleton<CloudflareRepository>();
         services.AddSingleton<SearchConsoleRepository>();
         services.AddSingleton<SitemapRepository>();
+        services.AddSingleton<WebAnalyticsRepository>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
+        services.AddTransient<CloudflareViewModel>();
 
         services.AddSingleton<MainWindow>();
 
