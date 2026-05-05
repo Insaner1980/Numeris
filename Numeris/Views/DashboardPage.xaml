@@ -2,16 +2,133 @@
 <Page
     x:Class="Numeris.Views.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Padding="{StaticResource PagePadding}" RowSpacing="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="Overview" Style="{ThemeResource TitleTextBlockStyle}" />
-        <TextBlock Grid.Row="1"
-                   Text="Dashboard tulossa Vaihe 1:ssä — KPI-kortit ja trendikaaviot."
-                   Style="{ThemeResource BodyTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-    </Grid>
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Numeris.Controls">
+
+    <ScrollViewer Padding="{StaticResource PagePadding}">
+        <StackPanel Spacing="16">
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="Overview"
+                           Style="{ThemeResource TitleTextBlockStyle}"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <ComboBox x:Name="DomainCombo" MinWidth="160" SelectionChanged="DomainCombo_SelectionChanged" />
+                    <ComboBox x:Name="PeriodCombo" MinWidth="100" SelectionChanged="PeriodCombo_SelectionChanged" />
+                    <Button x:Name="RefreshButton" Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh">
+                        <FontIcon Glyph="&#xE72C;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <controls:KpiCard Grid.Column="0"
+                                  Label="Visitors"
+                                  Value="{x:Bind ViewModel.VisitorsTotal, Mode=OneWay}"
+                                  ChangePct="{x:Bind ViewModel.VisitorsChangePct, Mode=OneWay}" />
+                <controls:KpiCard Grid.Column="1"
+                                  Label="Search Clicks"
+                                  Value="{x:Bind ViewModel.ClicksTotal, Mode=OneWay}"
+                                  ChangePct="{x:Bind ViewModel.ClicksChangePct, Mode=OneWay}" />
+                <controls:KpiCard Grid.Column="2"
+                                  Label="Avg Position"
+                                  Value="{x:Bind ViewModel.AvgPosition, Mode=OneWay}" />
+                <controls:KpiCard Grid.Column="3"
+                                  Label="Threats"
+                                  Value="{x:Bind ViewModel.ThreatsTotal, Mode=OneWay}" />
+            </Grid>
+
+            <Grid ColumnSpacing="16" RowSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="280" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0"
+                           Text="Traffic Trend"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Grid.Row="0" Grid.Column="1"
+                           Text="Search Trend"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Border Grid.Row="1" Grid.Column="0"
+                        x:Name="TrafficChartHost"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource CardCornerRadius}"
+                        Padding="12" />
+                <Border Grid.Row="1" Grid.Column="1"
+                        x:Name="SearchChartHost"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource CardCornerRadius}"
+                        Padding="12" />
+            </Grid>
+
+            <Grid ColumnSpacing="1"
+                  Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                  CornerRadius="{StaticResource CardCornerRadius}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Cache hit ratio"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.CacheHitRatio, Mode=OneWay}" FontWeight="SemiBold" />
+                </Grid>
+                <Grid Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Indexed"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.IndexedRatio, Mode=OneWay}" FontWeight="SemiBold" />
+                </Grid>
+                <Grid Grid.Column="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Uptime"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="Pending" FontWeight="SemiBold" />
+                </Grid>
+                <Grid Grid.Column="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Last sync"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="—" FontWeight="SemiBold" />
+                </Grid>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
 </Page>

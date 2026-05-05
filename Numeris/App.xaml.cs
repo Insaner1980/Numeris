@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Numeris.Services.Database;
+using Numeris.Services.Database.Repositories;
 using Numeris.Services.MockData;
 using Numeris.ViewModels;
 using Numeris.Views;
@@ -39,7 +40,14 @@ public partial class App : Application
 
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<MockSeeder>();
+
+        services.AddSingleton<SummaryRepository>();
+        services.AddSingleton<CloudflareRepository>();
+        services.AddSingleton<SearchConsoleRepository>();
+        services.AddSingleton<SitemapRepository>();
+
         services.AddSingleton<ShellViewModel>();
+        services.AddTransient<DashboardViewModel>();
 
         services.AddSingleton<MainWindow>();
 
