@@ -1,0 +1,54 @@
+# Build artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.lib
+*.exp
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vsconfig
+
+# Rider
+.idea/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+
+# MSIX outputs
+AppPackages/
+BundleArtifacts/
+*.appx
+*.appxbundle
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+
+# Generated XAML files
+*.g.cs
+*.g.i.cs
+GeneratedInternalTypeHelper.cs
+
+# ReSharper
+_ReSharper*/
+
+# SonarQube
+.sonar/
+.sonarlint/
+
+# Local config
+*.local.json
+
+# Logs
+*.log
+logs/

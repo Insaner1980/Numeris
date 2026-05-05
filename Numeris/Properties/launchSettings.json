@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Numeris (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Numeris (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
