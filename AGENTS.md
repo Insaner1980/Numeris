@@ -6,4 +6,5 @@
 - Uusi Numeris-yhteysconfig ei saa serialisoida uusia plain text -salaisuuksia. Tokenit, client secretit ja refresh tokenit kuuluvat `CredentialVault`iin.
 - `SettingsStore` tallentaa shellin kevyen tilan `AppPaths.SettingsPath`-polkuun. Packaged-ajo kayttaa `ApplicationData.Current.LocalFolder`ia ja unpackaged-ajo `%LocalAppData%\Numeris`-hakemistoa `AppPaths`-logiikan kautta.
 - Projekti kayttaa `<LangVersion>preview</LangVersion>`-asetusta, jotta CommunityToolkit.Mvvm partial property -malli toimii MVVMTK0045-korjauksissa.
+- Unpackaged `Project`-kaynnistys tarvitsee `<WindowsPackageType>None</WindowsPackageType>`-asetuksen, jotta Windows App SDK kayttaa bootstrap-auto-initializeria eika MSIX DeploymentManageria.
 - Pida `migration-plan.md` ajan tasalla, kun core-migraation jarjestys muuttuu.
