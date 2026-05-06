@@ -35,7 +35,7 @@ public partial class App : Application
             seeder.SeedAsync().GetAwaiter().GetResult();
         }
         var migration = Services.GetRequiredService<PulseDataMigrationService>();
-        migration.ImportWebAnalyticsAsync().GetAwaiter().GetResult();
+        migration.ImportAllAsync().GetAwaiter().GetResult();
 
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();

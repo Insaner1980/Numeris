@@ -7,6 +7,7 @@ public sealed class CloudflareConnectionConfig
     public string Domain { get; set; } = "";
     public string ZoneId { get; set; } = "";
     public string? LastValidatedAt { get; set; }
+    public string? ImportSource { get; set; }
 }
 
 public sealed class CloudflareConnectionInfo
@@ -41,6 +42,7 @@ public sealed class SearchConsoleConnectionConfig
     public string ClientId { get; set; } = "";
     public string? LastValidatedAt { get; set; }
     public List<string> Sites { get; set; } = new();
+    public string? ImportSource { get; set; }
 }
 
 public sealed class SearchConsoleConnectionInfo
