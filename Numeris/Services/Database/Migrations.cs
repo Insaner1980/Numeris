@@ -221,6 +221,124 @@ internal static class Migrations
         CREATE INDEX IF NOT EXISTS idx_wa_pages ON web_analytics_pages(domain, date);
         CREATE INDEX IF NOT EXISTS idx_wa_countries ON web_analytics_countries(domain, date);
 
+        CREATE TABLE IF NOT EXISTS performance_urls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE,
+            origin TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_perf_urls_origin
+            ON performance_urls(origin);
+
+        CREATE TABLE IF NOT EXISTS crux_metric_points (
+            target_type TEXT NOT NULL,
+            target TEXT NOT NULL,
+            form_factor TEXT NOT NULL,
+            collection_start TEXT NOT NULL,
+            collection_end TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            p75 REAL,
+            good_density REAL,
+            needs_improvement_density REAL,
+            poor_density REAL,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (target_type, target, form_factor, collection_end, metric)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_crux_metric_target
+            ON crux_metric_points(target_type, target, form_factor, metric, collection_end);
+
+        CREATE TABLE IF NOT EXISTS pagespeed_runs (
+            url TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            analysis_utc TEXT NOT NULL,
+            final_url TEXT,
+            performance_score REAL,
+            accessibility_score REAL,
+            best_practices_score REAL,
+            seo_score REAL,
+            lighthouse_version TEXT,
+            runtime_error TEXT,
+            warnings_json TEXT,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (url, strategy, analysis_utc)
+        );
+
+        CREATE TABLE IF NOT EXISTS pagespeed_audits (
+            url TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            analysis_utc TEXT NOT NULL,
+            audit_id TEXT NOT NULL,
+            title TEXT,
+            score REAL,
+            numeric_value REAL,
+            numeric_unit TEXT,
+            display_value TEXT,
+            score_display_mode TEXT,
+            details_json TEXT,
+            PRIMARY KEY (url, strategy, analysis_utc, audit_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pagespeed_runs_url
+            ON pagespeed_runs(url, strategy, analysis_utc);
+
+        CREATE TABLE IF NOT EXISTS bing_sites (
+            site_url TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT 'manual',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            discovered_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS bing_rank_traffic (
+            site_url TEXT NOT NULL,
+            date TEXT NOT NULL,
+            clicks INTEGER,
+            impressions INTEGER,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (site_url, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS bing_query_stats (
+            site_url TEXT NOT NULL,
+            query TEXT NOT NULL,
+            date TEXT NOT NULL DEFAULT '',
+            clicks INTEGER,
+            impressions INTEGER,
+            avg_click_position REAL,
+            avg_impression_position REAL,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (site_url, query, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS bing_page_stats (
+            site_url TEXT NOT NULL,
+            page_url TEXT NOT NULL,
+            clicks INTEGER,
+            impressions INTEGER,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (site_url, page_url)
+        );
+
+        CREATE TABLE IF NOT EXISTS bing_raw_items (
+            method TEXT NOT NULL,
+            site_url TEXT NOT NULL DEFAULT '',
+            item_key TEXT NOT NULL,
+            raw_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (method, site_url, item_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bing_raw_method
+            ON bing_raw_items(method, site_url);
+
         CREATE TABLE IF NOT EXISTS uptime_checks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             domain TEXT NOT NULL,
@@ -246,6 +364,16 @@ internal static class Migrations
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('sc', 'search_console', 'mock');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ps', 'play_store', 'mock');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('wa', 'web_analytics', 'mock');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('perf', 'performance', 'mock');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'mock');
+        INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
+            VALUES ('https://finnvek.com/', 'https://finnvek.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+        INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
+            VALUES ('https://knittoolsapp.com/', 'https://knittoolsapp.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+        INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
+            VALUES ('https://finnvek.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+        INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
+            VALUES ('https://knittoolsapp.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
         """;
 

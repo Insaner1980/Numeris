@@ -55,6 +55,47 @@ public sealed class SearchConsoleConnectionInfo
     public string? LastSync { get; set; }
 }
 
+public sealed class PerformanceConnectionConfig
+{
+    public string? LastValidatedAt { get; set; }
+    public string? ImportSource { get; set; }
+}
+
+public sealed class PerformanceConnectionInfo
+{
+    public string Id { get; set; } = "perf";
+    public bool HasCruxApiKey { get; set; }
+    public bool HasPageSpeedApiKey { get; set; }
+    public string Status { get; set; } = "mock";
+    public string? LastSync { get; set; }
+}
+
+public sealed class PerformanceUrlInfo
+{
+    public long Id { get; set; }
+    public string Url { get; set; } = "";
+    public string Origin { get; set; } = "";
+    public string Source { get; set; } = "manual";
+    public bool Enabled { get; set; }
+    public string CreatedAt { get; set; } = "";
+}
+
+public sealed class BingConnectionConfig
+{
+    public List<string> Sites { get; set; } = new();
+    public string? LastValidatedAt { get; set; }
+    public string? ImportSource { get; set; }
+}
+
+public sealed class BingConnectionInfo
+{
+    public string Id { get; set; } = "bing";
+    public bool HasApiKey { get; set; }
+    public List<string> Sites { get; set; } = new();
+    public string Status { get; set; } = "mock";
+    public string? LastSync { get; set; }
+}
+
 public sealed class SyncResult
 {
     public string Domain { get; set; } = "";

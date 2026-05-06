@@ -9,6 +9,9 @@ public sealed class CredentialVault
     private const string WebAnalyticsResource = "Numeris.WebAnalytics";
     private const string SearchConsoleSecretResource = "Numeris.SearchConsole.ClientSecret";
     private const string SearchConsoleRefreshResource = "Numeris.SearchConsole.RefreshToken";
+    private const string CruxApiKeyResource = "Numeris.Crux.ApiKey";
+    private const string PageSpeedApiKeyResource = "Numeris.PageSpeed.ApiKey";
+    private const string BingApiKeyResource = "Numeris.BingWebmaster.ApiKey";
 
     private readonly PasswordVault _vault = new();
 
@@ -38,6 +41,24 @@ public sealed class CredentialVault
 
     public string? GetSearchConsoleRefreshToken(string clientId)
         => TryGet(SearchConsoleRefreshResource, clientId.Trim());
+
+    public void SetCruxApiKey(string key)
+        => Save(CruxApiKeyResource, "default", key.Trim());
+
+    public string? GetCruxApiKey()
+        => TryGet(CruxApiKeyResource, "default");
+
+    public void SetPageSpeedApiKey(string key)
+        => Save(PageSpeedApiKeyResource, "default", key.Trim());
+
+    public string? GetPageSpeedApiKey()
+        => TryGet(PageSpeedApiKeyResource, "default");
+
+    public void SetBingApiKey(string key)
+        => Save(BingApiKeyResource, "default", key.Trim());
+
+    public string? GetBingApiKey()
+        => TryGet(BingApiKeyResource, "default");
 
     private void Save(string resource, string user, string secret)
     {

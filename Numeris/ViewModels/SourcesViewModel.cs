@@ -25,6 +25,8 @@ public partial class SourcesViewModel : ObservableObject
     private readonly SearchConsoleClient _scClient;
     private readonly GoogleOAuthFlow _oauth;
     private readonly SearchConsoleSyncService _scSync;
+    private readonly PerformanceSyncService _performanceSync;
+    private readonly BingWebmasterSyncService _bingSync;
 
     [ObservableProperty] private ObservableCollection<CloudflareConnectionInfo> _cloudflareConnections = new();
 
@@ -52,6 +54,21 @@ public partial class SourcesViewModel : ObservableObject
     [ObservableProperty] private bool _isScBusy;
     [ObservableProperty] private int _scSyncDays = 30;
 
+    [ObservableProperty] private PerformanceConnectionInfo? _performance;
+    [ObservableProperty] private ObservableCollection<PerformanceUrlInfo> _performanceUrls = new();
+    [ObservableProperty] private string _newCruxApiKey = "";
+    [ObservableProperty] private string _newPageSpeedApiKey = "";
+    [ObservableProperty] private string _newPerformanceUrl = "";
+    [ObservableProperty] private string _performanceStatusMessage = "";
+    [ObservableProperty] private bool _isPerformanceBusy;
+
+    [ObservableProperty] private BingConnectionInfo? _bing;
+    [ObservableProperty] private ObservableCollection<string> _bingSites = new();
+    [ObservableProperty] private string _newBingApiKey = "";
+    [ObservableProperty] private string _newBingSiteUrl = "";
+    [ObservableProperty] private string _bingStatusMessage = "";
+    [ObservableProperty] private bool _isBingBusy;
+
     public SourcesViewModel(
         ConnectionsRepository connectionsRepo,
         CredentialVault vault,
@@ -61,7 +78,9 @@ public partial class SourcesViewModel : ObservableObject
         WebAnalyticsSyncService waSync,
         SearchConsoleClient scClient,
         GoogleOAuthFlow oauth,
-        SearchConsoleSyncService scSync)
+        SearchConsoleSyncService scSync,
+        PerformanceSyncService performanceSync,
+        BingWebmasterSyncService bingSync)
     {
         _connectionsRepo = connectionsRepo;
         _vault = vault;
@@ -72,6 +91,8 @@ public partial class SourcesViewModel : ObservableObject
         _scClient = scClient;
         _oauth = oauth;
         _scSync = scSync;
+        _performanceSync = performanceSync;
+        _bingSync = bingSync;
     }
 
     [RelayCommand]
@@ -93,6 +114,12 @@ public partial class SourcesViewModel : ObservableObject
         {
             NewScClientId = SearchConsole.ClientId;
         }
+
+        Performance = await _connectionsRepo.GetPerformanceAsync();
+        await LoadPerformanceUrlsAsync();
+
+        Bing = await _connectionsRepo.GetBingAsync();
+        await LoadBingSitesAsync();
     }
 
     [RelayCommand]
@@ -546,5 +573,261 @@ public partial class SourcesViewModel : ObservableObject
         await _connectionsRepo.DeleteSearchConsoleAsync();
         await LoadAsync();
         ScStatusMessage = "Removed";
+    }
+
+    [RelayCommand]
+    public async Task SavePerformanceAsync()
+    {
+        IsPerformanceBusy = true;
+        PerformanceStatusMessage = "Saving...";
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(NewCruxApiKey))
+            {
+                _vault.SetCruxApiKey(NewCruxApiKey);
+            }
+            if (!string.IsNullOrWhiteSpace(NewPageSpeedApiKey))
+            {
+                _vault.SetPageSpeedApiKey(NewPageSpeedApiKey);
+            }
+            if (string.IsNullOrWhiteSpace(_vault.GetCruxApiKey()) && string.IsNullOrWhiteSpace(_vault.GetPageSpeedApiKey()))
+            {
+                PerformanceStatusMessage = "CrUX or PageSpeed API key is required";
+                return;
+            }
+            await _connectionsRepo.UpsertPerformanceAsync(
+                new PerformanceConnectionConfig { LastValidatedAt = _connectionsRepo.FormatNow() },
+                "configured");
+            NewCruxApiKey = "";
+            NewPageSpeedApiKey = "";
+            await LoadAsync();
+            PerformanceStatusMessage = "Saved. Add URLs if needed, then press Sync.";
+        }
+        catch (Exception ex)
+        {
+            PerformanceStatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsPerformanceBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task AddPerformanceUrlAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewPerformanceUrl))
+        {
+            PerformanceStatusMessage = "URL is required";
+            return;
+        }
+        IsPerformanceBusy = true;
+        try
+        {
+            await _performanceSync.AddUrlAsync(NewPerformanceUrl);
+            NewPerformanceUrl = "";
+            await LoadPerformanceUrlsAsync();
+            PerformanceStatusMessage = "URL added";
+        }
+        catch (Exception ex)
+        {
+            PerformanceStatusMessage = $"Add URL failed: {ex.Message}";
+        }
+        finally
+        {
+            IsPerformanceBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeletePerformanceUrlAsync(PerformanceUrlInfo? url)
+    {
+        if (url is null) return;
+        await _performanceSync.DeleteUrlAsync(url.Id);
+        await LoadPerformanceUrlsAsync();
+        PerformanceStatusMessage = $"Removed {url.Url}";
+    }
+
+    [RelayCommand]
+    public async Task TestCruxAsync()
+    {
+        IsPerformanceBusy = true;
+        PerformanceStatusMessage = "Testing CrUX...";
+        try
+        {
+            var result = await _performanceSync.TestCruxAsync();
+            PerformanceStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+        }
+        finally
+        {
+            IsPerformanceBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task TestPageSpeedAsync()
+    {
+        IsPerformanceBusy = true;
+        PerformanceStatusMessage = "Testing PageSpeed...";
+        try
+        {
+            var result = await _performanceSync.TestPageSpeedAsync();
+            PerformanceStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+        }
+        finally
+        {
+            IsPerformanceBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SyncPerformanceAsync()
+    {
+        IsPerformanceBusy = true;
+        PerformanceStatusMessage = "Syncing CrUX and PageSpeed...";
+        try
+        {
+            var result = await _performanceSync.SyncAsync();
+            PerformanceStatusMessage = $"Synced {result.UrlsSynced} URL(s), {result.CruxMetricPoints} CrUX point(s), {result.PageSpeedRuns} PageSpeed run(s), {result.PageSpeedAudits} audit row(s)";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            PerformanceStatusMessage = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsPerformanceBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveBingAsync()
+    {
+        IsBingBusy = true;
+        BingStatusMessage = "Saving...";
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(NewBingApiKey))
+            {
+                _vault.SetBingApiKey(NewBingApiKey);
+            }
+            if (string.IsNullOrWhiteSpace(_vault.GetBingApiKey()))
+            {
+                BingStatusMessage = "Bing Webmaster API key is required";
+                return;
+            }
+            var sites = (await _bingSync.ListSitesAsync()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            await _connectionsRepo.UpsertBingAsync(
+                new BingConnectionConfig { Sites = sites, LastValidatedAt = _connectionsRepo.FormatNow() },
+                "configured");
+            NewBingApiKey = "";
+            await LoadAsync();
+            BingStatusMessage = "Saved. Press Test or Sync.";
+        }
+        catch (Exception ex)
+        {
+            BingStatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBingBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task AddBingSiteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewBingSiteUrl))
+        {
+            BingStatusMessage = "Site URL is required";
+            return;
+        }
+        IsBingBusy = true;
+        try
+        {
+            await _bingSync.AddSiteAsync(NewBingSiteUrl);
+            NewBingSiteUrl = "";
+            await SaveBingConfigFromSitesAsync();
+            await LoadBingSitesAsync();
+            BingStatusMessage = "Bing site added";
+        }
+        catch (Exception ex)
+        {
+            BingStatusMessage = $"Add site failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBingBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteBingSiteAsync(string? siteUrl)
+    {
+        if (string.IsNullOrWhiteSpace(siteUrl)) return;
+        await _bingSync.DeleteSiteAsync(siteUrl);
+        await SaveBingConfigFromSitesAsync();
+        await LoadBingSitesAsync();
+        BingStatusMessage = $"Removed {siteUrl}";
+    }
+
+    [RelayCommand]
+    public async Task TestBingAsync()
+    {
+        IsBingBusy = true;
+        BingStatusMessage = "Testing Bing Webmaster...";
+        try
+        {
+            var result = await _bingSync.TestAsync();
+            BingStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+        }
+        finally
+        {
+            IsBingBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SyncBingAsync()
+    {
+        IsBingBusy = true;
+        BingStatusMessage = "Syncing Bing Webmaster...";
+        try
+        {
+            var result = await _bingSync.SyncAsync();
+            BingStatusMessage = $"Synced {result.SitesSynced} site(s), {result.RawItems} raw item(s), {result.RankRows} rank rows, {result.QueryRows} query rows, {result.PageRows} page rows";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            BingStatusMessage = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBingBusy = false;
+        }
+    }
+
+    private async Task LoadPerformanceUrlsAsync()
+    {
+        var urls = await _performanceSync.ListUrlsAsync();
+        PerformanceUrls.Clear();
+        foreach (var url in urls) PerformanceUrls.Add(url);
+    }
+
+    private async Task LoadBingSitesAsync()
+    {
+        var sites = await _bingSync.ListSitesAsync();
+        BingSites.Clear();
+        foreach (var site in sites) BingSites.Add(site);
+    }
+
+    private async Task SaveBingConfigFromSitesAsync()
+    {
+        var sites = await _bingSync.ListSitesAsync();
+        await _connectionsRepo.UpsertBingAsync(
+            new BingConnectionConfig { Sites = sites, LastValidatedAt = _connectionsRepo.FormatNow() },
+            string.IsNullOrWhiteSpace(_vault.GetBingApiKey()) ? "mock" : "configured");
     }
 }

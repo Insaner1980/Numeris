@@ -58,17 +58,24 @@ public partial class App : Application
         services.AddSingleton<WebAnalyticsRepository>();
         services.AddSingleton<HealthRepository>();
         services.AddSingleton<ConnectionsRepository>();
+        services.AddSingleton<PerformanceRepository>();
+        services.AddSingleton<BingRepository>();
 
         services.AddSingleton<UptimeClient>();
         services.AddSingleton<SitemapClient>();
         services.AddSingleton<CloudflareGraphqlClient>();
         services.AddSingleton<CloudflareRumClient>();
         services.AddSingleton<SearchConsoleClient>();
+        services.AddSingleton<CruxClient>();
+        services.AddSingleton<PageSpeedClient>();
+        services.AddSingleton<BingWebmasterClient>();
         services.AddSingleton<GoogleOAuthFlow>();
         services.AddSingleton<CredentialVault>();
         services.AddSingleton<CloudflareSyncService>();
         services.AddSingleton<WebAnalyticsSyncService>();
         services.AddSingleton<SearchConsoleSyncService>();
+        services.AddSingleton<PerformanceSyncService>();
+        services.AddSingleton<BingWebmasterSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();

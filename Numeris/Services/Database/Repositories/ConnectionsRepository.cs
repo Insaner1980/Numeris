@@ -232,4 +232,110 @@ public sealed class ConnectionsRepository
             connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'sc'");
         });
     }
+
+    public Task<PerformanceConnectionInfo?> GetPerformanceAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'perf'");
+            return (PerformanceConnectionInfo?)new PerformanceConnectionInfo
+            {
+                Id = "perf",
+                HasCruxApiKey = !string.IsNullOrEmpty(_vault.GetCruxApiKey()),
+                HasPageSpeedApiKey = !string.IsNullOrEmpty(_vault.GetPageSpeedApiKey()),
+                Status = row.Status ?? "mock",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertPerformanceAsync(PerformanceConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('perf', 'performance', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdatePerformanceLastSyncAsync(string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "UPDATE connections SET status = @status, last_sync = @lastSync WHERE id = 'perf'",
+                new { status, lastSync });
+        });
+    }
+
+    public Task DeletePerformanceAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'perf'");
+        });
+    }
+
+    public Task<BingConnectionInfo?> GetBingAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'bing'");
+            BingConnectionConfig? cfg = null;
+            if (!string.IsNullOrEmpty(row.Config))
+            {
+                try { cfg = JsonSerializer.Deserialize<BingConnectionConfig>(row.Config, JsonOptions); }
+                catch { }
+            }
+            return (BingConnectionInfo?)new BingConnectionInfo
+            {
+                Id = "bing",
+                HasApiKey = !string.IsNullOrEmpty(_vault.GetBingApiKey()),
+                Sites = cfg?.Sites ?? new List<string>(),
+                Status = row.Status ?? "mock",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertBingAsync(BingConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('bing', 'bing_webmaster', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdateBingLastSyncAsync(string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "UPDATE connections SET status = @status, last_sync = @lastSync WHERE id = 'bing'",
+                new { status, lastSync });
+        });
+    }
+
+    public Task DeleteBingAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'bing'");
+        });
+    }
 }

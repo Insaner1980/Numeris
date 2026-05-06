@@ -81,6 +81,21 @@ Nykytila: vaiheet 0-5C ovat pääosin toteutettu. Suurin keskeneräinen osa on i
 - Commit 5: MVVMTK0045-korjaukset tai erillinen teknisen velan commit.
 - Commit 6: smoke test -korjaukset packaged/unpackaged-ajolle.
 
+### 8. Lisää uudet live-lähteet Pulsen ulkopuolelta
+
+- Lisää Web Performance -lähde, joka yhdistää CrUX Report API:n ja PageSpeed Insights API:n:
+  - yksi CrUX API key `CredentialVault`iin
+  - yksi PageSpeed API key `CredentialVault`iin; käyttäjä voi käyttää samaa Google Cloud -avainta, jos molemmat API:t on sallittu
+  - `performance_urls`-lista, jossa oletuksena `https://finnvek.com/` ja `https://knittoolsapp.com/`
+  - käyttäjä voi lisätä lisä-URL:eja manuaalisesti myöhemmin
+  - CrUX haetaan `records:queryHistoryRecord`-metodilla origin- ja URL-tasolla
+  - PageSpeed ajetaan MOBILE- ja DESKTOP-strategioilla
+- Lisää Microsoft Bing Webmaster Tools -lähde:
+  - API key `CredentialVault`iin, ei OAuthia
+  - verified site URL:t muodossa `https://finnvek.com/` ja `https://knittoolsapp.com/`
+  - synkki kutsuu read-only Webmaster API -metodeja; mutatoivia submit/block/remove/save-toimintoja ei tehdä automaattisesti
+- Tallenna uudet API-vastaukset sekä normalisoituun muotoon että raw JSONina, jotta "kaikki mahdollinen" data säilyy vaikka dashboard-mallia tarkennetaan myöhemmin.
+
 ## Public Interfaces / Types
 
 - `PulseDataMigrationService` laajennetaan yleiseksi Pulse-importtipalveluksi tai jaetaan pieniin importtereihin per integraatio.

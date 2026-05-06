@@ -104,10 +104,65 @@ public sealed partial class SourcesPage : Page
     private async void DeleteScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DeleteSearchConsoleAsync();
 
+    private async void SavePerformanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        SyncPasswordBoxesToViewModel();
+        await ViewModel.SavePerformanceAsync();
+        CruxApiKeyBox.Password = "";
+        PageSpeedApiKeyBox.Password = "";
+    }
+
+    private async void AddPerformanceUrlButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.AddPerformanceUrlAsync();
+
+    private async void DeletePerformanceUrlButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is PerformanceUrlInfo url)
+        {
+            await ViewModel.DeletePerformanceUrlAsync(url);
+        }
+    }
+
+    private async void TestCruxButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.TestCruxAsync();
+
+    private async void TestPageSpeedButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.TestPageSpeedAsync();
+
+    private async void SyncPerformanceButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SyncPerformanceAsync();
+
+    private async void SaveBingButton_Click(object sender, RoutedEventArgs e)
+    {
+        SyncPasswordBoxesToViewModel();
+        await ViewModel.SaveBingAsync();
+        BingApiKeyBox.Password = "";
+    }
+
+    private async void AddBingSiteButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.AddBingSiteAsync();
+
+    private async void DeleteBingSiteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string siteUrl)
+        {
+            await ViewModel.DeleteBingSiteAsync(siteUrl);
+        }
+    }
+
+    private async void TestBingButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.TestBingAsync();
+
+    private async void SyncBingButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.SyncBingAsync();
+
     private void SyncPasswordBoxesToViewModel()
     {
         ViewModel.NewCfToken = CfTokenBox.Password;
         ViewModel.NewWaToken = WaTokenBox.Password;
         ViewModel.NewScClientSecret = ScClientSecretBox.Password;
+        ViewModel.NewCruxApiKey = CruxApiKeyBox.Password;
+        ViewModel.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
+        ViewModel.NewBingApiKey = BingApiKeyBox.Password;
     }
 }

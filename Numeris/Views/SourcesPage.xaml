@@ -239,6 +239,173 @@
                     </Grid>
                 </StackPanel>
             </Expander>
+
+            <!-- Web Performance panel -->
+            <Expander HorizontalAlignment="Stretch">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE9D9;" />
+                        <TextBlock Text="Web Performance" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Expander.Header>
+                <StackPanel Spacing="12" Padding="0,8,0,0">
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Use the same Google Cloud API key if Chrome UX Report API and PageSpeed Insights API are enabled for it. Start with home pages and add more URLs manually later." />
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <PasswordBox x:Name="CruxApiKeyBox"
+                                     Grid.Row="0"
+                                     Grid.Column="0"
+                                     Header="CrUX API key"
+                                     Password="{x:Bind ViewModel.NewCruxApiKey, Mode=TwoWay}" />
+                        <PasswordBox x:Name="PageSpeedApiKeyBox"
+                                     Grid.Row="0"
+                                     Grid.Column="1"
+                                     Header="PageSpeed API key"
+                                     Password="{x:Bind ViewModel.NewPageSpeedApiKey, Mode=TwoWay}" />
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+                            <Button Content="Save"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    Click="SavePerformanceButton_Click" />
+                            <Button Content="Test CrUX"
+                                    Click="TestCruxButton_Click" />
+                            <Button Content="Test PageSpeed"
+                                    Click="TestPageSpeedButton_Click" />
+                            <Button Content="Sync"
+                                    Click="SyncPerformanceButton_Click" />
+                            <ProgressRing IsActive="{x:Bind ViewModel.IsPerformanceBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.PerformanceStatusMessage, Mode=OneWay}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Background="{ThemeResource CardStrokeColorDefaultBrush}" Height="1" Margin="0,4" />
+                    <TextBlock Text="PageSpeed URL list" FontWeight="SemiBold" />
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Header="URL" PlaceholderText="https://example.com/"
+                                 Text="{x:Bind ViewModel.NewPerformanceUrl, Mode=TwoWay}" />
+                        <Button Grid.Column="1"
+                                Content="Add"
+                                VerticalAlignment="Bottom"
+                                Click="AddPerformanceUrlButton_Click" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.PerformanceUrls, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="4" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:PerformanceUrlInfo">
+                                <Grid Padding="0,2" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{x:Bind Url}" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Source}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Button Grid.Column="2"
+                                            Content="Delete"
+                                            Click="DeletePerformanceUrlButton_Click"
+                                            Tag="{x:Bind}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Expander>
+
+            <!-- Bing Webmaster panel -->
+            <Expander HorizontalAlignment="Stretch">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE71B;" />
+                        <TextBlock Text="Microsoft Bing Webmaster Tools" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Expander.Header>
+                <StackPanel Spacing="12" Padding="0,8,0,0">
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <PasswordBox x:Name="BingApiKeyBox"
+                                     Grid.Row="0"
+                                     Header="Bing Webmaster API key"
+                                     Password="{x:Bind ViewModel.NewBingApiKey, Mode=TwoWay}" />
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                            <Button Content="Save"
+                                    Style="{ThemeResource AccentButtonStyle}"
+                                    Click="SaveBingButton_Click" />
+                            <Button Content="Test"
+                                    Click="TestBingButton_Click" />
+                            <Button Content="Sync"
+                                    Click="SyncBingButton_Click" />
+                            <ProgressRing IsActive="{x:Bind ViewModel.IsBingBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.BingStatusMessage, Mode=OneWay}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Background="{ThemeResource CardStrokeColorDefaultBrush}" Height="1" Margin="0,4" />
+                    <TextBlock Text="Verified sites" FontWeight="SemiBold" />
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Header="Site URL" PlaceholderText="https://example.com/"
+                                 Text="{x:Bind ViewModel.NewBingSiteUrl, Mode=TwoWay}" />
+                        <Button Grid.Column="1"
+                                Content="Add"
+                                VerticalAlignment="Bottom"
+                                Click="AddBingSiteButton_Click" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.BingSites, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="4" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="0,2" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding}" FontWeight="SemiBold" />
+                                    <Button Grid.Column="1"
+                                            Content="Delete"
+                                            Click="DeleteBingSiteButton_Click"
+                                            Tag="{Binding}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Expander>
         </StackPanel>
     </ScrollViewer>
 </Page>
