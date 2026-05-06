@@ -61,3 +61,10 @@ public sealed class SyncResult
     public long DaysSynced { get; set; }
     public long RecordsUpserted { get; set; }
 }
+
+public sealed class ConnectionTestResult
+{
+    public bool Ok { get; set; }
+    public string Message { get; set; } = "";
+    public string? StatusCode { get; set; }
+}

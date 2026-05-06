@@ -109,7 +109,7 @@ public sealed class WebAnalyticsSyncService
 
         if (sites.Count == 0)
         {
-            throw new InvalidOperationException("No sites discovered yet — press Discover sites first");
+            throw new InvalidOperationException("No Web Analytics site tags saved. Add a manual site tag mapping, then press Sync.");
         }
 
         var endDate = DateOnly.FromDateTime(DateTime.Today);
@@ -196,5 +196,51 @@ public sealed class WebAnalyticsSyncService
             DaysSynced = days_total,
             RecordsUpserted = records,
         };
+    }
+
+    public async Task<ConnectionTestResult> TestAccountAsync(string accountId)
+    {
+        accountId = accountId.Trim();
+        var token = _vault.GetWebAnalyticsToken(accountId);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new ConnectionTestResult { Ok = false, Message = "No Account Analytics token saved for this account" };
+        }
+
+        var sites = await _db.ReadAsync(connection =>
+            connection.Query<(string Domain, string SiteTag)>(
+                "SELECT domain, site_tag AS SiteTag FROM web_analytics_sites ORDER BY domain LIMIT 1").AsList()
+        ).ConfigureAwait(false);
+        if (sites.Count == 0)
+        {
+            return new ConnectionTestResult
+            {
+                Ok = false,
+                Message = "No Web Analytics site tag saved. Add a manual mapping; Discover sites is optional.",
+            };
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var sinceDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var untilDate = sinceDate;
+        var sinceIso = today.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+        var untilIso = today.ToDateTime(new TimeOnly(23, 59, 59)).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+
+        try
+        {
+            var site = sites[0];
+            var rollup = await _client.FetchRollupAsync(token, accountId, site.SiteTag, sinceIso, untilIso, sinceDate, untilDate).ConfigureAwait(false);
+            return new ConnectionTestResult
+            {
+                Ok = true,
+                Message = rollup.Daily.Count == 0
+                    ? $"Web Analytics token works for {site.Domain}, but today's dataset is empty"
+                    : $"Web Analytics token works for {site.Domain}; GraphQL returned {rollup.Daily.Count} day row(s)",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+        }
     }
 }

@@ -24,6 +24,14 @@ public sealed partial class SourcesPage : Page
         await ViewModel.TestCloudflareAsync();
     }
 
+    private async void TestSavedCfButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
+        {
+            await ViewModel.TestSavedCloudflareAsync(info);
+        }
+    }
+
     private async void SaveCfButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
@@ -57,6 +65,9 @@ public sealed partial class SourcesPage : Page
     private async void DiscoverWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DiscoverWebAnalyticsSitesAsync();
 
+    private async void TestWaButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.TestWebAnalyticsAsync();
+
     private async void SyncWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SyncWebAnalyticsAsync();
 
@@ -83,6 +94,9 @@ public sealed partial class SourcesPage : Page
 
     private async void ConnectScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.ConnectSearchConsoleAsync();
+
+    private async void TestScButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.TestSearchConsoleAsync();
 
     private async void SyncScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SyncSearchConsoleAsync();

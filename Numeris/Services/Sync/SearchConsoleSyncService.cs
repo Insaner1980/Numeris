@@ -170,4 +170,37 @@ public sealed class SearchConsoleSyncService
 
         return new SyncResult { Domain = "search_console", DaysSynced = days, RecordsUpserted = records };
     }
+
+    public async Task<ConnectionTestResult> TestAsync(string clientId)
+    {
+        clientId = clientId.Trim();
+        var clientSecret = _vault.GetSearchConsoleClientSecret(clientId);
+        if (string.IsNullOrWhiteSpace(clientSecret))
+        {
+            return new ConnectionTestResult { Ok = false, Message = "No Google client secret saved" };
+        }
+
+        var refreshToken = _vault.GetSearchConsoleRefreshToken(clientId);
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return new ConnectionTestResult { Ok = false, Message = "No Google refresh token saved. Connect Google account first." };
+        }
+
+        try
+        {
+            var accessToken = await _client.RefreshAccessTokenAsync(clientId, clientSecret, refreshToken).ConfigureAwait(false);
+            var sites = await _client.ListSitesAsync(accessToken).ConfigureAwait(false);
+            return new ConnectionTestResult
+            {
+                Ok = true,
+                Message = sites.Count == 0
+                    ? "Search Console authorization works, but Google returned no properties"
+                    : $"Search Console authorization works; first property: {sites[0]}",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+        }
+    }
 }

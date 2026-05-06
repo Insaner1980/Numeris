@@ -33,6 +33,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Text="{x:Bind Domain}" FontWeight="SemiBold" />
@@ -42,10 +43,14 @@
                                         </TextBlock>
                                     </StackPanel>
                                     <Button Grid.Column="1"
+                                            Content="Test"
+                                            Click="TestSavedCfButton_Click"
+                                            Tag="{x:Bind}" />
+                                    <Button Grid.Column="2"
                                             Content="Sync"
                                             Click="SyncButton_Click"
                                             Tag="{x:Bind}" />
-                                    <Button Grid.Column="2"
+                                    <Button Grid.Column="3"
                                             Content="Delete"
                                             Click="DeleteButton_Click"
                                             Tag="{x:Bind}" />
@@ -124,6 +129,8 @@
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
                                     Click="SaveWaButton_Click" />
+                            <Button Content="Test"
+                                    Click="TestWaButton_Click" />
                             <Button Content="Discover sites"
                                     Click="DiscoverWaButton_Click" />
                             <Button Content="Sync"
@@ -218,6 +225,8 @@
                                     Click="SaveScButton_Click" />
                             <Button Content="Connect Google account"
                                     Click="ConnectScButton_Click" />
+                            <Button Content="Test"
+                                    Click="TestScButton_Click" />
                             <Button Content="Sync"
                                     Click="SyncScButton_Click" />
                             <Button Content="Delete" Click="DeleteScButton_Click" />

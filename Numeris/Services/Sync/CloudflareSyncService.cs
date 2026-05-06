@@ -99,4 +99,34 @@ public sealed class CloudflareSyncService
             RecordsUpserted = records,
         };
     }
+
+    public async Task<ConnectionTestResult> TestDomainAsync(string domain, string zoneId)
+    {
+        domain = domain.Trim().ToLowerInvariant();
+        zoneId = zoneId.Trim();
+        var apiToken = _vault.GetCloudflareToken(domain);
+        if (string.IsNullOrWhiteSpace(apiToken))
+        {
+            return new ConnectionTestResult { Ok = false, Message = $"No API token saved for {domain}" };
+        }
+
+        try
+        {
+            await _client.ValidateZoneAsync(apiToken, zoneId, domain).ConfigureAwait(false);
+
+            var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var traffic = await _client.FetchDailyTrafficAsync(apiToken, zoneId, today, today).ConfigureAwait(false);
+            return new ConnectionTestResult
+            {
+                Ok = true,
+                Message = traffic.Daily.Count == 0
+                    ? $"Cloudflare token works for {domain}, but today's analytics dataset is empty"
+                    : $"Cloudflare token works for {domain}; GraphQL returned {traffic.Daily.Count} day row(s)",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+        }
+    }
 }

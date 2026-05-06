@@ -117,6 +117,23 @@ public partial class SourcesViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public async Task TestSavedCloudflareAsync(CloudflareConnectionInfo? info)
+    {
+        if (info is null) return;
+        IsCfBusy = true;
+        CfStatusMessage = $"Testing {info.Domain}...";
+        try
+        {
+            var result = await _cfSync.TestDomainAsync(info.Domain, info.ZoneId);
+            CfStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+        }
+        finally
+        {
+            IsCfBusy = false;
+        }
+    }
+
+    [RelayCommand]
     public async Task SaveCloudflareAsync()
     {
         if (!ValidateCloudflareInputs(requireToken: false)) return;
@@ -226,7 +243,7 @@ public partial class SourcesViewModel : ObservableObject
             await _connectionsRepo.UpsertWebAnalyticsAsync(config, "configured");
             await LoadAsync();
             NewWaToken = "";
-            WaStatusMessage = "Saved. Press Discover sites to load site tags.";
+            WaStatusMessage = "Saved. Add a site tag mapping, then press Sync. Discover sites is optional.";
         }
         catch (Exception ex)
         {
@@ -261,6 +278,28 @@ public partial class SourcesViewModel : ObservableObject
             WaStatusMessage = WaSites.Count > 0
                 ? $"Discovery failed: {ex.Message} Saved mappings can still sync."
                 : $"Discovery failed: {ex.Message} Add the Web Analytics site tag manually below.";
+        }
+        finally
+        {
+            IsWaBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task TestWebAnalyticsAsync()
+    {
+        if (WebAnalytics is null || string.IsNullOrWhiteSpace(WebAnalytics.AccountId))
+        {
+            WaStatusMessage = "Save credentials first";
+            return;
+        }
+
+        IsWaBusy = true;
+        WaStatusMessage = "Testing Web Analytics...";
+        try
+        {
+            var result = await _waSync.TestAccountAsync(WebAnalytics.AccountId);
+            WaStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
         }
         finally
         {
@@ -440,6 +479,28 @@ public partial class SourcesViewModel : ObservableObject
         catch (Exception ex)
         {
             ScStatusMessage = $"Authorization failed: {ex.Message}";
+        }
+        finally
+        {
+            IsScBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task TestSearchConsoleAsync()
+    {
+        if (SearchConsole is null || string.IsNullOrWhiteSpace(SearchConsole.ClientId))
+        {
+            ScStatusMessage = "Save Search Console credentials first";
+            return;
+        }
+
+        IsScBusy = true;
+        ScStatusMessage = "Testing Search Console...";
+        try
+        {
+            var result = await _scSync.TestAsync(SearchConsole.ClientId);
+            ScStatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
         }
         finally
         {
