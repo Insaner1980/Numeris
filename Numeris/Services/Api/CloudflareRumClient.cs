@@ -75,7 +75,7 @@ public sealed class CloudflareRumClient
     public async Task<List<WebAnalyticsSite>> ListSitesAsync(string apiToken, string accountId)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/accounts/{accountId.Trim()}/rum/site_info/list");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
         var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -89,7 +89,8 @@ public sealed class CloudflareRumClient
             var apiCode = body?.Errors?.Count > 0 ? $" code={body.Errors[0].Code}" : "";
             throw new InvalidOperationException(
                 $"Cloudflare RUM site list HTTP {(int)response.StatusCode}: {apiMsg}{apiCode}. " +
-                "Token needs 'Account Analytics: Read' permission and account ID must match the token's account.");
+                "RUM site discovery requires 'Account Settings: Read' for this account. " +
+                "GraphQL sync uses 'Account Analytics: Read', so you can add site tags manually and sync without discovery.");
         }
 
         var result = new List<WebAnalyticsSite>();
@@ -135,11 +136,24 @@ public sealed class CloudflareRumClient
         {
             Content = JsonContent.Create(requestBody, options: JsonOptions),
         };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
-        var graphql = await response.Content.ReadFromJsonAsync<GraphqlResponse>(JsonOptions).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Could not parse Cloudflare Web Analytics response");
+        var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        GraphqlResponse? graphql = null;
+        try { graphql = JsonSerializer.Deserialize<GraphqlResponse>(rawBody, JsonOptions); } catch { }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var msg = graphql?.Errors?.Count > 0 ? graphql.Errors[0].Message : "(no error message)";
+            throw new InvalidOperationException($"Cloudflare Web Analytics GraphQL HTTP {(int)response.StatusCode}: {msg}");
+        }
+
+        if (graphql is null)
+        {
+            throw new InvalidOperationException("Could not parse Cloudflare Web Analytics response");
+        }
 
         if (graphql.Errors is { Count: > 0 } errs)
         {
@@ -254,6 +268,15 @@ public sealed class CloudflareRumClient
         public VisitsSum? Sum { get; set; }
     }
     private sealed class CountryDimensions { public string CountryName { get; set; } = ""; }
+
+    private static string NormalizeBearerToken(string token)
+    {
+        token = token.Trim();
+        const string bearerPrefix = "Bearer ";
+        return token.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
+            ? token[bearerPrefix.Length..].Trim()
+            : token;
+    }
 }
 
 public sealed class WebAnalyticsSite

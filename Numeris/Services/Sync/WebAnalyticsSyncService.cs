@@ -32,8 +32,56 @@ public sealed class WebAnalyticsSyncService
             ?? throw new InvalidOperationException("No API token saved for this account");
         var sites = await _client.ListSitesAsync(token, accountId).ConfigureAwait(false);
 
-        var nowStr = _connectionsRepo.FormatNow();
+        await SaveSitesAsync(sites).ConfigureAwait(false);
+        return sites;
+    }
+
+    public Task<List<WebAnalyticsSite>> ListSavedSitesAsync()
+    {
+        return _db.ReadAsync(connection =>
+            connection.Query<WebAnalyticsSite>(
+                """
+                SELECT domain AS Host, site_tag AS SiteTag
+                FROM web_analytics_sites
+                ORDER BY domain
+                """).AsList()
+        );
+    }
+
+    public async Task<List<WebAnalyticsSite>> AddManualSiteAsync(string domain, string siteTag)
+    {
+        domain = domain.Trim().ToLowerInvariant();
+        siteTag = siteTag.Trim();
+        if (string.IsNullOrWhiteSpace(domain))
+        {
+            throw new InvalidOperationException("Domain is required");
+        }
+        if (string.IsNullOrWhiteSpace(siteTag))
+        {
+            throw new InvalidOperationException("Site tag is required");
+        }
+
+        await SaveSitesAsync(new List<WebAnalyticsSite>
+        {
+            new() { Host = domain, SiteTag = siteTag },
+        }).ConfigureAwait(false);
+        return await ListSavedSitesAsync().ConfigureAwait(false);
+    }
+
+    public async Task<List<WebAnalyticsSite>> DeleteSiteAsync(string domain)
+    {
+        domain = domain.Trim().ToLowerInvariant();
         await _db.WriteAsync(connection =>
+        {
+            connection.Execute("DELETE FROM web_analytics_sites WHERE domain = @domain", new { domain });
+        }).ConfigureAwait(false);
+        return await ListSavedSitesAsync().ConfigureAwait(false);
+    }
+
+    private Task SaveSitesAsync(IReadOnlyCollection<WebAnalyticsSite> sites)
+    {
+        var nowStr = _connectionsRepo.FormatNow();
+        return _db.WriteAsync(connection =>
         {
             foreach (var site in sites)
             {
@@ -45,9 +93,7 @@ public sealed class WebAnalyticsSyncService
                     """,
                     new { domain = site.Host, siteTag = site.SiteTag, discoveredAt = nowStr });
             }
-        }).ConfigureAwait(false);
-
-        return sites;
+        });
     }
 
     public async Task<SyncResult> SyncAccountAsync(string accountId, int days)

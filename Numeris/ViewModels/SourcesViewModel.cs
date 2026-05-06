@@ -39,6 +39,8 @@ public partial class SourcesViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<WebAnalyticsSite> _waSites = new();
     [ObservableProperty] private string _newWaAccountId = "";
     [ObservableProperty] private string _newWaToken = "";
+    [ObservableProperty] private string _newWaDomain = "";
+    [ObservableProperty] private string _newWaSiteTag = "";
     [ObservableProperty] private string _waStatusMessage = "";
     [ObservableProperty] private bool _isWaBusy;
     [ObservableProperty] private int _waSyncDays = 30;
@@ -84,6 +86,7 @@ public partial class SourcesViewModel : ObservableObject
         {
             NewWaAccountId = WebAnalytics.AccountId;
         }
+        await LoadWebAnalyticsSitesAsync();
 
         SearchConsole = await _connectionsRepo.GetSearchConsoleAsync();
         if (SearchConsole is { ClientId.Length: > 0 })
@@ -100,7 +103,7 @@ public partial class SourcesViewModel : ObservableObject
         CfStatusMessage = "Testing connection...";
         try
         {
-            await _cfClient.ValidateZoneAsync(NewCfToken.Trim(), NewCfZoneId.Trim(), NewCfDomain.Trim().ToLowerInvariant());
+            await _cfClient.ValidateZoneAsync(NormalizeCloudflareToken(NewCfToken), NewCfZoneId.Trim(), NewCfDomain.Trim().ToLowerInvariant());
             CfStatusMessage = $"OK — token validates {NewCfDomain.Trim().ToLowerInvariant()}";
         }
         catch (Exception ex)
@@ -123,7 +126,7 @@ public partial class SourcesViewModel : ObservableObject
         {
             var domain = NewCfDomain.Trim().ToLowerInvariant();
             var zoneId = NewCfZoneId.Trim();
-            var token = NewCfToken.Trim();
+            var token = NormalizeCloudflareToken(NewCfToken);
             if (!string.IsNullOrEmpty(token))
             {
                 _vault.SetCloudflareToken(domain, token);
@@ -205,7 +208,7 @@ public partial class SourcesViewModel : ObservableObject
         try
         {
             var accountId = NewWaAccountId.Trim();
-            var token = NewWaToken.Trim();
+            var token = NormalizeCloudflareToken(NewWaToken);
             if (!string.IsNullOrEmpty(token))
             {
                 _vault.SetWebAnalyticsToken(accountId, token);
@@ -254,12 +257,49 @@ public partial class SourcesViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            WaStatusMessage = $"Discovery failed: {ex.Message}";
+            await LoadWebAnalyticsSitesAsync();
+            WaStatusMessage = WaSites.Count > 0
+                ? $"Discovery failed: {ex.Message} Saved mappings can still sync."
+                : $"Discovery failed: {ex.Message} Add the Web Analytics site tag manually below.";
         }
         finally
         {
             IsWaBusy = false;
         }
+    }
+
+    [RelayCommand]
+    public async Task AddWebAnalyticsSiteAsync()
+    {
+        IsWaBusy = true;
+        WaStatusMessage = "Saving site tag...";
+        try
+        {
+            var sites = await _waSync.AddManualSiteAsync(NewWaDomain, NewWaSiteTag);
+            WaSites.Clear();
+            foreach (var s in sites) WaSites.Add(s);
+            NewWaDomain = "";
+            NewWaSiteTag = "";
+            WaStatusMessage = $"Saved {sites.Count} site mapping(s)";
+        }
+        catch (Exception ex)
+        {
+            WaStatusMessage = $"Save site failed: {ex.Message}";
+        }
+        finally
+        {
+            IsWaBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteWebAnalyticsSiteAsync(WebAnalyticsSite? site)
+    {
+        if (site is null) return;
+        var sites = await _waSync.DeleteSiteAsync(site.Host);
+        WaSites.Clear();
+        foreach (var s in sites) WaSites.Add(s);
+        WaStatusMessage = $"Removed {site.Host}";
     }
 
     [RelayCommand]
@@ -274,6 +314,15 @@ public partial class SourcesViewModel : ObservableObject
         WaStatusMessage = "Syncing...";
         try
         {
+            if (WaSites.Count == 0 && HasPendingWebAnalyticsSite())
+            {
+                var sites = await _waSync.AddManualSiteAsync(NewWaDomain, NewWaSiteTag);
+                WaSites.Clear();
+                foreach (var s in sites) WaSites.Add(s);
+                NewWaDomain = "";
+                NewWaSiteTag = "";
+            }
+
             var result = await _waSync.SyncAccountAsync(WebAnalytics.AccountId, WaSyncDays);
             WaStatusMessage = $"Synced {result.Domain}, {result.RecordsUpserted} rows";
             await LoadAsync();
@@ -299,6 +348,25 @@ public partial class SourcesViewModel : ObservableObject
         await _connectionsRepo.DeleteWebAnalyticsAsync();
         await LoadAsync();
         WaStatusMessage = "Removed";
+    }
+
+    private async Task LoadWebAnalyticsSitesAsync()
+    {
+        var sites = await _waSync.ListSavedSitesAsync();
+        WaSites.Clear();
+        foreach (var site in sites) WaSites.Add(site);
+    }
+
+    private bool HasPendingWebAnalyticsSite()
+        => !string.IsNullOrWhiteSpace(NewWaDomain) && !string.IsNullOrWhiteSpace(NewWaSiteTag);
+
+    private static string NormalizeCloudflareToken(string token)
+    {
+        token = token.Trim();
+        const string bearerPrefix = "Bearer ";
+        return token.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
+            ? token[bearerPrefix.Length..].Trim()
+            : token;
     }
 
     [RelayCommand]

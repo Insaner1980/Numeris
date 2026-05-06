@@ -4,6 +4,7 @@ using Numeris.Services.Api;
 using Numeris.Services.Auth;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Migration;
 using Numeris.Services.MockData;
 using Numeris.Services.Secrets;
 using Numeris.Services.Sync;
@@ -33,6 +34,8 @@ public partial class App : Application
             var seeder = Services.GetRequiredService<MockSeeder>();
             seeder.SeedAsync().GetAwaiter().GetResult();
         }
+        var migration = Services.GetRequiredService<PulseDataMigrationService>();
+        migration.ImportWebAnalyticsAsync().GetAwaiter().GetResult();
 
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();
@@ -44,6 +47,7 @@ public partial class App : Application
 
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<MockSeeder>();
+        services.AddSingleton<PulseDataMigrationService>();
 
         services.AddSingleton<SummaryRepository>();
         services.AddSingleton<CloudflareRepository>();

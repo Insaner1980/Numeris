@@ -24,6 +24,7 @@ public sealed class WebAnalyticsConnectionConfig
 {
     public string AccountId { get; set; } = "";
     public string? LastValidatedAt { get; set; }
+    public string? ImportSource { get; set; }
 }
 
 public sealed class WebAnalyticsConnectionInfo

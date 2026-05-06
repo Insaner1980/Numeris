@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.ViewModels;
 
 namespace Numeris.Views;
@@ -19,12 +20,15 @@ public sealed partial class SourcesPage : Page
 
     private async void TestCfButton_Click(object sender, RoutedEventArgs e)
     {
+        SyncPasswordBoxesToViewModel();
         await ViewModel.TestCloudflareAsync();
     }
 
     private async void SaveCfButton_Click(object sender, RoutedEventArgs e)
     {
+        SyncPasswordBoxesToViewModel();
         await ViewModel.SaveCloudflareAsync();
+        CfTokenBox.Password = "";
     }
 
     private async void SyncButton_Click(object sender, RoutedEventArgs e)
@@ -44,7 +48,11 @@ public sealed partial class SourcesPage : Page
     }
 
     private async void SaveWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SaveWebAnalyticsAsync();
+    {
+        SyncPasswordBoxesToViewModel();
+        await ViewModel.SaveWebAnalyticsAsync();
+        WaTokenBox.Password = "";
+    }
 
     private async void DiscoverWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DiscoverWebAnalyticsSitesAsync();
@@ -55,8 +63,23 @@ public sealed partial class SourcesPage : Page
     private async void DeleteWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DeleteWebAnalyticsAsync();
 
+    private async void AddWaSiteButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.AddWebAnalyticsSiteAsync();
+
+    private async void DeleteWaSiteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is WebAnalyticsSite site)
+        {
+            await ViewModel.DeleteWebAnalyticsSiteAsync(site);
+        }
+    }
+
     private async void SaveScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SaveSearchConsoleAsync();
+    {
+        SyncPasswordBoxesToViewModel();
+        await ViewModel.SaveSearchConsoleAsync();
+        ScClientSecretBox.Password = "";
+    }
 
     private async void ConnectScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.ConnectSearchConsoleAsync();
@@ -66,4 +89,11 @@ public sealed partial class SourcesPage : Page
 
     private async void DeleteScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.DeleteSearchConsoleAsync();
+
+    private void SyncPasswordBoxesToViewModel()
+    {
+        ViewModel.NewCfToken = CfTokenBox.Password;
+        ViewModel.NewWaToken = WaTokenBox.Password;
+        ViewModel.NewScClientSecret = ScClientSecretBox.Password;
+    }
 }

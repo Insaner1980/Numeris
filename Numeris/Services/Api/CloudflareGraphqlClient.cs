@@ -54,7 +54,7 @@ public sealed class CloudflareGraphqlClient
     public async Task ValidateZoneAsync(string apiToken, string zoneId, string expectedDomain)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/zones/{zoneId.Trim()}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
         var body = await response.Content.ReadFromJsonAsync<ZoneDetailsResponse>(JsonOptions).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Could not parse Cloudflare zone response");
@@ -86,7 +86,7 @@ public sealed class CloudflareGraphqlClient
         {
             Content = JsonContent.Create(requestBody, options: JsonOptions),
         };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken.Trim());
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
         var graphql = await response.Content.ReadFromJsonAsync<GraphqlResponse>(JsonOptions).ConfigureAwait(false)
@@ -180,6 +180,15 @@ public sealed class CloudflareGraphqlClient
         public long Requests { get; set; }
     }
     private sealed class HttpUniques { public long Uniques { get; set; } }
+
+    private static string NormalizeBearerToken(string token)
+    {
+        token = token.Trim();
+        const string bearerPrefix = "Bearer ";
+        return token.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase)
+            ? token[bearerPrefix.Length..].Trim()
+            : token;
+    }
 }
 
 public sealed class CloudflareTrafficResult
