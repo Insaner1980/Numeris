@@ -7,6 +7,7 @@ using Numeris.Services.Database.Repositories;
 using Numeris.Services.Migration;
 using Numeris.Services.MockData;
 using Numeris.Services.Secrets;
+using Numeris.Services.Settings;
 using Numeris.Services.Sync;
 using Numeris.ViewModels;
 using Numeris.Views;
@@ -48,6 +49,7 @@ public partial class App : Application
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<MockSeeder>();
         services.AddSingleton<PulseDataMigrationService>();
+        services.AddSingleton<SettingsStore>();
 
         services.AddSingleton<SummaryRepository>();
         services.AddSingleton<CloudflareRepository>();

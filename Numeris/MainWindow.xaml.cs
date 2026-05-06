@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Numeris.ViewModels;
 using Numeris.Views;
 
 namespace Numeris;
@@ -17,16 +18,20 @@ public sealed partial class MainWindow : Window
         ["sources"] = typeof(SourcesPage),
     };
 
-    public MainWindow()
+    private readonly ShellViewModel _shell;
+
+    public MainWindow(ShellViewModel shell)
     {
+        _shell = shell;
         InitializeComponent();
     }
 
     private void NavView_Loaded(object sender, RoutedEventArgs e)
     {
-        if (NavView.MenuItems.Count > 0 && NavView.MenuItems[0] is NavigationViewItem first)
+        var item = FindNavigationItem(_shell.LastPage);
+        if (item is not null)
         {
-            NavView.SelectedItem = first;
+            NavView.SelectedItem = item;
         }
     }
 
@@ -35,6 +40,26 @@ public sealed partial class MainWindow : Window
         if (args.SelectedItem is not NavigationViewItem item) return;
         if (item.Tag is not string tag) return;
         if (!Routes.TryGetValue(tag, out var pageType)) return;
+        _shell.LastPage = tag;
         ContentFrame.Navigate(pageType);
+    }
+
+    private NavigationViewItem? FindNavigationItem(string tag)
+    {
+        foreach (var item in NavView.MenuItems)
+        {
+            if (item is NavigationViewItem navItem && navItem.Tag as string == tag)
+            {
+                return navItem;
+            }
+        }
+        foreach (var item in NavView.FooterMenuItems)
+        {
+            if (item is NavigationViewItem navItem && navItem.Tag as string == tag)
+            {
+                return navItem;
+            }
+        }
+        return NavView.MenuItems.Count > 0 ? NavView.MenuItems[0] as NavigationViewItem : null;
     }
 }
