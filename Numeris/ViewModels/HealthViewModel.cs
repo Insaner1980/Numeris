@@ -29,22 +29,19 @@ public partial class HealthViewModel : ObservableObject, IDisposable
     private readonly UptimeClient _uptimeClient;
     private readonly SitemapClient _sitemapClient;
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private bool _isCheckingUptime;
-    [ObservableProperty] private bool _isRefreshingSitemap;
-    [ObservableProperty] private string _activeTab = "uptime";
-
-    [ObservableProperty] private ObservableCollection<UptimeDomainStatus> _domains = new();
-    [ObservableProperty] private ISeries[] _responseSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _responseXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _responseYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private ISeries[] _incidentsSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _incidentsXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _incidentsYAxes = Array.Empty<Axis>();
-
-    [ObservableProperty] private ObservableCollection<SitemapUrl> _sitemapUrls = new();
-    [ObservableProperty] private string _sitemapSummaryText = "—";
-
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial bool IsCheckingUptime { get; set; }
+    [ObservableProperty] public partial bool IsRefreshingSitemap { get; set; }
+    [ObservableProperty] public partial string ActiveTab { get; set; } = "uptime";
+    [ObservableProperty] public partial ObservableCollection<UptimeDomainStatus> Domains { get; set; } = new();
+    [ObservableProperty] public partial ISeries[] ResponseSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] ResponseXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] ResponseYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial ISeries[] IncidentsSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] IncidentsXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] IncidentsYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial ObservableCollection<SitemapUrl> SitemapUrls { get; set; } = new();
+    [ObservableProperty] public partial string SitemapSummaryText { get; set; } = "—";
     public HealthViewModel(
         ShellViewModel shell,
         HealthRepository healthRepo,

@@ -28,37 +28,31 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
     private readonly SearchConsoleRepository _scRepo;
     private readonly SitemapRepository _sitemapRepo;
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private string _activeTab = "overview";
-    [ObservableProperty] private string _querySortBy = "clicks";
-    [ObservableProperty] private string _queryFilter = "";
-
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
+    [ObservableProperty] public partial string QuerySortBy { get; set; } = "clicks";
+    [ObservableProperty] public partial string QueryFilter { get; set; } = "";
     // Overview
-    [ObservableProperty] private ISeries[] _overviewSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _overviewXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _overviewYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private string _totalClicksText = "—";
-    [ObservableProperty] private string _totalImpressionsText = "—";
-    [ObservableProperty] private string _avgPositionText = "—";
-
+    [ObservableProperty] public partial ISeries[] OverviewSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] OverviewXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] OverviewYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial string TotalClicksText { get; set; } = "—";
+    [ObservableProperty] public partial string TotalImpressionsText { get; set; } = "—";
+    [ObservableProperty] public partial string AvgPositionText { get; set; } = "—";
     // Queries
-    [ObservableProperty] private ObservableCollection<SearchQuery> _queries = new();
+    [ObservableProperty] public partial ObservableCollection<SearchQuery> Queries { get; set; } = new();
     private List<SearchQuery> _allQueries = new();
-    [ObservableProperty] private ObservableCollection<SearchQuery> _newQueries = new();
-
+    [ObservableProperty] public partial ObservableCollection<SearchQuery> NewQueries { get; set; } = new();
     // Pages
-    [ObservableProperty] private ObservableCollection<SearchPageRow> _pages = new();
-    [ObservableProperty] private ObservableCollection<DecliningPage> _decliningPages = new();
-
+    [ObservableProperty] public partial ObservableCollection<SearchPageRow> Pages { get; set; } = new();
+    [ObservableProperty] public partial ObservableCollection<DecliningPage> DecliningPages { get; set; } = new();
     // Devices
-    [ObservableProperty] private ISeries[] _devicesSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _devicesXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _devicesYAxes = Array.Empty<Axis>();
-
+    [ObservableProperty] public partial ISeries[] DevicesSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] DevicesXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] DevicesYAxes { get; set; } = Array.Empty<Axis>();
     // Indexing
-    [ObservableProperty] private ObservableCollection<SitemapUrl> _sitemapUrls = new();
-    [ObservableProperty] private string _indexingSummaryText = "—";
-
+    [ObservableProperty] public partial ObservableCollection<SitemapUrl> SitemapUrls { get; set; } = new();
+    [ObservableProperty] public partial string IndexingSummaryText { get; set; } = "—";
     public SearchConsoleViewModel(ShellViewModel shell, SearchConsoleRepository scRepo, SitemapRepository sitemapRepo)
     {
         _shell = shell;

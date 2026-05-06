@@ -28,42 +28,36 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     private readonly CloudflareRepository _cfRepo;
     private readonly WebAnalyticsRepository _waRepo;
 
-    [ObservableProperty] private bool _isLoading;
-    [ObservableProperty] private string _activeTab = "traffic";
-
+    [ObservableProperty] public partial bool IsLoading { get; set; }
+    [ObservableProperty] public partial string ActiveTab { get; set; } = "traffic";
     // Traffic tab
-    [ObservableProperty] private ISeries[] _trafficSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _trafficXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _trafficYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private List<BarRow> _trafficCountries = new();
-    [ObservableProperty] private List<BarRow> _trafficPages = new();
-
+    [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] TrafficXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] TrafficYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial List<BarRow> TrafficCountries { get; set; } = new();
+    [ObservableProperty] public partial List<BarRow> TrafficPages { get; set; } = new();
     // Cache tab
-    [ObservableProperty] private ISeries[] _cacheSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _cacheXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _cacheYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private string _cacheHitRatioText = "—";
-    [ObservableProperty] private string _cacheBytesSavedText = "—";
-
+    [ObservableProperty] public partial ISeries[] CacheSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] CacheXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] CacheYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial string CacheHitRatioText { get; set; } = "—";
+    [ObservableProperty] public partial string CacheBytesSavedText { get; set; } = "—";
     // Security tab
-    [ObservableProperty] private ISeries[] _securitySeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _securityXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _securityYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private string _totalThreatsText = "—";
-
+    [ObservableProperty] public partial ISeries[] SecuritySeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] SecurityXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] SecurityYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial string TotalThreatsText { get; set; } = "—";
     // Status codes tab
-    [ObservableProperty] private ISeries[] _statusCodesSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _statusCodesXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _statusCodesYAxes = Array.Empty<Axis>();
-
+    [ObservableProperty] public partial ISeries[] StatusCodesSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] StatusCodesXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] StatusCodesYAxes { get; set; } = Array.Empty<Axis>();
     // Web Analytics tab
-    [ObservableProperty] private ISeries[] _waSeries = Array.Empty<ISeries>();
-    [ObservableProperty] private Axis[] _waXAxes = Array.Empty<Axis>();
-    [ObservableProperty] private Axis[] _waYAxes = Array.Empty<Axis>();
-    [ObservableProperty] private List<BarRow> _waReferrers = new();
-    [ObservableProperty] private List<BarRow> _waPages = new();
-    [ObservableProperty] private List<BarRow> _waCountries = new();
-
+    [ObservableProperty] public partial ISeries[] WaSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] WaXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] WaYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial List<BarRow> WaReferrers { get; set; } = new();
+    [ObservableProperty] public partial List<BarRow> WaPages { get; set; } = new();
+    [ObservableProperty] public partial List<BarRow> WaCountries { get; set; } = new();
     public CloudflareViewModel(ShellViewModel shell, CloudflareRepository cfRepo, WebAnalyticsRepository waRepo)
     {
         _shell = shell;

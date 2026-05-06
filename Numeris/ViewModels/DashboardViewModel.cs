@@ -27,51 +27,21 @@ public partial class DashboardViewModel : ObservableObject
     private readonly SearchConsoleRepository _scRepo;
     private readonly SitemapRepository _sitemapRepo;
 
-    [ObservableProperty]
-    private bool _isLoading = true;
-
-    [ObservableProperty]
-    private string _visitorsTotal = "—";
-
-    [ObservableProperty]
-    private double? _visitorsChangePct;
-
-    [ObservableProperty]
-    private string _clicksTotal = "—";
-
-    [ObservableProperty]
-    private double? _clicksChangePct;
-
-    [ObservableProperty]
-    private string _avgPosition = "—";
-
-    [ObservableProperty]
-    private string _threatsTotal = "—";
-
-    [ObservableProperty]
-    private string _cacheHitRatio = "—";
-
-    [ObservableProperty]
-    private string _indexedRatio = "—";
-
-    [ObservableProperty]
-    private ISeries[] _trafficSeries = Array.Empty<ISeries>();
-
-    [ObservableProperty]
-    private Axis[] _trafficXAxes = Array.Empty<Axis>();
-
-    [ObservableProperty]
-    private Axis[] _trafficYAxes = Array.Empty<Axis>();
-
-    [ObservableProperty]
-    private ISeries[] _searchSeries = Array.Empty<ISeries>();
-
-    [ObservableProperty]
-    private Axis[] _searchXAxes = Array.Empty<Axis>();
-
-    [ObservableProperty]
-    private Axis[] _searchYAxes = Array.Empty<Axis>();
-
+    [ObservableProperty] public partial bool IsLoading { get; set; } = true;
+    [ObservableProperty] public partial string VisitorsTotal { get; set; } = "—";
+    [ObservableProperty] public partial double? VisitorsChangePct { get; set; }
+    [ObservableProperty] public partial string ClicksTotal { get; set; } = "—";
+    [ObservableProperty] public partial double? ClicksChangePct { get; set; }
+    [ObservableProperty] public partial string AvgPosition { get; set; } = "—";
+    [ObservableProperty] public partial string ThreatsTotal { get; set; } = "—";
+    [ObservableProperty] public partial string CacheHitRatio { get; set; } = "—";
+    [ObservableProperty] public partial string IndexedRatio { get; set; } = "—";
+    [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] TrafficXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] TrafficYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial ISeries[] SearchSeries { get; set; } = Array.Empty<ISeries>();
+    [ObservableProperty] public partial Axis[] SearchXAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial Axis[] SearchYAxes { get; set; } = Array.Empty<Axis>();
     public DashboardViewModel(
         ShellViewModel shell,
         SummaryRepository summaryRepo,

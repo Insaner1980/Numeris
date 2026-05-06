@@ -28,47 +28,41 @@ public partial class SourcesViewModel : ObservableObject
     private readonly PerformanceSyncService _performanceSync;
     private readonly BingWebmasterSyncService _bingSync;
 
-    [ObservableProperty] private ObservableCollection<CloudflareConnectionInfo> _cloudflareConnections = new();
-
-    [ObservableProperty] private string _newCfDomain = "";
-    [ObservableProperty] private string _newCfZoneId = "";
-    [ObservableProperty] private string _newCfToken = "";
-    [ObservableProperty] private string _cfStatusMessage = "";
-    [ObservableProperty] private bool _isCfBusy;
-    [ObservableProperty] private int _cfSyncDays = 90;
-
-    [ObservableProperty] private WebAnalyticsConnectionInfo? _webAnalytics;
-    [ObservableProperty] private ObservableCollection<WebAnalyticsSite> _waSites = new();
-    [ObservableProperty] private string _newWaAccountId = "";
-    [ObservableProperty] private string _newWaToken = "";
-    [ObservableProperty] private string _newWaDomain = "";
-    [ObservableProperty] private string _newWaSiteTag = "";
-    [ObservableProperty] private string _waStatusMessage = "";
-    [ObservableProperty] private bool _isWaBusy;
-    [ObservableProperty] private int _waSyncDays = 30;
-
-    [ObservableProperty] private SearchConsoleConnectionInfo? _searchConsole;
-    [ObservableProperty] private string _newScClientId = "";
-    [ObservableProperty] private string _newScClientSecret = "";
-    [ObservableProperty] private string _scStatusMessage = "";
-    [ObservableProperty] private bool _isScBusy;
-    [ObservableProperty] private int _scSyncDays = 30;
-
-    [ObservableProperty] private PerformanceConnectionInfo? _performance;
-    [ObservableProperty] private ObservableCollection<PerformanceUrlInfo> _performanceUrls = new();
-    [ObservableProperty] private string _newCruxApiKey = "";
-    [ObservableProperty] private string _newPageSpeedApiKey = "";
-    [ObservableProperty] private string _newPerformanceUrl = "";
-    [ObservableProperty] private string _performanceStatusMessage = "";
-    [ObservableProperty] private bool _isPerformanceBusy;
-
-    [ObservableProperty] private BingConnectionInfo? _bing;
-    [ObservableProperty] private ObservableCollection<string> _bingSites = new();
-    [ObservableProperty] private string _newBingApiKey = "";
-    [ObservableProperty] private string _newBingSiteUrl = "";
-    [ObservableProperty] private string _bingStatusMessage = "";
-    [ObservableProperty] private bool _isBingBusy;
-
+    [ObservableProperty] public partial ObservableCollection<CloudflareConnectionInfo> CloudflareConnections { get; set; } = new();
+    [ObservableProperty] public partial string NewCfDomain { get; set; } = "";
+    [ObservableProperty] public partial string NewCfZoneId { get; set; } = "";
+    [ObservableProperty] public partial string NewCfToken { get; set; } = "";
+    [ObservableProperty] public partial string CfStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsCfBusy { get; set; }
+    [ObservableProperty] public partial int CfSyncDays { get; set; } = 90;
+    [ObservableProperty] public partial WebAnalyticsConnectionInfo? WebAnalytics { get; set; }
+    [ObservableProperty] public partial ObservableCollection<WebAnalyticsSite> WaSites { get; set; } = new();
+    [ObservableProperty] public partial string NewWaAccountId { get; set; } = "";
+    [ObservableProperty] public partial string NewWaToken { get; set; } = "";
+    [ObservableProperty] public partial string NewWaDomain { get; set; } = "";
+    [ObservableProperty] public partial string NewWaSiteTag { get; set; } = "";
+    [ObservableProperty] public partial string WaStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsWaBusy { get; set; }
+    [ObservableProperty] public partial int WaSyncDays { get; set; } = 30;
+    [ObservableProperty] public partial SearchConsoleConnectionInfo? SearchConsole { get; set; }
+    [ObservableProperty] public partial string NewScClientId { get; set; } = "";
+    [ObservableProperty] public partial string NewScClientSecret { get; set; } = "";
+    [ObservableProperty] public partial string ScStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsScBusy { get; set; }
+    [ObservableProperty] public partial int ScSyncDays { get; set; } = 30;
+    [ObservableProperty] public partial PerformanceConnectionInfo? Performance { get; set; }
+    [ObservableProperty] public partial ObservableCollection<PerformanceUrlInfo> PerformanceUrls { get; set; } = new();
+    [ObservableProperty] public partial string NewCruxApiKey { get; set; } = "";
+    [ObservableProperty] public partial string NewPageSpeedApiKey { get; set; } = "";
+    [ObservableProperty] public partial string NewPerformanceUrl { get; set; } = "";
+    [ObservableProperty] public partial string PerformanceStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsPerformanceBusy { get; set; }
+    [ObservableProperty] public partial BingConnectionInfo? Bing { get; set; }
+    [ObservableProperty] public partial ObservableCollection<string> BingSites { get; set; } = new();
+    [ObservableProperty] public partial string NewBingApiKey { get; set; } = "";
+    [ObservableProperty] public partial string NewBingSiteUrl { get; set; } = "";
+    [ObservableProperty] public partial string BingStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsBingBusy { get; set; }
     public SourcesViewModel(
         ConnectionsRepository connectionsRepo,
         CredentialVault vault,
