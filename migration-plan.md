@@ -4,7 +4,13 @@
 
 Tavoite on saada Numeriksen tärkeimmät toiminnot luotettavasti toimimaan ennen ulkonäön hiomista: live-integraatiot, vanhan Pulsen tunnusten migraatio, synkronoinnit, asetusten pysyvyys ja packaged/unpackaged-ajon smoke testit.
 
-Nykytila: vaiheet 0-5C ovat pääosin toteutettu. Suurin keskeneräinen osa on integraatioiden koventaminen: Numeris ei saa vaatia tunnusten manuaalista syöttöä, vaan sen pitää migroida Pulsen toimivat asetukset ja tokenit automaattisesti. UI-polish, brändiassetit ja hienommat layoutit jätetään viimeiseksi.
+Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma on kirjattu tiedostoon `CORE-COMPLETION-PLAN.md`. Jäljellä on automatisoidun build/test-loopin vihreänä pitäminen, live-smoke-testit käyttäjän paikallisilla tunnuksilla sekä packaged/unpackaged-ajon Visual Studio -varmistus. UI-polish, brändiassetit ja hienommat layoutit jätetään viimeiseksi.
+
+## Execution Status 2026-05-06
+
+- Toteutettu: legacy-importti Web Analyticsille, Cloudflarelle ja Search Consolelle; `CredentialVault`-pohjainen salaisuuksien tallennus; lähdekohtaiset Sources-ViewModelit; Test/Sync/Delete-polut; `SettingsStore`; MVVM Toolkit partial property -muutos; CrUX/PageSpeed/Bing core-integraatiot; bounded raw JSON -tallennus; `SiteIdentity`-normalisointi.
+- Kovennettu: integraatioiden UI-virheet kulkevat sanitointipolun kautta, ja `ConnectionTestResult` pidetään yksinkertaisena `Ok` + `Message` -sopimuksena.
+- Varmistettava: `dotnet build`, `Numeris.Tests`-harness, Pulse-live-migraatio, API-kohtaiset Test/Sync-smoke-testit sekä packaged/unpackaged-käynnistykset.
 
 ## Key Changes
 
@@ -98,10 +104,10 @@ Nykytila: vaiheet 0-5C ovat pääosin toteutettu. Suurin keskeneräinen osa on i
 
 ## Public Interfaces / Types
 
-- `PulseDataMigrationService` laajennetaan yleiseksi Pulse-importtipalveluksi tai jaetaan pieniin importtereihin per integraatio.
+- `LegacyDataMigrationService` toimii yleisenä legacy-importtipalveluna. Vanhan Pulse-lähteen polut ja credential-service pidetään keskitettynä `LegacyAppSource`-määrittelyssä.
 - `WebAnalyticsConnectionConfig` saa pitää `ImportSource`-tyyppisen metatiedon, mutta token ei kuulu configiin uutena Numeris-datana.
 - Lisää `SettingsStore` palveluna DI-containeriin.
-- Lisää Test-tuloksille yhteinen kevyt result-malli, esimerkiksi `ConnectionTestResult { bool Ok; string Message; string? StatusCode; }`, jotta SourcesViewModel ei rakenna kaikkia statusviestejä ad hoc.
+- Test-tuloksille käytetään yhteistä kevyttä result-mallia `ConnectionTestResult { bool Ok; string Message; }`, jotta SourcesViewModel ei rakenna kaikkia statusviestejä ad hoc. HTTP-status pysyy `ApiRequestException`-polussa ja sanitisoidussa viestissä.
 - Ei lisätä Play Store live -integraatiota tässä passissa. Play Store -taulut ja mock-data jäävät ennalleen.
 
 ## Test Plan
