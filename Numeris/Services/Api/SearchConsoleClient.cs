@@ -83,6 +83,11 @@ public sealed class SearchConsoleClient
 
     public async Task<List<string>> ListSitesAsync(string accessToken)
     {
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            throw new InvalidOperationException("Google OAuth refresh did not return an access token");
+        }
+
         using var req = new HttpRequestMessage(HttpMethod.Get, SitesEndpoint);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());
         using var response = await Http.SendAsync(req).ConfigureAwait(false);
@@ -123,6 +128,11 @@ public sealed class SearchConsoleClient
         SearchQueryKind kind,
         int rowLimit)
     {
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            throw new InvalidOperationException("Google OAuth refresh did not return an access token");
+        }
+
         var url = $"{SitesEndpoint}/{HttpUtility.UrlEncode(propertyUrl)}/searchAnalytics/query";
         var dimensions = kind switch
         {
@@ -187,7 +197,10 @@ public sealed class SearchConsoleClient
 
     private sealed class TokenResponse
     {
+        [JsonPropertyName("access_token")]
         public string AccessToken { get; set; } = "";
+
+        [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; set; }
     }
     private sealed class SitesResponse { public List<SiteEntry>? SiteEntry { get; set; } }
