@@ -153,6 +153,16 @@ Run("raw API payload storage redacts secrets before persistence", () =>
     NotContains(stored, "bearer-secret");
 });
 
+Run("CrUX test treats NotFound as missing field data instead of key failure", () =>
+{
+    var root = FindRepositoryRoot();
+    var performanceSync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "PerformanceSyncService.cs"));
+
+    Contains(performanceSync, "catch (ApiRequestException ex) when (ex.IsNotFound)");
+    Contains(performanceSync, "no CrUX field data");
+    Contains(performanceSync, "CrUX API key works");
+});
+
 Run("Bing page and raw stats keep dated history", () =>
 {
     var root = FindRepositoryRoot();

@@ -62,22 +62,44 @@ public sealed class PerformanceSyncService
             return new ConnectionTestResult { Ok = false, Message = "No CrUX API key saved" };
         }
 
-        var url = (await _performanceRepo.ListUrlsAsync(enabledOnly: true).ConfigureAwait(false)).FirstOrDefault();
-        if (url is null)
+        var urls = await _performanceRepo.ListUrlsAsync(enabledOnly: true).ConfigureAwait(false);
+        if (urls.Count == 0)
         {
             return new ConnectionTestResult { Ok = false, Message = "Add at least one performance URL first" };
         }
 
-        try
+        var targets = urls
+            .Select(u => new CruxTestTarget("origin", u.Origin))
+            .Concat(urls.Select(u => new CruxTestTarget("url", u.Url)))
+            .DistinctBy(t => $"{t.Type}:{t.Value}", StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var missing = 0;
+        foreach (var target in targets)
         {
-            var response = await _cruxClient.QueryHistoryAsync(key, "origin", url.Origin, "PHONE").ConfigureAwait(false);
-            var metrics = response.Record?.Metrics?.Count ?? 0;
-            return new ConnectionTestResult { Ok = true, Message = $"CrUX works for {url.Origin}; {metrics} metrics returned" };
+            try
+            {
+                var response = await _cruxClient.QueryHistoryAsync(key, target.Type, target.Value, "PHONE").ConfigureAwait(false);
+                var metrics = response.Record?.Metrics?.Count ?? 0;
+                var suffix = missing == 0
+                    ? ""
+                    : $"; {missing} configured target(s) had no CrUX field data";
+                return new ConnectionTestResult { Ok = true, Message = $"CrUX works for {target.Value}; {metrics} metrics returned{suffix}" };
+            }
+            catch (ApiRequestException ex) when (ex.IsNotFound)
+            {
+                missing++;
+            }
+            catch (Exception ex)
+            {
+                return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
+            }
         }
-        catch (Exception ex)
+
+        return new ConnectionTestResult
         {
-            return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
-        }
+            Ok = true,
+            Message = $"CrUX API key works, but no CrUX field data was found for {missing} configured target(s). Sync will skip those targets; add higher-traffic URLs if needed.",
+        };
     }
 
     public async Task<ConnectionTestResult> TestPageSpeedAsync()
@@ -327,4 +349,6 @@ public sealed class PerformanceSyncService
 
     private static string FormatScore(double? score)
         => score.HasValue ? (score.Value * 100).ToString("0", CultureInfo.InvariantCulture) : "n/a";
+
+    private sealed record CruxTestTarget(string Type, string Value);
 }
