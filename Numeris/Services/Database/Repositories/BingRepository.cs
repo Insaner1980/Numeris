@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Numeris.Models;
+using Numeris.Services.Database;
 using Numeris.Services.Performance;
 
 namespace Numeris.Services.Database.Repositories;
@@ -47,6 +48,7 @@ public sealed class BingRepository
     public Task UpsertRawItemAsync(BingRawItem item)
         => _db.WriteAsync(connection =>
         {
+            item.RawJson = RawJsonStoragePolicy.TrimRawJson(item.RawJson);
             connection.Execute(
                 """
                 INSERT INTO bing_raw_items (method, site_url, item_key, raw_json, fetched_at)
@@ -58,9 +60,18 @@ public sealed class BingRepository
                 item);
         });
 
-    public Task UpsertRankTrafficAsync(string siteUrl, string date, long? clicks, long? impressions, string rawJson, string fetchedAt)
-        => _db.WriteAsync(connection =>
+    public Task UpsertRankTrafficWithRawItemAsync(
+        string siteUrl,
+        string date,
+        long? clicks,
+        long? impressions,
+        string rawJson,
+        string fetchedAt,
+        BingRawItem rawItem)
+        => _db.WriteTransactionAsync((connection, transaction) =>
         {
+            rawJson = RawJsonStoragePolicy.TrimRawJson(rawJson);
+            rawItem.RawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             connection.Execute(
                 """
                 INSERT INTO bing_rank_traffic (site_url, date, clicks, impressions, raw_json, fetched_at)
@@ -71,12 +82,26 @@ public sealed class BingRepository
                     raw_json = excluded.raw_json,
                     fetched_at = excluded.fetched_at
                 """,
-                new { siteUrl, date, clicks, impressions, rawJson, fetchedAt });
+                new { siteUrl, date, clicks, impressions, rawJson, fetchedAt },
+                transaction);
+            UpsertRawItem(connection, transaction, rawItem);
         });
 
-    public Task UpsertQueryStatsAsync(string siteUrl, string query, string date, long? clicks, long? impressions, double? avgClickPosition, double? avgImpressionPosition, string rawJson, string fetchedAt)
-        => _db.WriteAsync(connection =>
+    public Task UpsertQueryStatsWithRawItemAsync(
+        string siteUrl,
+        string query,
+        string date,
+        long? clicks,
+        long? impressions,
+        double? avgClickPosition,
+        double? avgImpressionPosition,
+        string rawJson,
+        string fetchedAt,
+        BingRawItem rawItem)
+        => _db.WriteTransactionAsync((connection, transaction) =>
         {
+            rawJson = RawJsonStoragePolicy.TrimRawJson(rawJson);
+            rawItem.RawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             connection.Execute(
                 """
                 INSERT INTO bing_query_stats
@@ -90,22 +115,58 @@ public sealed class BingRepository
                     raw_json = excluded.raw_json,
                     fetched_at = excluded.fetched_at
                 """,
-                new { siteUrl, query, date, clicks, impressions, avgClickPosition, avgImpressionPosition, rawJson, fetchedAt });
+                new { siteUrl, query, date, clicks, impressions, avgClickPosition, avgImpressionPosition, rawJson, fetchedAt },
+                transaction);
+            UpsertRawItem(connection, transaction, rawItem);
         });
 
-    public Task UpsertPageStatsAsync(string siteUrl, string pageUrl, long? clicks, long? impressions, string rawJson, string fetchedAt)
-        => _db.WriteAsync(connection =>
+    public Task UpsertPageStatsWithRawItemAsync(
+        string siteUrl,
+        string pageUrl,
+        string date,
+        long? clicks,
+        long? impressions,
+        string rawJson,
+        string fetchedAt,
+        BingRawItem rawItem)
+        => _db.WriteTransactionAsync((connection, transaction) =>
         {
+            rawJson = RawJsonStoragePolicy.TrimRawJson(rawJson);
+            rawItem.RawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             connection.Execute(
                 """
-                INSERT INTO bing_page_stats (site_url, page_url, clicks, impressions, raw_json, fetched_at)
-                VALUES (@siteUrl, @pageUrl, @clicks, @impressions, @rawJson, @fetchedAt)
-                ON CONFLICT(site_url, page_url) DO UPDATE SET
+                INSERT INTO bing_page_stats (site_url, page_url, date, clicks, impressions, raw_json, fetched_at)
+                VALUES (@siteUrl, @pageUrl, @date, @clicks, @impressions, @rawJson, @fetchedAt)
+                ON CONFLICT(site_url, page_url, date) DO UPDATE SET
                     clicks = excluded.clicks,
                     impressions = excluded.impressions,
                     raw_json = excluded.raw_json,
                     fetched_at = excluded.fetched_at
                 """,
-                new { siteUrl, pageUrl, clicks, impressions, rawJson, fetchedAt });
+                new { siteUrl, pageUrl, date, clicks, impressions, rawJson, fetchedAt },
+                transaction);
+            UpsertRawItem(connection, transaction, rawItem);
         });
+
+    public Task ApplyRawRetentionAsync(string fetchedBefore)
+        => _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "DELETE FROM bing_raw_items WHERE fetched_at < @fetchedBefore",
+                new { fetchedBefore });
+        });
+
+    private static void UpsertRawItem(Microsoft.Data.Sqlite.SqliteConnection connection, Microsoft.Data.Sqlite.SqliteTransaction transaction, BingRawItem item)
+    {
+        connection.Execute(
+            """
+            INSERT INTO bing_raw_items (method, site_url, item_key, raw_json, fetched_at)
+            VALUES (@Method, @SiteUrl, @ItemKey, @RawJson, @FetchedAt)
+            ON CONFLICT(method, site_url, item_key) DO UPDATE SET
+                raw_json = excluded.raw_json,
+                fetched_at = excluded.fetched_at
+            """,
+            item,
+            transaction);
+    }
 }

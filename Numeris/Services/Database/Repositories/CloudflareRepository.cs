@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Numeris.Models;
+using Numeris.Services.Api;
 
 namespace Numeris.Services.Database.Repositories;
 
@@ -171,6 +172,61 @@ public sealed class CloudflareRepository
                   ORDER BY date, status_code
                   """;
             return new List<StatusCodeDay>(connection.Query<StatusCodeDay>(sql, new { domain, start, end }));
+        });
+    }
+
+    public Task<long> UpsertTrafficAsync(string domain, CloudflareTrafficResult traffic, string fetchedAt)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            long count = 0;
+            foreach (var row in traffic.Daily)
+            {
+                connection.Execute(
+                    """
+                    INSERT INTO cloudflare_traffic
+                    (domain, date, pageviews, unique_visitors, requests, cached_requests,
+                     cached_bytes, total_bytes, threats, top_country, top_path, fetched_at)
+                    VALUES (@domain, @date, @pageviews, @uniqueVisitors, @requests, @cachedRequests,
+                            @cachedBytes, @totalBytes, @threats, NULL, NULL, @fetchedAt)
+                    ON CONFLICT(domain, date) DO UPDATE SET
+                        pageviews = excluded.pageviews,
+                        unique_visitors = excluded.unique_visitors,
+                        requests = excluded.requests,
+                        cached_requests = excluded.cached_requests,
+                        cached_bytes = excluded.cached_bytes,
+                        total_bytes = excluded.total_bytes,
+                        threats = excluded.threats,
+                        fetched_at = excluded.fetched_at
+                    """,
+                    new
+                    {
+                        domain,
+                        date = row.Date,
+                        pageviews = row.Pageviews,
+                        uniqueVisitors = row.UniqueVisitors,
+                        requests = row.Requests,
+                        cachedRequests = row.CachedRequests,
+                        cachedBytes = row.CachedBytes,
+                        totalBytes = row.TotalBytes,
+                        threats = row.Threats,
+                        fetchedAt,
+                    });
+                count++;
+            }
+
+            foreach (var s in traffic.StatusCodes)
+            {
+                connection.Execute(
+                    """
+                    INSERT INTO cloudflare_status_codes (domain, date, status_code, requests)
+                    VALUES (@domain, @date, @statusCode, @requests)
+                    ON CONFLICT(domain, date, status_code) DO UPDATE SET requests = excluded.requests
+                    """,
+                    new { domain, date = s.Date, statusCode = s.StatusCode, requests = s.Requests });
+                count++;
+            }
+            return count;
         });
     }
 }

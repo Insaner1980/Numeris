@@ -1,10 +1,8 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
-using Dapper;
 using Numeris.Models;
 using Numeris.Services.Api;
-using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Secrets;
 
@@ -12,15 +10,15 @@ namespace Numeris.Services.Sync;
 
 public sealed class CloudflareSyncService
 {
-    private readonly SqliteDatabase _db;
     private readonly CloudflareGraphqlClient _client;
+    private readonly CloudflareRepository _cloudflareRepo;
     private readonly CredentialVault _vault;
     private readonly ConnectionsRepository _connectionsRepo;
 
-    public CloudflareSyncService(SqliteDatabase db, CloudflareGraphqlClient client, CredentialVault vault, ConnectionsRepository connectionsRepo)
+    public CloudflareSyncService(CloudflareGraphqlClient client, CloudflareRepository cloudflareRepo, CredentialVault vault, ConnectionsRepository connectionsRepo)
     {
-        _db = db;
         _client = client;
+        _cloudflareRepo = cloudflareRepo;
         _vault = vault;
         _connectionsRepo = connectionsRepo;
     }
@@ -39,56 +37,7 @@ public sealed class CloudflareSyncService
         var traffic = await _client.FetchDailyTrafficAsync(apiToken, zoneId, startStr, endStr).ConfigureAwait(false);
 
         var nowStr = _connectionsRepo.FormatNow();
-        var records = await _db.WriteAsync(connection =>
-        {
-            long count = 0;
-            foreach (var row in traffic.Daily)
-            {
-                connection.Execute(
-                    """
-                    INSERT INTO cloudflare_traffic
-                    (domain, date, pageviews, unique_visitors, requests, cached_requests,
-                     cached_bytes, total_bytes, threats, top_country, top_path, fetched_at)
-                    VALUES (@domain, @date, @pageviews, @uniqueVisitors, @requests, @cachedRequests,
-                            @cachedBytes, @totalBytes, @threats, NULL, NULL, @fetchedAt)
-                    ON CONFLICT(domain, date) DO UPDATE SET
-                        pageviews = excluded.pageviews,
-                        unique_visitors = excluded.unique_visitors,
-                        requests = excluded.requests,
-                        cached_requests = excluded.cached_requests,
-                        cached_bytes = excluded.cached_bytes,
-                        total_bytes = excluded.total_bytes,
-                        threats = excluded.threats,
-                        fetched_at = excluded.fetched_at
-                    """,
-                    new
-                    {
-                        domain,
-                        date = row.Date,
-                        pageviews = row.Pageviews,
-                        uniqueVisitors = row.UniqueVisitors,
-                        requests = row.Requests,
-                        cachedRequests = row.CachedRequests,
-                        cachedBytes = row.CachedBytes,
-                        totalBytes = row.TotalBytes,
-                        threats = row.Threats,
-                        fetchedAt = nowStr,
-                    });
-                count++;
-            }
-            foreach (var s in traffic.StatusCodes)
-            {
-                connection.Execute(
-                    """
-                    INSERT INTO cloudflare_status_codes (domain, date, status_code, requests)
-                    VALUES (@domain, @date, @statusCode, @requests)
-                    ON CONFLICT(domain, date, status_code) DO UPDATE SET requests = excluded.requests
-                    """,
-                    new { domain, date = s.Date, statusCode = s.StatusCode, requests = s.Requests });
-                count++;
-            }
-            return count;
-        }).ConfigureAwait(false);
+        var records = await _cloudflareRepo.UpsertTrafficAsync(domain, traffic, nowStr).ConfigureAwait(false);
 
         await _connectionsRepo.UpdateCloudflareLastSyncAsync(domain, nowStr, "connected").ConfigureAwait(false);
 
@@ -126,7 +75,7 @@ public sealed class CloudflareSyncService
         }
         catch (Exception ex)
         {
-            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+            return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
         }
     }
 }

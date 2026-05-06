@@ -21,21 +21,21 @@ public sealed partial class SourcesPage : Page
     private async void TestCfButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.TestCloudflareAsync();
+        await ViewModel.Cloudflare.TestAsync();
     }
 
     private async void TestSavedCfButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
         {
-            await ViewModel.TestSavedCloudflareAsync(info);
+            await ViewModel.Cloudflare.TestSavedAsync(info);
         }
     }
 
     private async void SaveCfButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.SaveCloudflareAsync();
+        await ViewModel.Cloudflare.SaveAsync();
         CfTokenBox.Password = "";
     }
 
@@ -43,7 +43,7 @@ public sealed partial class SourcesPage : Page
     {
         if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
         {
-            await ViewModel.SyncCloudflareAsync(info);
+            await ViewModel.Cloudflare.SyncAsync(info);
         }
     }
 
@@ -51,118 +51,131 @@ public sealed partial class SourcesPage : Page
     {
         if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
         {
-            await ViewModel.DeleteCloudflareAsync(info);
+            await ViewModel.Cloudflare.DeleteAsync(info);
         }
     }
 
     private async void SaveWaButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.SaveWebAnalyticsAsync();
+        await ViewModel.WebAnalytics.SaveAsync();
         WaTokenBox.Password = "";
     }
 
     private async void DiscoverWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.DiscoverWebAnalyticsSitesAsync();
+        => await ViewModel.WebAnalytics.DiscoverSitesAsync();
 
     private async void TestWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.TestWebAnalyticsAsync();
+        => await ViewModel.WebAnalytics.TestAsync();
 
     private async void SyncWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SyncWebAnalyticsAsync();
+        => await ViewModel.WebAnalytics.SyncAsync();
 
     private async void DeleteWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.DeleteWebAnalyticsAsync();
+        => await ViewModel.WebAnalytics.DeleteAsync();
 
     private async void AddWaSiteButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.AddWebAnalyticsSiteAsync();
+        => await ViewModel.WebAnalytics.AddSiteAsync();
 
     private async void DeleteWaSiteButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is WebAnalyticsSite site)
         {
-            await ViewModel.DeleteWebAnalyticsSiteAsync(site);
+            await ViewModel.WebAnalytics.DeleteSiteAsync(site);
         }
     }
 
     private async void SaveScButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.SaveSearchConsoleAsync();
+        await ViewModel.SearchConsole.SaveAsync();
         ScClientSecretBox.Password = "";
     }
 
     private async void ConnectScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.ConnectSearchConsoleAsync();
+        => await ViewModel.SearchConsole.ConnectAsync();
 
     private async void TestScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.TestSearchConsoleAsync();
+        => await ViewModel.SearchConsole.TestAsync();
 
     private async void SyncScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SyncSearchConsoleAsync();
+        => await ViewModel.SearchConsole.SyncAsync();
 
     private async void DeleteScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.DeleteSearchConsoleAsync();
+        => await ViewModel.SearchConsole.DeleteAsync();
 
     private async void SavePerformanceButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.SavePerformanceAsync();
+        await ViewModel.Performance.SaveAsync();
         CruxApiKeyBox.Password = "";
         PageSpeedApiKeyBox.Password = "";
     }
 
     private async void AddPerformanceUrlButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.AddPerformanceUrlAsync();
+        => await ViewModel.Performance.AddUrlAsync();
 
     private async void DeletePerformanceUrlButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is PerformanceUrlInfo url)
         {
-            await ViewModel.DeletePerformanceUrlAsync(url);
+            await ViewModel.Performance.DeleteUrlAsync(url);
         }
     }
 
     private async void TestCruxButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.TestCruxAsync();
+        => await ViewModel.Performance.TestCruxAsync();
 
     private async void TestPageSpeedButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.TestPageSpeedAsync();
+        => await ViewModel.Performance.TestPageSpeedAsync();
 
     private async void SyncPerformanceButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SyncPerformanceAsync();
+        => await ViewModel.Performance.SyncAsync();
+
+    private async void DeletePerformanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.Performance.DeleteAsync();
+        CruxApiKeyBox.Password = "";
+        PageSpeedApiKeyBox.Password = "";
+    }
 
     private async void SaveBingButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.SaveBingAsync();
+        await ViewModel.Bing.SaveAsync();
         BingApiKeyBox.Password = "";
     }
 
     private async void AddBingSiteButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.AddBingSiteAsync();
+        => await ViewModel.Bing.AddSiteAsync();
 
     private async void DeleteBingSiteButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is string siteUrl)
         {
-            await ViewModel.DeleteBingSiteAsync(siteUrl);
+            await ViewModel.Bing.DeleteSiteAsync(siteUrl);
         }
     }
 
     private async void TestBingButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.TestBingAsync();
+        => await ViewModel.Bing.TestAsync();
 
     private async void SyncBingButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SyncBingAsync();
+        => await ViewModel.Bing.SyncAsync();
+
+    private async void DeleteBingButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.Bing.DeleteAsync();
+        BingApiKeyBox.Password = "";
+    }
 
     private void SyncPasswordBoxesToViewModel()
     {
-        ViewModel.NewCfToken = CfTokenBox.Password;
-        ViewModel.NewWaToken = WaTokenBox.Password;
-        ViewModel.NewScClientSecret = ScClientSecretBox.Password;
-        ViewModel.NewCruxApiKey = CruxApiKeyBox.Password;
-        ViewModel.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
-        ViewModel.NewBingApiKey = BingApiKeyBox.Password;
+        ViewModel.Cloudflare.NewToken = CfTokenBox.Password;
+        ViewModel.WebAnalytics.NewToken = WaTokenBox.Password;
+        ViewModel.SearchConsole.NewClientSecret = ScClientSecretBox.Password;
+        ViewModel.Performance.NewCruxApiKey = CruxApiKeyBox.Password;
+        ViewModel.Performance.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
+        ViewModel.Bing.NewApiKey = BingApiKeyBox.Password;
     }
 }

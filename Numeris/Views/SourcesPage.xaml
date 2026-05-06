@@ -21,7 +21,7 @@
                 </Expander.Header>
                 <StackPanel Spacing="12" Padding="0,8,0,0">
                     <TextBlock Text="Saved connections" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <ListView ItemsSource="{x:Bind ViewModel.CloudflareConnections, Mode=OneWay}"
+                    <ListView ItemsSource="{x:Bind ViewModel.Cloudflare.Connections, Mode=OneWay}"
                               SelectionMode="None"
                               IsItemClickEnabled="False"
                               MinHeight="0">
@@ -72,23 +72,23 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBox Grid.Row="0" Grid.Column="0" Header="Domain" PlaceholderText="example.com"
-                                 Text="{x:Bind ViewModel.NewCfDomain, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.Cloudflare.NewDomain, Mode=TwoWay}" />
                         <TextBox Grid.Row="0" Grid.Column="1" Header="Zone ID"
-                                 Text="{x:Bind ViewModel.NewCfZoneId, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.Cloudflare.NewZoneId, Mode=TwoWay}" />
                         <PasswordBox x:Name="CfTokenBox"
                                      Grid.Row="1"
                                      Grid.ColumnSpan="2"
                                      Header="API token"
                                      PlaceholderText="Bearer token from Cloudflare dashboard"
-                                     Password="{x:Bind ViewModel.NewCfToken, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.Cloudflare.NewToken, Mode=TwoWay}" />
                         <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                             <Button Content="Test"
                                     Click="TestCfButton_Click" />
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
                                     Click="SaveCfButton_Click" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsCfBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <TextBlock Text="{x:Bind ViewModel.CfStatusMessage, Mode=OneWay}"
+                            <ProgressRing IsActive="{x:Bind ViewModel.Cloudflare.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.Cloudflare.StatusMessage, Mode=OneWay}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -118,13 +118,13 @@
                         </Grid.RowDefinitions>
                         <TextBox Grid.Row="0" Grid.Column="0" Header="Account ID"
                                  PlaceholderText="Cloudflare account ID"
-                                 Text="{x:Bind ViewModel.NewWaAccountId, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.WebAnalytics.NewAccountId, Mode=TwoWay}" />
                         <PasswordBox x:Name="WaTokenBox"
                                      Grid.Row="0"
                                      Grid.Column="1"
                                      Header="Account Analytics token"
                                      PlaceholderText="Token for GraphQL sync"
-                                     Password="{x:Bind ViewModel.NewWaToken, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.WebAnalytics.NewToken, Mode=TwoWay}" />
                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
@@ -136,8 +136,8 @@
                             <Button Content="Sync"
                                     Click="SyncWaButton_Click" />
                             <Button Content="Delete" Click="DeleteWaButton_Click" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsWaBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <TextBlock Text="{x:Bind ViewModel.WaStatusMessage, Mode=OneWay}"
+                            <ProgressRing IsActive="{x:Bind ViewModel.WebAnalytics.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.WebAnalytics.StatusMessage, Mode=OneWay}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -152,16 +152,16 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Header="Domain" PlaceholderText="example.com"
-                                 Text="{x:Bind ViewModel.NewWaDomain, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.WebAnalytics.NewDomain, Mode=TwoWay}" />
                         <TextBox Grid.Column="1" Header="Site tag" PlaceholderText="Cloudflare Web Analytics site_tag"
-                                 Text="{x:Bind ViewModel.NewWaSiteTag, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.WebAnalytics.NewSiteTag, Mode=TwoWay}" />
                         <Button Grid.Column="2"
                                 Content="Add"
                                 VerticalAlignment="Bottom"
                                 Click="AddWaSiteButton_Click" />
                     </Grid>
                     <TextBlock Text="Saved sites" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.WaSites, Mode=OneWay}">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.WebAnalytics.Sites, Mode=OneWay}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Spacing="4" />
@@ -213,12 +213,12 @@
                         </Grid.RowDefinitions>
                         <TextBox Grid.Row="0" Grid.Column="0" Header="Client ID"
                                  PlaceholderText="xxxxx.apps.googleusercontent.com"
-                                 Text="{x:Bind ViewModel.NewScClientId, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.SearchConsole.NewClientId, Mode=TwoWay}" />
                         <PasswordBox x:Name="ScClientSecretBox"
                                      Grid.Row="0"
                                      Grid.Column="1"
                                      Header="Client secret"
-                                     Password="{x:Bind ViewModel.NewScClientSecret, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.SearchConsole.NewClientSecret, Mode=TwoWay}" />
                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
@@ -230,8 +230,8 @@
                             <Button Content="Sync"
                                     Click="SyncScButton_Click" />
                             <Button Content="Delete" Click="DeleteScButton_Click" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsScBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <TextBlock Text="{x:Bind ViewModel.ScStatusMessage, Mode=OneWay}"
+                            <ProgressRing IsActive="{x:Bind ViewModel.SearchConsole.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.SearchConsole.StatusMessage, Mode=OneWay}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -265,12 +265,12 @@
                                      Grid.Row="0"
                                      Grid.Column="0"
                                      Header="CrUX API key"
-                                     Password="{x:Bind ViewModel.NewCruxApiKey, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.Performance.NewCruxApiKey, Mode=TwoWay}" />
                         <PasswordBox x:Name="PageSpeedApiKeyBox"
                                      Grid.Row="0"
                                      Grid.Column="1"
                                      Header="PageSpeed API key"
-                                     Password="{x:Bind ViewModel.NewPageSpeedApiKey, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.Performance.NewPageSpeedApiKey, Mode=TwoWay}" />
                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
@@ -280,9 +280,11 @@
                             <Button Content="Test PageSpeed"
                                     Click="TestPageSpeedButton_Click" />
                             <Button Content="Sync"
-                                    Click="SyncPerformanceButton_Click" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsPerformanceBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <TextBlock Text="{x:Bind ViewModel.PerformanceStatusMessage, Mode=OneWay}"
+                                     Click="SyncPerformanceButton_Click" />
+                            <Button Content="Delete"
+                                    Click="DeletePerformanceButton_Click" />
+                            <ProgressRing IsActive="{x:Bind ViewModel.Performance.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.Performance.StatusMessage, Mode=OneWay}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -297,13 +299,13 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Header="URL" PlaceholderText="https://example.com/"
-                                 Text="{x:Bind ViewModel.NewPerformanceUrl, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.Performance.NewUrl, Mode=TwoWay}" />
                         <Button Grid.Column="1"
                                 Content="Add"
                                 VerticalAlignment="Bottom"
                                 Click="AddPerformanceUrlButton_Click" />
                     </Grid>
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.PerformanceUrls, Mode=OneWay}">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Performance.Urls, Mode=OneWay}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Spacing="4" />
@@ -351,7 +353,7 @@
                         <PasswordBox x:Name="BingApiKeyBox"
                                      Grid.Row="0"
                                      Header="Bing Webmaster API key"
-                                     Password="{x:Bind ViewModel.NewBingApiKey, Mode=TwoWay}" />
+                                     Password="{x:Bind ViewModel.Bing.NewApiKey, Mode=TwoWay}" />
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
                             <Button Content="Save"
                                     Style="{ThemeResource AccentButtonStyle}"
@@ -359,9 +361,11 @@
                             <Button Content="Test"
                                     Click="TestBingButton_Click" />
                             <Button Content="Sync"
-                                    Click="SyncBingButton_Click" />
-                            <ProgressRing IsActive="{x:Bind ViewModel.IsBingBusy, Mode=OneWay}" Width="20" Height="20" />
-                            <TextBlock Text="{x:Bind ViewModel.BingStatusMessage, Mode=OneWay}"
+                                     Click="SyncBingButton_Click" />
+                            <Button Content="Delete"
+                                    Click="DeleteBingButton_Click" />
+                            <ProgressRing IsActive="{x:Bind ViewModel.Bing.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            <TextBlock Text="{x:Bind ViewModel.Bing.StatusMessage, Mode=OneWay}"
                                        VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -376,13 +380,13 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Header="Site URL" PlaceholderText="https://example.com/"
-                                 Text="{x:Bind ViewModel.NewBingSiteUrl, Mode=TwoWay}" />
+                                 Text="{x:Bind ViewModel.Bing.NewSiteUrl, Mode=TwoWay}" />
                         <Button Grid.Column="1"
                                 Content="Add"
                                 VerticalAlignment="Bottom"
                                 Click="AddBingSiteButton_Click" />
                     </Grid>
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.BingSites, Mode=OneWay}">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Bing.Sites, Mode=OneWay}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Spacing="4" />

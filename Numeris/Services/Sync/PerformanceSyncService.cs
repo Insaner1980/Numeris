@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Numeris.Models;
 using Numeris.Services.Api;
+using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Performance;
 using Numeris.Services.Secrets;
@@ -16,12 +19,17 @@ public sealed class PerformanceSyncService
 {
     private static readonly string?[] FormFactors = [null, "PHONE", "DESKTOP", "TABLET"];
     private static readonly string[] PageSpeedStrategies = ["MOBILE", "DESKTOP"];
+    private static readonly TimeSpan PageSpeedRequestSpacing = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan PageSpeedInitialBackoff = TimeSpan.FromSeconds(2);
+    private const int PageSpeedMaxAttempts = 3;
 
     private readonly CruxClient _cruxClient;
     private readonly PageSpeedClient _pageSpeedClient;
     private readonly PerformanceRepository _performanceRepo;
     private readonly ConnectionsRepository _connectionsRepo;
     private readonly CredentialVault _vault;
+    private readonly SemaphoreSlim _pageSpeedLimiter = new(1, 1);
+    private DateTimeOffset _lastPageSpeedRequestUtc = DateTimeOffset.MinValue;
 
     public PerformanceSyncService(
         CruxClient cruxClient,
@@ -68,7 +76,7 @@ public sealed class PerformanceSyncService
         }
         catch (Exception ex)
         {
-            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+            return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
         }
     }
 
@@ -94,7 +102,7 @@ public sealed class PerformanceSyncService
         }
         catch (Exception ex)
         {
-            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+            return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
         }
     }
 
@@ -110,11 +118,15 @@ public sealed class PerformanceSyncService
             var origins = urls.Select(u => u.Origin).Distinct(StringComparer.OrdinalIgnoreCase);
             foreach (var origin in origins)
             {
-                result.CruxMetricPoints += await SyncCruxTargetAsync(cruxKey, "origin", origin, fetchedAt).ConfigureAwait(false);
+                var crux = await SyncCruxTargetAsync(cruxKey, "origin", origin, fetchedAt).ConfigureAwait(false);
+                result.CruxMetricPoints += crux.rows;
+                result.CruxSkipped += crux.skipped;
             }
             foreach (var url in urls)
             {
-                result.CruxMetricPoints += await SyncCruxTargetAsync(cruxKey, "url", url.Url, fetchedAt).ConfigureAwait(false);
+                var crux = await SyncCruxTargetAsync(cruxKey, "url", url.Url, fetchedAt).ConfigureAwait(false);
+                result.CruxMetricPoints += crux.rows;
+                result.CruxSkipped += crux.skipped;
             }
         }
 
@@ -125,20 +137,37 @@ public sealed class PerformanceSyncService
             {
                 foreach (var strategy in PageSpeedStrategies)
                 {
-                    var (runs, audits) = await SyncPageSpeedAsync(pageSpeedKey, url.Url, strategy, fetchedAt).ConfigureAwait(false);
-                    result.PageSpeedRuns += runs;
-                    result.PageSpeedAudits += audits;
+                    try
+                    {
+                        var (runs, audits) = await SyncPageSpeedAsync(pageSpeedKey, url.Url, strategy, fetchedAt).ConfigureAwait(false);
+                        result.PageSpeedRuns += runs;
+                        result.PageSpeedAudits += audits;
+                    }
+                    catch (ApiRequestException ex) when (ex.IsTransient || ex.IsRateLimited)
+                    {
+                        result.PageSpeedErrors++;
+                    }
+                    catch (HttpRequestException)
+                    {
+                        result.PageSpeedErrors++;
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        result.PageSpeedErrors++;
+                    }
                 }
             }
         }
 
+        await _performanceRepo.ApplyPageSpeedRetentionAsync().ConfigureAwait(false);
         await _connectionsRepo.UpdatePerformanceLastSyncAsync(fetchedAt).ConfigureAwait(false);
         return result;
     }
 
-    private async Task<long> SyncCruxTargetAsync(string apiKey, string targetType, string target, string fetchedAt)
+    private async Task<(long rows, long skipped)> SyncCruxTargetAsync(string apiKey, string targetType, string target, string fetchedAt)
     {
         long rows = 0;
+        long skipped = 0;
         foreach (var formFactor in FormFactors)
         {
             CruxHistoryResponse response;
@@ -146,12 +175,13 @@ public sealed class PerformanceSyncService
             {
                 response = await _cruxClient.QueryHistoryAsync(apiKey, targetType, target, formFactor).ConfigureAwait(false);
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase))
+            catch (ApiRequestException ex) when (ex.IsNotFound)
             {
+                skipped++;
                 continue;
             }
 
-            var periods = response.Record?.CollectionPeriods?.CollectionPeriods ?? [];
+            var periods = response.Record?.CollectionPeriods ?? [];
             if (response.Record?.Metrics is null) continue;
 
             foreach (var (metricName, metric) in response.Record.Metrics)
@@ -172,7 +202,7 @@ public sealed class PerformanceSyncService
                         GoodDensity = GetAt(bins?.ElementAtOrDefault(0)?.Densities, i),
                         NeedsImprovementDensity = GetAt(bins?.ElementAtOrDefault(1)?.Densities, i),
                         PoorDensity = GetAt(bins?.ElementAtOrDefault(2)?.Densities, i),
-                        RawJson = response.RawJson,
+                        RawJson = RawJsonStoragePolicy.TrimRawJson(response.RawJson),
                         FetchedAt = fetchedAt,
                     };
                     await _performanceRepo.UpsertCruxMetricAsync(row).ConfigureAwait(false);
@@ -180,15 +210,15 @@ public sealed class PerformanceSyncService
                 }
             }
         }
-        return rows;
+        return (rows, skipped);
     }
 
     private async Task<(long runs, long audits)> SyncPageSpeedAsync(string apiKey, string url, string strategy, string fetchedAt)
     {
-        using var doc = await _pageSpeedClient.RunAsync(apiKey, url, strategy).ConfigureAwait(false);
+        using var doc = await RunPageSpeedWithPolicyAsync(apiKey, url, strategy).ConfigureAwait(false);
         var root = doc.RootElement;
         var analysisUtc = PageSpeedClient.AnalysisTimestamp(root);
-        var raw = root.GetRawText();
+        var raw = RawJsonStoragePolicy.TrimRawJson(root.GetRawText());
         var run = new PageSpeedRun
         {
             Url = url,
@@ -233,7 +263,9 @@ public sealed class PerformanceSyncService
                     NumericUnit = PageSpeedClient.String(audit, "numericUnit"),
                     DisplayValue = PageSpeedClient.String(audit, "displayValue"),
                     ScoreDisplayMode = PageSpeedClient.String(audit, "scoreDisplayMode"),
-                    DetailsJson = audit.TryGetProperty("details", out var details) ? details.GetRawText() : null,
+                    DetailsJson = audit.TryGetProperty("details", out var details)
+                        ? RawJsonStoragePolicy.TrimDetailsJson(details.GetRawText())
+                        : null,
                 });
             }
         }
@@ -241,6 +273,54 @@ public sealed class PerformanceSyncService
         await _performanceRepo.UpsertPageSpeedRunAsync(run, audits).ConfigureAwait(false);
         return (1, audits.Count);
     }
+
+    private async Task<JsonDocument> RunPageSpeedWithPolicyAsync(string apiKey, string url, string strategy)
+    {
+        await _pageSpeedLimiter.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            for (var attempt = 1; attempt <= PageSpeedMaxAttempts; attempt++)
+            {
+                await ThrottlePageSpeedAsync().ConfigureAwait(false);
+                try
+                {
+                    return await _pageSpeedClient.RunAsync(apiKey, url, strategy).ConfigureAwait(false);
+                }
+                catch (ApiRequestException ex) when ((ex.IsTransient || ex.IsRateLimited) && attempt < PageSpeedMaxAttempts)
+                {
+                    await Task.Delay(BackoffForAttempt(attempt)).ConfigureAwait(false);
+                }
+                catch (HttpRequestException) when (attempt < PageSpeedMaxAttempts)
+                {
+                    await Task.Delay(BackoffForAttempt(attempt)).ConfigureAwait(false);
+                }
+                catch (TaskCanceledException) when (attempt < PageSpeedMaxAttempts)
+                {
+                    await Task.Delay(BackoffForAttempt(attempt)).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            _pageSpeedLimiter.Release();
+        }
+
+        throw new InvalidOperationException("PageSpeed retry policy exited without a result");
+    }
+
+    private async Task ThrottlePageSpeedAsync()
+    {
+        var elapsed = DateTimeOffset.UtcNow - _lastPageSpeedRequestUtc;
+        var delay = PageSpeedRequestSpacing - elapsed;
+        if (delay > TimeSpan.Zero)
+        {
+            await Task.Delay(delay).ConfigureAwait(false);
+        }
+        _lastPageSpeedRequestUtc = DateTimeOffset.UtcNow;
+    }
+
+    private static TimeSpan BackoffForAttempt(int attempt)
+        => TimeSpan.FromMilliseconds(PageSpeedInitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1));
 
     private static double? GetAt(IReadOnlyList<double?>? values, int index)
         => values is not null && index >= 0 && index < values.Count ? values[index] : null;

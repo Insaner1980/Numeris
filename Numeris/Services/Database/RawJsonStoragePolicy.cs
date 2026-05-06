@@ -1,0 +1,116 @@
+using System;
+using System.Linq;
+using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace Numeris.Services.Database;
+
+public static partial class RawJsonStoragePolicy
+{
+    public const int MaxRawJsonChars = 200_000;
+    public const int MaxDetailsJsonChars = 40_000;
+    public const int PageSpeedRunsToKeepPerUrlAndStrategy = 30;
+    public const int BingRawRetentionDays = 180;
+    public const string RedactedSecret = "[redacted]";
+
+    public static string TrimRawJson(string? value)
+        => BoundJson(RedactSecrets(value ?? ""), MaxRawJsonChars);
+
+    public static string? TrimDetailsJson(string? value)
+        => string.IsNullOrEmpty(value) ? value : BoundJson(RedactSecrets(value), MaxDetailsJsonChars);
+
+    private static string RedactSecrets(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(value);
+            RedactNode(node);
+            return node?.ToJsonString() ?? value;
+        }
+        catch (JsonException)
+        {
+            return RedactSecretText(value);
+        }
+    }
+
+    private static JsonNode? RedactNode(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var property in obj.ToList())
+                {
+                    if (IsSensitivePropertyName(property.Key))
+                    {
+                        obj[property.Key] = RedactedSecret;
+                    }
+                    else
+                    {
+                        obj[property.Key] = RedactNode(property.Value);
+                    }
+                }
+                return obj;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    array[i] = RedactNode(array[i]);
+                }
+                return array;
+            case JsonValue valueNode when valueNode.TryGetValue<string>(out var text):
+                return JsonValue.Create(RedactSecretText(text));
+            default:
+                return node;
+        }
+    }
+
+    private static bool IsSensitivePropertyName(string name)
+    {
+        var normalized = name.Replace("_", "", StringComparison.Ordinal)
+            .Replace("-", "", StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        return normalized.Contains("token", StringComparison.Ordinal)
+            || normalized.Contains("secret", StringComparison.Ordinal)
+            || normalized.Contains("password", StringComparison.Ordinal)
+            || normalized.Contains("credential", StringComparison.Ordinal)
+            || normalized.Contains("authorization", StringComparison.Ordinal)
+            || normalized is "key"
+            || normalized.EndsWith("apikey", StringComparison.Ordinal)
+            || normalized.EndsWith("accesskey", StringComparison.Ordinal)
+            || normalized.EndsWith("subscriptionkey", StringComparison.Ordinal);
+    }
+
+    private static string RedactSecretText(string value)
+    {
+        var redacted = QuerySecretRegex().Replace(value, match => $"{match.Groups[1].Value}{RedactedSecret}");
+        return BearerSecretRegex().Replace(redacted, match => $"{match.Groups[1].Value}{RedactedSecret}");
+    }
+
+    private static string BoundJson(string value, int maxChars)
+    {
+        if (value.Length <= maxChars)
+        {
+            return value;
+        }
+
+        var prefixLength = Math.Max(0, maxChars - 512);
+        return JsonSerializer.Serialize(new
+        {
+            truncated = true,
+            originalChars = value.Length,
+            prefix = value[..Math.Min(value.Length, prefixLength)],
+        });
+    }
+
+    [GeneratedRegex(@"([?&](?:api[_-]?key|key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|password|code)=)[^&\s""']+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex QuerySecretRegex();
+
+    [GeneratedRegex(@"(Bearer\s+)[A-Za-z0-9._~+/=-]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex BearerSecretRegex();
+}

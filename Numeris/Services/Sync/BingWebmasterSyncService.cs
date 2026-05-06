@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Numeris.Models;
 using Numeris.Services.Api;
+using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Secrets;
 
@@ -12,8 +13,6 @@ namespace Numeris.Services.Sync;
 
 public sealed class BingWebmasterSyncService
 {
-    private const int DetailLimit = 25;
-
     private readonly BingWebmasterClient _client;
     private readonly BingRepository _bingRepo;
     private readonly ConnectionsRepository _connectionsRepo;
@@ -56,7 +55,7 @@ public sealed class BingWebmasterSyncService
         }
         catch (Exception ex)
         {
-            return new ConnectionTestResult { Ok = false, Message = ex.Message };
+            return new ConnectionTestResult { Ok = false, Message = ApiErrorMessage.Sanitize(ex) };
         }
     }
 
@@ -72,19 +71,8 @@ public sealed class BingWebmasterSyncService
         foreach (var siteUrl in sites)
         {
             result.SitesSynced++;
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetBlockedUrls", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetConnectedPages", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetContentSubmissionQuota", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetCountryRegionSettings", siteUrl, fetchedAt).ConfigureAwait(false);
             result.RawItems += await StoreSiteMethodAsync(apiKey, "GetCrawlIssues", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetCrawlSettings", siteUrl, fetchedAt).ConfigureAwait(false);
             result.RawItems += await StoreSiteMethodAsync(apiKey, "GetCrawlStats", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetFeeds", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetFetchedUrls", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetQueryParameters", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetSiteMoves", siteUrl, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreMethodAsync(apiKey, "GetSiteRoles", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["includeChildren"] = "true" }, fetchedAt).ConfigureAwait(false);
-            result.RawItems += await StoreSiteMethodAsync(apiKey, "GetUrlSubmissionQuota", siteUrl, fetchedAt).ConfigureAwait(false);
 
             result.RankRows += await SyncRankAndTrafficAsync(apiKey, siteUrl, fetchedAt).ConfigureAwait(false);
             var queries = await SyncQueryStatsAsync(apiKey, siteUrl, fetchedAt).ConfigureAwait(false);
@@ -94,35 +82,11 @@ public sealed class BingWebmasterSyncService
             var pages = await SyncPageStatsAsync(apiKey, siteUrl, fetchedAt).ConfigureAwait(false);
             result.RawItems += pages.rawItems;
             result.PageRows += pages.rows;
-
-            foreach (var query in queries.keys.Take(DetailLimit))
-            {
-                result.RawItems += await StoreMethodAsync(apiKey, "GetQueryTrafficStats", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["query"] = query }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetQueryPageStats", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["query"] = query }, fetchedAt).ConfigureAwait(false);
-            }
-
-            foreach (var page in pages.keys.Take(DetailLimit))
-            {
-                result.RawItems += await StoreMethodAsync(apiKey, "GetPageQueryStats", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["page"] = page }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetUrlInfo", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetUrlTrafficInfo", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetUrlLinks", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page, ["count"] = "100" }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetChildrenUrlInfo", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page, ["count"] = "100" }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetChildrenUrlTrafficInfo", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page, ["count"] = "100" }, fetchedAt).ConfigureAwait(false);
-                result.RawItems += await StoreMethodAsync(apiKey, "GetFetchedUrlDetails", siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["url"] = page }, fetchedAt).ConfigureAwait(false);
-            }
-
-            foreach (var pair in queries.keys.Take(DetailLimit).Zip(pages.keys.Take(DetailLimit)))
-            {
-                result.RawItems += await StoreMethodAsync(
-                    apiKey,
-                    "GetQueryPageDetailStats",
-                    siteUrl,
-                    new Dictionary<string, string?> { ["siteUrl"] = siteUrl, ["query"] = pair.First, ["page"] = pair.Second },
-                    fetchedAt).ConfigureAwait(false);
-            }
         }
 
+        await _bingRepo.ApplyRawRetentionAsync(DateTime.Now
+            .AddDays(-RawJsonStoragePolicy.BingRawRetentionDays)
+            .ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
         await _connectionsRepo.UpdateBingLastSyncAsync(fetchedAt).ConfigureAwait(false);
         return result;
     }
@@ -138,6 +102,18 @@ public sealed class BingWebmasterSyncService
             var unwrapped = BingWebmasterClient.Unwrap(doc);
             return await StoreItemsAsync(method, siteUrl, unwrapped, fetchedAt).ConfigureAwait(false);
         }
+        catch (ApiRequestException ex)
+        {
+            await _bingRepo.UpsertRawItemAsync(new BingRawItem
+            {
+                Method = method,
+                SiteUrl = siteUrl,
+                ItemKey = "error",
+                RawJson = RawJsonStoragePolicy.TrimRawJson(JsonSerializer.Serialize(new { error = ApiErrorMessage.Sanitize(ex), provider = ex.Provider, operation = ex.Operation, statusCode = (int)ex.StatusCode })),
+                FetchedAt = fetchedAt,
+            }).ConfigureAwait(false);
+            return 1;
+        }
         catch (Exception ex)
         {
             await _bingRepo.UpsertRawItemAsync(new BingRawItem
@@ -145,7 +121,7 @@ public sealed class BingWebmasterSyncService
                 Method = method,
                 SiteUrl = siteUrl,
                 ItemKey = "error",
-                RawJson = JsonSerializer.Serialize(new { error = ex.Message }),
+                RawJson = RawJsonStoragePolicy.TrimRawJson(JsonSerializer.Serialize(new { error = ApiErrorMessage.Sanitize(ex) })),
                 FetchedAt = fetchedAt,
             }).ConfigureAwait(false);
             return 1;
@@ -164,7 +140,7 @@ public sealed class BingWebmasterSyncService
                 Method = method,
                 SiteUrl = siteUrl,
                 ItemKey = key,
-                RawJson = item.GetRawText(),
+                RawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText()),
                 FetchedAt = fetchedAt,
             }).ConfigureAwait(false);
             index++;
@@ -180,26 +156,32 @@ public sealed class BingWebmasterSyncService
         foreach (var item in EnumerateItems(BingWebmasterClient.Unwrap(doc)))
         {
             var date = FirstString(item, "Date", "date", "Day", "day") ?? ExtractKey(item) ?? fetchedAt;
-            await _bingRepo.UpsertRankTrafficAsync(siteUrl, date, FirstLong(item, "Clicks", "clicks"), FirstLong(item, "Impressions", "impressions"), item.GetRawText(), fetchedAt).ConfigureAwait(false);
-            await _bingRepo.UpsertRawItemAsync(new BingRawItem { Method = "GetRankAndTrafficStats", SiteUrl = siteUrl, ItemKey = date, RawJson = item.GetRawText(), FetchedAt = fetchedAt }).ConfigureAwait(false);
+            var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
+            await _bingRepo.UpsertRankTrafficWithRawItemAsync(
+                siteUrl,
+                date,
+                FirstLong(item, "Clicks", "clicks"),
+                FirstLong(item, "Impressions", "impressions"),
+                rawJson,
+                fetchedAt,
+                new BingRawItem { Method = "GetRankAndTrafficStats", SiteUrl = siteUrl, ItemKey = date, RawJson = rawJson, FetchedAt = fetchedAt }).ConfigureAwait(false);
             rows++;
         }
         return rows;
     }
 
-    private async Task<(long rows, long rawItems, List<string> keys)> SyncQueryStatsAsync(string apiKey, string siteUrl, string fetchedAt)
+    private async Task<(long rows, long rawItems)> SyncQueryStatsAsync(string apiKey, string siteUrl, string fetchedAt)
     {
         using var doc = await _client.CallAsync(apiKey, "GetQueryStats", new Dictionary<string, string?> { ["siteUrl"] = siteUrl }).ConfigureAwait(false);
         var rows = 0L;
         var raw = 0L;
-        var keys = new List<string>();
         foreach (var item in EnumerateItems(BingWebmasterClient.Unwrap(doc)))
         {
             var query = FirstString(item, "Query", "query", "Keyword", "keyword") ?? ExtractKey(item);
             if (string.IsNullOrWhiteSpace(query)) continue;
-            keys.Add(query);
             var date = FirstString(item, "Date", "date") ?? "";
-            await _bingRepo.UpsertQueryStatsAsync(
+            var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
+            await _bingRepo.UpsertQueryStatsWithRawItemAsync(
                 siteUrl,
                 query,
                 date,
@@ -207,32 +189,39 @@ public sealed class BingWebmasterSyncService
                 FirstLong(item, "Impressions", "impressions"),
                 FirstDouble(item, "AvgClickPosition", "avgClickPosition", "AverageClickPosition"),
                 FirstDouble(item, "AvgImpressionPosition", "avgImpressionPosition", "AverageImpressionPosition"),
-                item.GetRawText(),
-                fetchedAt).ConfigureAwait(false);
-            await _bingRepo.UpsertRawItemAsync(new BingRawItem { Method = "GetQueryStats", SiteUrl = siteUrl, ItemKey = query, RawJson = item.GetRawText(), FetchedAt = fetchedAt }).ConfigureAwait(false);
+                rawJson,
+                fetchedAt,
+                new BingRawItem { Method = "GetQueryStats", SiteUrl = siteUrl, ItemKey = BuildRawItemKey(query, date), RawJson = rawJson, FetchedAt = fetchedAt }).ConfigureAwait(false);
             rows++;
             raw++;
         }
-        return (rows, raw, keys);
+        return (rows, raw);
     }
 
-    private async Task<(long rows, long rawItems, List<string> keys)> SyncPageStatsAsync(string apiKey, string siteUrl, string fetchedAt)
+    private async Task<(long rows, long rawItems)> SyncPageStatsAsync(string apiKey, string siteUrl, string fetchedAt)
     {
         using var doc = await _client.CallAsync(apiKey, "GetPageStats", new Dictionary<string, string?> { ["siteUrl"] = siteUrl }).ConfigureAwait(false);
         var rows = 0L;
         var raw = 0L;
-        var keys = new List<string>();
         foreach (var item in EnumerateItems(BingWebmasterClient.Unwrap(doc)))
         {
             var page = FirstString(item, "Url", "url", "Page", "page") ?? ExtractKey(item);
             if (string.IsNullOrWhiteSpace(page)) continue;
-            keys.Add(page);
-            await _bingRepo.UpsertPageStatsAsync(siteUrl, page, FirstLong(item, "Clicks", "clicks"), FirstLong(item, "Impressions", "impressions"), item.GetRawText(), fetchedAt).ConfigureAwait(false);
-            await _bingRepo.UpsertRawItemAsync(new BingRawItem { Method = "GetPageStats", SiteUrl = siteUrl, ItemKey = page, RawJson = item.GetRawText(), FetchedAt = fetchedAt }).ConfigureAwait(false);
+            var date = FirstString(item, "Date", "date") ?? "";
+            var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
+            await _bingRepo.UpsertPageStatsWithRawItemAsync(
+                siteUrl,
+                page,
+                date,
+                FirstLong(item, "Clicks", "clicks"),
+                FirstLong(item, "Impressions", "impressions"),
+                rawJson,
+                fetchedAt,
+                new BingRawItem { Method = "GetPageStats", SiteUrl = siteUrl, ItemKey = BuildRawItemKey(page, date), RawJson = rawJson, FetchedAt = fetchedAt }).ConfigureAwait(false);
             rows++;
             raw++;
         }
-        return (rows, raw, keys);
+        return (rows, raw);
     }
 
     private static IEnumerable<JsonElement> EnumerateItems(JsonElement value)
@@ -250,6 +239,9 @@ public sealed class BingWebmasterSyncService
 
     private static string? ExtractKey(JsonElement item)
         => FirstString(item, "Url", "url", "Page", "page", "Query", "query", "Name", "name", "Date", "date", "SiteUrl", "siteUrl");
+
+    private static string BuildRawItemKey(string key, string date)
+        => string.IsNullOrWhiteSpace(date) ? key : $"{key}|{date}";
 
     private static string? FirstString(JsonElement item, params string[] names)
     {

@@ -30,11 +30,17 @@ public sealed class CredentialVault
     public string? GetWebAnalyticsToken(string accountId)
         => TryGet(WebAnalyticsResource, accountId.Trim());
 
+    public void DeleteWebAnalyticsToken(string accountId)
+        => Delete(WebAnalyticsResource, accountId.Trim());
+
     public void SetSearchConsoleClientSecret(string clientId, string secret)
         => Save(SearchConsoleSecretResource, clientId.Trim(), secret);
 
     public string? GetSearchConsoleClientSecret(string clientId)
         => TryGet(SearchConsoleSecretResource, clientId.Trim());
+
+    public void DeleteSearchConsoleClientSecret(string clientId)
+        => Delete(SearchConsoleSecretResource, clientId.Trim());
 
     public void SetSearchConsoleRefreshToken(string clientId, string token)
         => Save(SearchConsoleRefreshResource, clientId.Trim(), token);
@@ -42,11 +48,17 @@ public sealed class CredentialVault
     public string? GetSearchConsoleRefreshToken(string clientId)
         => TryGet(SearchConsoleRefreshResource, clientId.Trim());
 
+    public void DeleteSearchConsoleRefreshToken(string clientId)
+        => Delete(SearchConsoleRefreshResource, clientId.Trim());
+
     public void SetCruxApiKey(string key)
         => Save(CruxApiKeyResource, "default", key.Trim());
 
     public string? GetCruxApiKey()
         => TryGet(CruxApiKeyResource, "default");
+
+    public void DeleteCruxApiKey()
+        => Delete(CruxApiKeyResource, "default");
 
     public void SetPageSpeedApiKey(string key)
         => Save(PageSpeedApiKeyResource, "default", key.Trim());
@@ -54,11 +66,17 @@ public sealed class CredentialVault
     public string? GetPageSpeedApiKey()
         => TryGet(PageSpeedApiKeyResource, "default");
 
+    public void DeletePageSpeedApiKey()
+        => Delete(PageSpeedApiKeyResource, "default");
+
     public void SetBingApiKey(string key)
         => Save(BingApiKeyResource, "default", key.Trim());
 
     public string? GetBingApiKey()
         => TryGet(BingApiKeyResource, "default");
+
+    public void DeleteBingApiKey()
+        => Delete(BingApiKeyResource, "default");
 
     private void Save(string resource, string user, string secret)
     {
@@ -71,7 +89,10 @@ public sealed class CredentialVault
         {
             // entry didn't exist — fine
         }
-        _vault.Add(new PasswordCredential(resource, user, secret));
+        if (!string.IsNullOrWhiteSpace(secret))
+        {
+            _vault.Add(new PasswordCredential(resource, user, secret.Trim()));
+        }
     }
 
     private string? TryGet(string resource, string user)

@@ -11,11 +11,12 @@ namespace Numeris.Services.Api;
 public sealed class CruxClient
 {
     private const string HistoryEndpoint = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new NullableDoubleJsonConverter() },
     };
 
     public async Task<CruxHistoryResponse> QueryHistoryAsync(string apiKey, string targetType, string target, string? formFactor)
@@ -30,7 +31,7 @@ public sealed class CruxClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"CrUX returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("CrUX", "queryHistoryRecord", response.StatusCode, ApiErrorMessage.FromBody(body));
         }
 
         var parsed = JsonSerializer.Deserialize<CruxHistoryResponse>(body, JsonOptions)
@@ -45,6 +46,30 @@ public sealed class CruxClient
         public string? Url { get; set; }
         public string? FormFactor { get; set; }
     }
+
+    private sealed class NullableDoubleJsonConverter : JsonConverter<double?>
+    {
+        public override double? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => reader.TokenType switch
+            {
+                JsonTokenType.Number => reader.GetDouble(),
+                JsonTokenType.String when reader.GetString()?.Equals("NaN", StringComparison.OrdinalIgnoreCase) == true => null,
+                JsonTokenType.Null => null,
+                _ => throw new JsonException("Expected number, null or NaN"),
+            };
+
+        public override void Write(Utf8JsonWriter writer, double? value, JsonSerializerOptions options)
+        {
+            if (value.HasValue)
+            {
+                writer.WriteNumberValue(value.Value);
+            }
+            else
+            {
+                writer.WriteNullValue();
+            }
+        }
+    }
 }
 
 public sealed class CruxHistoryResponse
@@ -57,7 +82,7 @@ public sealed class CruxRecord
 {
     public CruxKey? Key { get; set; }
     public Dictionary<string, CruxMetric>? Metrics { get; set; }
-    public CruxCollectionPeriods? CollectionPeriods { get; set; }
+    public List<CruxCollectionPeriod>? CollectionPeriods { get; set; }
 }
 
 public sealed class CruxKey
@@ -84,11 +109,6 @@ public sealed class CruxHistogramTimeseries
 public sealed class CruxPercentilesTimeseries
 {
     public List<double?>? P75s { get; set; }
-}
-
-public sealed class CruxCollectionPeriods
-{
-    public List<CruxCollectionPeriod>? CollectionPeriods { get; set; }
 }
 
 public sealed class CruxCollectionPeriod

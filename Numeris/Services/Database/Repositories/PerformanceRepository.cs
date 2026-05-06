@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Numeris.Models;
+using Numeris.Services.Database;
 using Numeris.Services.Performance;
 
 namespace Numeris.Services.Database.Repositories;
@@ -48,6 +49,7 @@ public sealed class PerformanceRepository
     public Task UpsertCruxMetricAsync(CruxMetricPoint row)
         => _db.WriteAsync(connection =>
         {
+            row.RawJson = RawJsonStoragePolicy.TrimRawJson(row.RawJson);
             connection.Execute(
                 """
                 INSERT INTO crux_metric_points
@@ -68,8 +70,11 @@ public sealed class PerformanceRepository
         });
 
     public Task UpsertPageSpeedRunAsync(PageSpeedRun run, IReadOnlyList<PageSpeedAudit> audits)
-        => _db.WriteAsync(connection =>
+        => _db.WriteTransactionAsync((connection, transaction) =>
         {
+            run.RawJson = RawJsonStoragePolicy.TrimRawJson(run.RawJson);
+            run.RuntimeError = RawJsonStoragePolicy.TrimDetailsJson(run.RuntimeError);
+            run.WarningsJson = RawJsonStoragePolicy.TrimDetailsJson(run.WarningsJson);
             connection.Execute(
                 """
                 INSERT INTO pagespeed_runs
@@ -89,10 +94,12 @@ public sealed class PerformanceRepository
                     raw_json = excluded.raw_json,
                     fetched_at = excluded.fetched_at
                 """,
-                run);
+                run,
+                transaction);
 
             foreach (var audit in audits)
             {
+                audit.DetailsJson = RawJsonStoragePolicy.TrimDetailsJson(audit.DetailsJson);
                 connection.Execute(
                     """
                     INSERT INTO pagespeed_audits
@@ -109,7 +116,54 @@ public sealed class PerformanceRepository
                         score_display_mode = excluded.score_display_mode,
                         details_json = excluded.details_json
                     """,
-                    audit);
+                    audit,
+                    transaction);
             }
+        });
+
+    public Task ApplyPageSpeedRetentionAsync()
+        => _db.WriteTransactionAsync((connection, transaction) =>
+        {
+            connection.Execute(
+                """
+                DELETE FROM pagespeed_audits
+                WHERE (url, strategy, analysis_utc) IN (
+                    SELECT url, strategy, analysis_utc
+                    FROM (
+                        SELECT url,
+                               strategy,
+                               analysis_utc,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY url, strategy
+                                   ORDER BY analysis_utc DESC
+                               ) AS rn
+                        FROM pagespeed_runs
+                    )
+                    WHERE rn > @keep
+                )
+                """,
+                new { keep = RawJsonStoragePolicy.PageSpeedRunsToKeepPerUrlAndStrategy },
+                transaction);
+
+            connection.Execute(
+                """
+                DELETE FROM pagespeed_runs
+                WHERE (url, strategy, analysis_utc) IN (
+                    SELECT url, strategy, analysis_utc
+                    FROM (
+                        SELECT url,
+                               strategy,
+                               analysis_utc,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY url, strategy
+                                   ORDER BY analysis_utc DESC
+                               ) AS rn
+                        FROM pagespeed_runs
+                    )
+                    WHERE rn > @keep
+                )
+                """,
+                new { keep = RawJsonStoragePolicy.PageSpeedRunsToKeepPerUrlAndStrategy },
+                transaction);
         });
 }

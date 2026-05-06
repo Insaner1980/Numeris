@@ -17,7 +17,7 @@
     <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius>
 
-    <!-- Accent (warm gold from Pulse, retained as brand color) -->
+    <!-- Accent (Numeris brand gold) -->
     <Color x:Key="NumerisAccentColor">#D9A24E</Color>
     <SolidColorBrush x:Key="NumerisAccentBrush" Color="{StaticResource NumerisAccentColor}" />
 

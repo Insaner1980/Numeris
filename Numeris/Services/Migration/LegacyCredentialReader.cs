@@ -4,26 +4,13 @@ using System.Text;
 
 namespace Numeris.Services.Migration;
 
-internal static class PulseCredentialReader
+internal static class LegacyCredentialReader
 {
     private const int CredTypeGeneric = 1;
-    private const string PulseService = "Pulse";
 
-    public static string? ReadCloudflareToken(string domain)
-        => ReadKeyringPassword($"cloudflare:{domain.Trim().ToLowerInvariant()}");
-
-    public static string? ReadWebAnalyticsToken(string accountId)
-        => ReadKeyringPassword($"web_analytics:{accountId.Trim()}");
-
-    public static string? ReadSearchConsoleClientSecret(string clientId)
-        => ReadKeyringPassword($"search_console:client_secret:{clientId.Trim()}");
-
-    public static string? ReadSearchConsoleRefreshToken(string clientId)
-        => ReadKeyringPassword($"search_console:refresh_token:{clientId.Trim()}");
-
-    private static string? ReadKeyringPassword(string user)
+    public static string? ReadKeyringPassword(string user, string credentialService)
     {
-        var targetName = $"{user}.{PulseService}";
+        var targetName = $"{user}.{credentialService}";
         if (!CredRead(targetName, CredTypeGeneric, 0, out var credentialPtr))
         {
             return null;

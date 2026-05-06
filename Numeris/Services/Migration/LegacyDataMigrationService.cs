@@ -13,9 +13,15 @@ using Numeris.Services.Secrets;
 
 namespace Numeris.Services.Migration;
 
-public sealed class PulseDataMigrationService
+public sealed class LegacyDataMigrationService
 {
-    private const string ImportSource = "pulse-tauri";
+    private static readonly LegacyAppSource ImportSource = new()
+    {
+        ConfigTag = "legacy-pulse-tauri",
+        AppDataFolder = "com.finnvek.pulse",
+        DatabaseFile = "pulse.db",
+        CredentialService = "Pulse",
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -27,7 +33,7 @@ public sealed class PulseDataMigrationService
     private readonly CredentialVault _vault;
     private readonly ConnectionsRepository _connectionsRepo;
 
-    public PulseDataMigrationService(SqliteDatabase db, CredentialVault vault, ConnectionsRepository connectionsRepo)
+    public LegacyDataMigrationService(SqliteDatabase db, CredentialVault vault, ConnectionsRepository connectionsRepo)
     {
         _db = db;
         _vault = vault;
@@ -36,54 +42,61 @@ public sealed class PulseDataMigrationService
 
     public async Task ImportAllAsync()
     {
-        var pulseDbPath = GetPulseDatabasePath();
-        if (!File.Exists(pulseDbPath))
+        var sourceDbPath = GetSourceDatabasePath();
+        if (!File.Exists(sourceDbPath))
         {
             return;
         }
 
-        await ImportWebAnalyticsAsync(pulseDbPath).ConfigureAwait(false);
-        await ImportCloudflareAsync(pulseDbPath).ConfigureAwait(false);
-        await ImportSearchConsoleAsync(pulseDbPath).ConfigureAwait(false);
+        await ImportWebAnalyticsAsync(sourceDbPath).ConfigureAwait(false);
+        await ImportCloudflareAsync(sourceDbPath).ConfigureAwait(false);
+        await ImportSearchConsoleAsync(sourceDbPath).ConfigureAwait(false);
     }
 
     public async Task ImportWebAnalyticsAsync()
     {
-        var pulseDbPath = GetPulseDatabasePath();
-        if (!File.Exists(pulseDbPath))
+        var sourceDbPath = GetSourceDatabasePath();
+        if (!File.Exists(sourceDbPath))
         {
             return;
         }
 
-        await ImportWebAnalyticsAsync(pulseDbPath).ConfigureAwait(false);
+        await ImportWebAnalyticsAsync(sourceDbPath).ConfigureAwait(false);
     }
 
-    private async Task ImportWebAnalyticsAsync(string pulseDbPath)
+    private async Task ImportWebAnalyticsAsync(string sourceDbPath)
     {
-        var pulse = ReadPulseWebAnalytics(pulseDbPath);
-        if (pulse is null || string.IsNullOrWhiteSpace(pulse.AccountId))
+        var source = ReadWebAnalyticsSource(sourceDbPath);
+        if (source is null || string.IsNullOrWhiteSpace(source.AccountId))
         {
             return;
         }
 
-        var apiToken = FirstNonBlank(pulse.ApiToken, PulseCredentialReader.ReadWebAnalyticsToken(pulse.AccountId));
-        if (!string.IsNullOrWhiteSpace(apiToken))
+        if (string.IsNullOrWhiteSpace(_vault.GetWebAnalyticsToken(source.AccountId)))
         {
-            _vault.SetWebAnalyticsToken(pulse.AccountId, NormalizeCloudflareToken(apiToken));
+            var apiToken = FirstNonBlank(
+                LegacyCredentialReader.ReadKeyringPassword(
+                    $"web_analytics:{source.AccountId}",
+                    ImportSource.CredentialService),
+                source.ApiToken);
+            if (!string.IsNullOrWhiteSpace(apiToken))
+            {
+                _vault.SetWebAnalyticsToken(source.AccountId, NormalizeCloudflareToken(apiToken));
+            }
         }
 
         await UpsertImportedConnectionAsync(
             "wa",
             "web_analytics",
-            NormalizeStatus(pulse.Status),
+            NormalizeStatus(source.Status),
             new WebAnalyticsConnectionConfig
             {
-                AccountId = pulse.AccountId,
-                LastValidatedAt = pulse.LastValidatedAt ?? _connectionsRepo.FormatNow(),
-                ImportSource = ImportSource,
+                AccountId = source.AccountId,
+                LastValidatedAt = source.LastValidatedAt ?? _connectionsRepo.FormatNow(),
+                ImportSource = ImportSource.ConfigTag,
             }).ConfigureAwait(false);
 
-        if (pulse.Sites.Count == 0)
+        if (source.Sites.Count == 0)
         {
             return;
         }
@@ -91,7 +104,7 @@ public sealed class PulseDataMigrationService
         var nowStr = _connectionsRepo.FormatNow();
         await _db.WriteAsync(connection =>
         {
-            foreach (var site in pulse.Sites)
+            foreach (var site in source.Sites)
             {
                 connection.Execute(
                     """
@@ -111,80 +124,100 @@ public sealed class PulseDataMigrationService
         }).ConfigureAwait(false);
     }
 
-    private async Task ImportCloudflareAsync(string pulseDbPath)
+    private async Task ImportCloudflareAsync(string sourceDbPath)
     {
-        foreach (var pulse in ReadPulseCloudflareConnections(pulseDbPath))
+        foreach (var source in ReadCloudflareSourceConnections(sourceDbPath))
         {
-            if (string.IsNullOrWhiteSpace(pulse.Domain) || string.IsNullOrWhiteSpace(pulse.ZoneId))
+            if (string.IsNullOrWhiteSpace(source.Domain) || string.IsNullOrWhiteSpace(source.ZoneId))
             {
                 continue;
             }
 
-            var domain = pulse.Domain.Trim().ToLowerInvariant();
-            var apiToken = FirstNonBlank(pulse.ApiToken, PulseCredentialReader.ReadCloudflareToken(domain));
-            if (!string.IsNullOrWhiteSpace(apiToken))
+            var domain = source.Domain.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(_vault.GetCloudflareToken(domain)))
             {
-                _vault.SetCloudflareToken(domain, NormalizeCloudflareToken(apiToken));
+                var apiToken = FirstNonBlank(
+                    LegacyCredentialReader.ReadKeyringPassword(
+                        $"cloudflare:{domain}",
+                        ImportSource.CredentialService),
+                    source.ApiToken);
+                if (!string.IsNullOrWhiteSpace(apiToken))
+                {
+                    _vault.SetCloudflareToken(domain, NormalizeCloudflareToken(apiToken));
+                }
             }
 
             await UpsertImportedConnectionAsync(
                 $"cloudflare:{domain}",
                 "cloudflare",
-                NormalizeStatus(pulse.Status),
+                NormalizeStatus(source.Status),
                 new CloudflareConnectionConfig
                 {
                     Domain = domain,
-                    ZoneId = pulse.ZoneId.Trim(),
-                    LastValidatedAt = pulse.LastValidatedAt,
-                    ImportSource = ImportSource,
+                    ZoneId = source.ZoneId.Trim(),
+                    LastValidatedAt = source.LastValidatedAt,
+                    ImportSource = ImportSource.ConfigTag,
                 }).ConfigureAwait(false);
         }
     }
 
-    private async Task ImportSearchConsoleAsync(string pulseDbPath)
+    private async Task ImportSearchConsoleAsync(string sourceDbPath)
     {
-        var pulse = ReadPulseSearchConsole(pulseDbPath);
-        if (pulse is null || string.IsNullOrWhiteSpace(pulse.ClientId))
+        var source = ReadSearchConsoleSource(sourceDbPath);
+        if (source is null || string.IsNullOrWhiteSpace(source.ClientId))
         {
             return;
         }
 
-        var clientId = pulse.ClientId.Trim();
-        var clientSecret = FirstNonBlank(pulse.ClientSecret, PulseCredentialReader.ReadSearchConsoleClientSecret(clientId));
-        var refreshToken = FirstNonBlank(pulse.RefreshToken, PulseCredentialReader.ReadSearchConsoleRefreshToken(clientId));
-
-        if (!string.IsNullOrWhiteSpace(clientSecret))
+        var clientId = source.ClientId.Trim();
+        if (string.IsNullOrWhiteSpace(_vault.GetSearchConsoleClientSecret(clientId)))
         {
-            _vault.SetSearchConsoleClientSecret(clientId, clientSecret);
+            var clientSecret = FirstNonBlank(
+                LegacyCredentialReader.ReadKeyringPassword(
+                    $"search_console:client_secret:{clientId}",
+                    ImportSource.CredentialService),
+                source.ClientSecret);
+            if (!string.IsNullOrWhiteSpace(clientSecret))
+            {
+                _vault.SetSearchConsoleClientSecret(clientId, clientSecret);
+            }
         }
-        if (!string.IsNullOrWhiteSpace(refreshToken))
+        if (string.IsNullOrWhiteSpace(_vault.GetSearchConsoleRefreshToken(clientId)))
         {
-            _vault.SetSearchConsoleRefreshToken(clientId, refreshToken);
+            var refreshToken = FirstNonBlank(
+                LegacyCredentialReader.ReadKeyringPassword(
+                    $"search_console:refresh_token:{clientId}",
+                    ImportSource.CredentialService),
+                source.RefreshToken);
+            if (!string.IsNullOrWhiteSpace(refreshToken))
+            {
+                _vault.SetSearchConsoleRefreshToken(clientId, refreshToken);
+            }
         }
 
         await UpsertImportedConnectionAsync(
             "sc",
             "search_console",
-            NormalizeStatus(pulse.Status),
+            NormalizeStatus(source.Status),
             new SearchConsoleConnectionConfig
             {
                 ClientId = clientId,
-                LastValidatedAt = pulse.LastValidatedAt,
-                Sites = pulse.Sites,
-                ImportSource = ImportSource,
+                LastValidatedAt = source.LastValidatedAt,
+                Sites = source.Sites,
+                ImportSource = ImportSource.ConfigTag,
             }).ConfigureAwait(false);
     }
 
-    private static PulseWebAnalyticsImport? ReadPulseWebAnalytics(string pulseDbPath)
+    private static LegacyWebAnalyticsImport? ReadWebAnalyticsSource(string sourceDbPath)
     {
         using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
-            DataSource = pulseDbPath,
+            DataSource = sourceDbPath,
             Mode = SqliteOpenMode.ReadOnly,
         }.ToString());
         connection.Open();
 
-        var row = connection.QueryFirstOrDefault<PulseConnectionRow>(
+        var row = connection.QueryFirstOrDefault<LegacyConnectionRow>(
             "SELECT status AS Status, config AS Config FROM connections WHERE id = 'wa'");
         var configJson = row?.Config;
         if (string.IsNullOrWhiteSpace(configJson))
@@ -192,13 +225,13 @@ public sealed class PulseDataMigrationService
             return null;
         }
 
-        var config = JsonSerializer.Deserialize<PulseWebAnalyticsConfig>(configJson, JsonOptions);
+        var config = JsonSerializer.Deserialize<LegacyWebAnalyticsConfig>(configJson, JsonOptions);
         if (config is null || string.IsNullOrWhiteSpace(config.AccountId))
         {
             return null;
         }
 
-        var sites = connection.Query<PulseWebAnalyticsSite>(
+        var sites = connection.Query<LegacyWebAnalyticsSite>(
             """
             SELECT domain AS Domain, site_tag AS SiteTag, discovered_at AS DiscoveredAt
             FROM web_analytics_sites
@@ -206,7 +239,7 @@ public sealed class PulseDataMigrationService
             ORDER BY domain
             """).AsList();
 
-        return new PulseWebAnalyticsImport
+        return new LegacyWebAnalyticsImport
         {
             AccountId = config.AccountId.Trim(),
             ApiToken = config.ApiToken?.Trim() ?? "",
@@ -216,10 +249,10 @@ public sealed class PulseDataMigrationService
         };
     }
 
-    private static List<PulseCloudflareImport> ReadPulseCloudflareConnections(string pulseDbPath)
+    private static List<LegacyCloudflareImport> ReadCloudflareSourceConnections(string sourceDbPath)
     {
-        using var connection = OpenPulseConnection(pulseDbPath);
-        var rows = connection.Query<PulseConnectionRow>(
+        using var connection = OpenSourceConnection(sourceDbPath);
+        var rows = connection.Query<LegacyConnectionRow>(
             """
             SELECT status AS Status, config AS Config
             FROM connections
@@ -227,7 +260,7 @@ public sealed class PulseDataMigrationService
             ORDER BY id
             """).AsList();
 
-        var result = new List<PulseCloudflareImport>();
+        var result = new List<LegacyCloudflareImport>();
         foreach (var row in rows)
         {
             if (string.IsNullOrWhiteSpace(row.Config))
@@ -235,13 +268,13 @@ public sealed class PulseDataMigrationService
                 continue;
             }
 
-            var config = JsonSerializer.Deserialize<PulseCloudflareConfig>(row.Config, JsonOptions);
+            var config = JsonSerializer.Deserialize<LegacyCloudflareConfig>(row.Config, JsonOptions);
             if (config is null)
             {
                 continue;
             }
 
-            result.Add(new PulseCloudflareImport
+            result.Add(new LegacyCloudflareImport
             {
                 Domain = config.Domain,
                 ZoneId = config.ZoneId,
@@ -253,23 +286,23 @@ public sealed class PulseDataMigrationService
         return result;
     }
 
-    private static PulseSearchConsoleImport? ReadPulseSearchConsole(string pulseDbPath)
+    private static LegacySearchConsoleImport? ReadSearchConsoleSource(string sourceDbPath)
     {
-        using var connection = OpenPulseConnection(pulseDbPath);
-        var row = connection.QueryFirstOrDefault<PulseConnectionRow>(
+        using var connection = OpenSourceConnection(sourceDbPath);
+        var row = connection.QueryFirstOrDefault<LegacyConnectionRow>(
             "SELECT status AS Status, config AS Config FROM connections WHERE id = 'sc'");
         if (string.IsNullOrWhiteSpace(row?.Config))
         {
             return null;
         }
 
-        var config = JsonSerializer.Deserialize<PulseSearchConsoleConfig>(row.Config, JsonOptions);
+        var config = JsonSerializer.Deserialize<LegacySearchConsoleConfig>(row.Config, JsonOptions);
         if (config is null || string.IsNullOrWhiteSpace(config.ClientId))
         {
             return null;
         }
 
-        return new PulseSearchConsoleImport
+        return new LegacySearchConsoleImport
         {
             ClientId = config.ClientId,
             ClientSecret = config.ClientSecret,
@@ -300,21 +333,21 @@ public sealed class PulseDataMigrationService
         });
     }
 
-    private static SqliteConnection OpenPulseConnection(string pulseDbPath)
+    private static SqliteConnection OpenSourceConnection(string sourceDbPath)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
-            DataSource = pulseDbPath,
+            DataSource = sourceDbPath,
             Mode = SqliteOpenMode.ReadOnly,
         }.ToString());
         connection.Open();
         return connection;
     }
 
-    private static string GetPulseDatabasePath()
+    private static string GetSourceDatabasePath()
     {
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(roaming, "com.finnvek.pulse", "pulse.db");
+        return Path.Combine(roaming, ImportSource.AppDataFolder, ImportSource.DatabaseFile);
     }
 
     private static string NormalizeCloudflareToken(string token)
@@ -341,13 +374,21 @@ public sealed class PulseDataMigrationService
         return null;
     }
 
-    private sealed class PulseConnectionRow
+    private sealed class LegacyAppSource
+    {
+        public string ConfigTag { get; init; } = "";
+        public string AppDataFolder { get; init; } = "";
+        public string DatabaseFile { get; init; } = "";
+        public string CredentialService { get; init; } = "";
+    }
+
+    private sealed class LegacyConnectionRow
     {
         public string Status { get; set; } = "";
         public string? Config { get; set; }
     }
 
-    private sealed class PulseCloudflareConfig
+    private sealed class LegacyCloudflareConfig
     {
         [JsonPropertyName("domain")]
         public string Domain { get; set; } = "";
@@ -362,7 +403,7 @@ public sealed class PulseDataMigrationService
         public string? LastValidatedAt { get; set; }
     }
 
-    private sealed class PulseCloudflareImport
+    private sealed class LegacyCloudflareImport
     {
         public string Domain { get; set; } = "";
         public string ZoneId { get; set; } = "";
@@ -371,7 +412,7 @@ public sealed class PulseDataMigrationService
         public string Status { get; set; } = "";
     }
 
-    private sealed class PulseSearchConsoleConfig
+    private sealed class LegacySearchConsoleConfig
     {
         [JsonPropertyName("client_id")]
         public string ClientId { get; set; } = "";
@@ -389,7 +430,7 @@ public sealed class PulseDataMigrationService
         public List<string> Sites { get; set; } = new();
     }
 
-    private sealed class PulseSearchConsoleImport
+    private sealed class LegacySearchConsoleImport
     {
         public string ClientId { get; set; } = "";
         public string ClientSecret { get; set; } = "";
@@ -399,7 +440,7 @@ public sealed class PulseDataMigrationService
         public string Status { get; set; } = "";
     }
 
-    private sealed class PulseWebAnalyticsConfig
+    private sealed class LegacyWebAnalyticsConfig
     {
         [JsonPropertyName("account_id")]
         public string AccountId { get; set; } = "";
@@ -411,16 +452,16 @@ public sealed class PulseDataMigrationService
         public string? LastValidatedAt { get; set; }
     }
 
-    private sealed class PulseWebAnalyticsImport
+    private sealed class LegacyWebAnalyticsImport
     {
         public string AccountId { get; set; } = "";
         public string ApiToken { get; set; } = "";
         public string Status { get; set; } = "";
         public string? LastValidatedAt { get; set; }
-        public List<PulseWebAnalyticsSite> Sites { get; set; } = new();
+        public List<LegacyWebAnalyticsSite> Sites { get; set; } = new();
     }
 
-    private sealed class PulseWebAnalyticsSite
+    private sealed class LegacyWebAnalyticsSite
     {
         public string Domain { get; set; } = "";
         public string SiteTag { get; set; } = "";

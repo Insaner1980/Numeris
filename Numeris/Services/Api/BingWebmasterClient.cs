@@ -9,7 +9,7 @@ namespace Numeris.Services.Api;
 public sealed class BingWebmasterClient
 {
     private const string Endpoint = "https://ssl.bing.com/webmaster/api.svc/json/";
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
     public async Task<JsonDocument> CallAsync(string apiKey, string method, IReadOnlyDictionary<string, string?> parameters)
     {
@@ -31,7 +31,7 @@ public sealed class BingWebmasterClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Bing Webmaster {method} returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("Bing Webmaster", method, response.StatusCode, ApiErrorMessage.FromBody(body));
         }
         return JsonDocument.Parse(body);
     }

@@ -16,7 +16,7 @@ public sealed class CloudflareRumClient
     private const string GraphqlEndpoint = "https://api.cloudflare.com/client/v4/graphql";
 
     private const string RollupQuery = """
-        query PulseWebAnalytics(
+        query NumerisWebAnalytics(
           $accountTag: String!
           $siteTag: String!
           $since: Time!

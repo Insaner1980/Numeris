@@ -52,6 +52,8 @@ public sealed class PerformanceSyncResult
 {
     public long UrlsSynced { get; set; }
     public long CruxMetricPoints { get; set; }
+    public long CruxSkipped { get; set; }
     public long PageSpeedRuns { get; set; }
     public long PageSpeedAudits { get; set; }
+    public long PageSpeedErrors { get; set; }
 }

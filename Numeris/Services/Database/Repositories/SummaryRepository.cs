@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
+using Dapper;
 using Microsoft.Data.Sqlite;
 using Numeris.Helpers;
 using Numeris.Models;
@@ -58,10 +59,12 @@ public sealed class SummaryRepository
                 ("$a", prevStartStr), ("$b", startStr));
 
             var avgRating = ScalarDouble(connection,
-                $"SELECT COALESCE(average_rating, 0.0) FROM play_ratings WHERE package_name = '{Domains.PlayStorePackage}' ORDER BY date DESC LIMIT 1");
+                "SELECT COALESCE(average_rating, 0.0) FROM play_ratings WHERE package_name = $package ORDER BY date DESC LIMIT 1",
+                ("$package", Domains.PlayStorePackage));
             var prevRating = ScalarDoubleOr(connection,
-                $"SELECT COALESCE(average_rating, 0.0) FROM play_ratings WHERE package_name = '{Domains.PlayStorePackage}' AND date < $a ORDER BY date DESC LIMIT 1",
+                "SELECT COALESCE(average_rating, 0.0) FROM play_ratings WHERE package_name = $package AND date < $a ORDER BY date DESC LIMIT 1",
                 avgRating,
+                ("$package", Domains.PlayStorePackage),
                 ("$a", startStr));
 
             var crashRate = ScalarDouble(connection,
@@ -90,39 +93,25 @@ public sealed class SummaryRepository
     }
 
     private static long ScalarLong(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
-    {
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = sql;
-        foreach (var (name, value) in parameters)
-        {
-            cmd.Parameters.AddWithValue(name, value);
-        }
-        var result = cmd.ExecuteScalar();
-        return result is null || result is DBNull ? 0 : Convert.ToInt64(result);
-    }
+        => connection.ExecuteScalar<long>(sql, ToParameters(parameters));
 
     private static double ScalarDouble(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
-    {
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = sql;
-        foreach (var (name, value) in parameters)
-        {
-            cmd.Parameters.AddWithValue(name, value);
-        }
-        var result = cmd.ExecuteScalar();
-        return result is null || result is DBNull ? 0.0 : Convert.ToDouble(result);
-    }
+        => connection.ExecuteScalar<double>(sql, ToParameters(parameters));
 
     private static double ScalarDoubleOr(SqliteConnection connection, string sql, double fallback, params (string Name, object Value)[] parameters)
     {
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = sql;
+        var result = connection.ExecuteScalar<double?>(sql, ToParameters(parameters));
+        return result ?? fallback;
+    }
+
+    private static DynamicParameters ToParameters(params (string Name, object Value)[] parameters)
+    {
+        var dynamicParameters = new DynamicParameters();
         foreach (var (name, value) in parameters)
         {
-            cmd.Parameters.AddWithValue(name, value);
+            dynamicParameters.Add(name.TrimStart('$', '@', ':'), value);
         }
-        var result = cmd.ExecuteScalar();
-        return result is null || result is DBNull ? fallback : Convert.ToDouble(result);
+        return dynamicParameters;
     }
 
     private static double PctChange(double prev, double current)

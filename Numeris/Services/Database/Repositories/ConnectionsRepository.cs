@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Dapper;
@@ -237,15 +238,21 @@ public sealed class ConnectionsRepository
     {
         return _db.ReadAsync(connection =>
         {
-            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
-                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'perf'");
+            var rows = connection.Query<(string Id, string Status, string? LastSync)>(
+                """
+                SELECT id AS Id, status AS Status, last_sync AS LastSync
+                FROM connections
+                WHERE id IN ('perf', 'crux', 'pagespeed')
+                """).AsList();
+            var connected = rows.Exists(r => r.Status == "connected");
+            var configured = rows.Exists(r => r.Status == "configured");
             return (PerformanceConnectionInfo?)new PerformanceConnectionInfo
             {
                 Id = "perf",
                 HasCruxApiKey = !string.IsNullOrEmpty(_vault.GetCruxApiKey()),
                 HasPageSpeedApiKey = !string.IsNullOrEmpty(_vault.GetPageSpeedApiKey()),
-                Status = row.Status ?? "mock",
-                LastSync = row.LastSync,
+                Status = connected ? "connected" : configured ? "configured" : "mock",
+                LastSync = rows.Select(r => r.LastSync).Where(v => !string.IsNullOrWhiteSpace(v)).OrderByDescending(v => v).FirstOrDefault(),
             };
         });
     }
@@ -255,13 +262,15 @@ public sealed class ConnectionsRepository
         return _db.WriteAsync(connection =>
         {
             var json = JsonSerializer.Serialize(config, JsonOptions);
-            connection.Execute(
-                """
-                INSERT INTO connections (id, source, status, config, last_sync)
-                VALUES ('perf', 'performance', @status, @json, NULL)
-                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
-                """,
-                new { status, json });
+            UpsertSingletonConnection(connection, "perf", "performance", status, json);
+            if (!string.IsNullOrWhiteSpace(_vault.GetCruxApiKey()))
+            {
+                UpsertSingletonConnection(connection, "crux", "crux", status, json);
+            }
+            if (!string.IsNullOrWhiteSpace(_vault.GetPageSpeedApiKey()))
+            {
+                UpsertSingletonConnection(connection, "pagespeed", "pagespeed", status, json);
+            }
         });
     }
 
@@ -270,16 +279,40 @@ public sealed class ConnectionsRepository
         return _db.WriteAsync(connection =>
         {
             connection.Execute(
-                "UPDATE connections SET status = @status, last_sync = @lastSync WHERE id = 'perf'",
-                new { status, lastSync });
+                """
+                UPDATE connections
+                SET status = @status, last_sync = @lastSync
+                WHERE id = 'perf'
+                   OR (id = 'crux' AND @hasCrux = 1)
+                   OR (id = 'pagespeed' AND @hasPageSpeed = 1)
+                """,
+                new
+                {
+                    status,
+                    lastSync,
+                    hasCrux = string.IsNullOrWhiteSpace(_vault.GetCruxApiKey()) ? 0 : 1,
+                    hasPageSpeed = string.IsNullOrWhiteSpace(_vault.GetPageSpeedApiKey()) ? 0 : 1,
+                });
         });
+    }
+
+    private static void UpsertSingletonConnection(Microsoft.Data.Sqlite.SqliteConnection connection, string id, string source, string status, string json)
+    {
+        connection.Execute(
+            """
+            INSERT INTO connections (id, source, status, config, last_sync)
+            VALUES (@id, @source, @status, @json, NULL)
+            ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+            """,
+            new { id, source, status, json });
     }
 
     public Task DeletePerformanceAsync()
     {
         return _db.WriteAsync(connection =>
         {
-            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'perf'");
+            connection.Execute(
+                "UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id IN ('perf', 'crux', 'pagespeed')");
         });
     }
 

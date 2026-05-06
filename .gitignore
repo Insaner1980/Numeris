@@ -52,3 +52,4 @@ _ReSharper*/
 # Logs
 *.log
 logs/
+reports/

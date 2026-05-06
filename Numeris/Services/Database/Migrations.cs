@@ -1,9 +1,12 @@
+using Dapper;
 using Microsoft.Data.Sqlite;
 
 namespace Numeris.Services.Database;
 
 internal static class Migrations
 {
+    private const int CurrentSchemaVersion = 2;
+
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS cloudflare_traffic (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,11 +323,12 @@ internal static class Migrations
         CREATE TABLE IF NOT EXISTS bing_page_stats (
             site_url TEXT NOT NULL,
             page_url TEXT NOT NULL,
+            date TEXT NOT NULL DEFAULT '',
             clicks INTEGER,
             impressions INTEGER,
             raw_json TEXT NOT NULL,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (site_url, page_url)
+            PRIMARY KEY (site_url, page_url, date)
         );
 
         CREATE TABLE IF NOT EXISTS bing_raw_items (
@@ -365,6 +369,8 @@ internal static class Migrations
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ps', 'play_store', 'mock');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('wa', 'web_analytics', 'mock');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('perf', 'performance', 'mock');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('crux', 'crux', 'mock');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('pagespeed', 'pagespeed', 'mock');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'mock');
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
             VALUES ('https://finnvek.com/', 'https://finnvek.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
@@ -374,20 +380,134 @@ internal static class Migrations
             VALUES ('https://finnvek.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
             VALUES ('https://knittoolsapp.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
-        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1');
+        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '2');
         """;
 
     public static void RunAll(SqliteConnection connection)
     {
         ExecuteBatch(connection, "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
         ExecuteBatch(connection, SchemaSql);
+        RunPendingMigrations(connection);
         ExecuteBatch(connection, DefaultConnectionsSql);
     }
 
-    private static void ExecuteBatch(SqliteConnection connection, string sql)
+    private static void RunPendingMigrations(SqliteConnection connection)
+    {
+        var version = GetUserVersion(connection);
+        if (version == 0)
+        {
+            version = GetMetaSchemaVersion(connection);
+        }
+
+        if (version < 2)
+        {
+            RunV2Migration(connection);
+        }
+
+        SetSchemaVersion(connection, CurrentSchemaVersion);
+    }
+
+    private static void RunV2Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            if (TableExists(connection, transaction, "bing_page_stats")
+                && !ColumnExists(connection, transaction, "bing_page_stats", "date"))
+            {
+                ExecuteBatch(
+                    connection,
+                    """
+                    ALTER TABLE bing_page_stats RENAME TO bing_page_stats_old;
+
+                    CREATE TABLE bing_page_stats (
+                        site_url TEXT NOT NULL,
+                        page_url TEXT NOT NULL,
+                        date TEXT NOT NULL DEFAULT '',
+                        clicks INTEGER,
+                        impressions INTEGER,
+                        raw_json TEXT NOT NULL,
+                        fetched_at TEXT NOT NULL,
+                        PRIMARY KEY (site_url, page_url, date)
+                    );
+
+                    INSERT OR REPLACE INTO bing_page_stats
+                    (site_url, page_url, date, clicks, impressions, raw_json, fetched_at)
+                    SELECT site_url, page_url, '', clicks, impressions, raw_json, fetched_at
+                    FROM bing_page_stats_old;
+
+                    DROP TABLE bing_page_stats_old;
+                    """,
+                    transaction);
+            }
+
+            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static int GetUserVersion(SqliteConnection connection)
     {
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.ExecuteNonQuery();
+        cmd.CommandText = "PRAGMA user_version";
+        return int.TryParse(cmd.ExecuteScalar()?.ToString(), out var version) ? version : 0;
+    }
+
+    private static int GetMetaSchemaVersion(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT value FROM meta WHERE key = 'schema_version'";
+        return int.TryParse(cmd.ExecuteScalar()?.ToString(), out var version) ? version : 0;
+    }
+
+    private static void SetSchemaVersion(SqliteConnection connection, int version, SqliteTransaction? transaction = null)
+    {
+        ExecuteBatch(connection, $"PRAGMA user_version = {version};", transaction);
+        ExecuteBatch(
+            connection,
+            """
+            INSERT INTO meta (key, value) VALUES ('schema_version', @version)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """,
+            transaction,
+            new SqliteParameter("@version", version.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private static bool TableExists(SqliteConnection connection, SqliteTransaction transaction, string table)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = @table";
+        cmd.Parameters.AddWithValue("@table", table);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private static bool ColumnExists(SqliteConnection connection, SqliteTransaction transaction, string table, string column)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = "SELECT 1 FROM pragma_table_info(@table) WHERE name = @column";
+        cmd.Parameters.AddWithValue("@table", table);
+        cmd.Parameters.AddWithValue("@column", column);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private static void ExecuteBatch(
+        SqliteConnection connection,
+        string batchSql,
+        SqliteTransaction? transaction = null,
+        params SqliteParameter[] parameters)
+    {
+        var dynamicParameters = new DynamicParameters();
+        foreach (var parameter in parameters)
+        {
+            dynamicParameters.Add(parameter.ParameterName.TrimStart('@', '$', ':'), parameter.Value);
+        }
+        connection.Execute(batchSql, dynamicParameters, transaction);
     }
 }

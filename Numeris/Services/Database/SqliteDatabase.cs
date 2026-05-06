@@ -53,6 +53,29 @@ public sealed class SqliteDatabase : IDisposable
         }
     }
 
+    public async Task WriteTransactionAsync(Action<SqliteConnection, SqliteTransaction> work, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var transaction = _connection.BeginTransaction();
+            try
+            {
+                work(_connection, transaction);
+                transaction.Commit();
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<T> WriteAsync<T>(Func<SqliteConnection, T> work, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);

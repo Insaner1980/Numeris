@@ -10,6 +10,7 @@ using Numeris.Services.Secrets;
 using Numeris.Services.Settings;
 using Numeris.Services.Sync;
 using Numeris.ViewModels;
+using Numeris.ViewModels.Sources;
 using Numeris.Views;
 using System;
 
@@ -35,7 +36,7 @@ public partial class App : Application
             var seeder = Services.GetRequiredService<MockSeeder>();
             seeder.SeedAsync().GetAwaiter().GetResult();
         }
-        var migration = Services.GetRequiredService<PulseDataMigrationService>();
+        var migration = Services.GetRequiredService<LegacyDataMigrationService>();
         migration.ImportAllAsync().GetAwaiter().GetResult();
 
         _window = Services.GetRequiredService<MainWindow>();
@@ -48,7 +49,7 @@ public partial class App : Application
 
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<MockSeeder>();
-        services.AddSingleton<PulseDataMigrationService>();
+        services.AddSingleton<LegacyDataMigrationService>();
         services.AddSingleton<SettingsStore>();
 
         services.AddSingleton<SummaryRepository>();
@@ -82,6 +83,11 @@ public partial class App : Application
         services.AddTransient<CloudflareViewModel>();
         services.AddTransient<SearchConsoleViewModel>();
         services.AddTransient<HealthViewModel>();
+        services.AddTransient<CloudflareSourceViewModel>();
+        services.AddTransient<WebAnalyticsSourceViewModel>();
+        services.AddTransient<SearchConsoleSourceViewModel>();
+        services.AddTransient<PerformanceSourceViewModel>();
+        services.AddTransient<BingSourceViewModel>();
         services.AddTransient<SourcesViewModel>();
 
         services.AddSingleton<MainWindow>();

@@ -15,7 +15,7 @@ public sealed class CloudflareGraphqlClient
     private const string GraphqlEndpoint = "https://api.cloudflare.com/client/v4/graphql";
 
     private const string DailyTrafficQuery = """
-        query PulseDailyTraffic($zoneTag: String!, $since: Date!, $until: Date!) {
+        query NumerisDailyTraffic($zoneTag: String!, $since: Date!, $until: Date!) {
           viewer {
             zones(filter: { zoneTag: $zoneTag }) {
               httpRequests1dGroups(

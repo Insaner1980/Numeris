@@ -10,7 +10,7 @@ namespace Numeris.Services.Api;
 public sealed class PageSpeedClient
 {
     private const string Endpoint = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(75) };
 
     public async Task<JsonDocument> RunAsync(string apiKey, string url, string strategy)
     {
@@ -24,7 +24,7 @@ public sealed class PageSpeedClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"PageSpeed returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("PageSpeed", "runPagespeed", response.StatusCode, ApiErrorMessage.FromBody(body));
         }
         return JsonDocument.Parse(body);
     }

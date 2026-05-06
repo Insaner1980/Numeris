@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
 using Numeris.Models;
+using Numeris.Services.Api;
 
 namespace Numeris.Services.Database.Repositories;
 
@@ -227,6 +229,131 @@ public sealed class SearchConsoleRepository
                 """;
             return new List<DecliningPage>(connection.Query<DecliningPage>(sql,
                 new { siteUrl, currentStart, currentEnd, prevStart, prevEnd, minPrev, limit }));
+        });
+    }
+
+    public Task<long> ReplaceSearchAnalyticsRowsAsync(
+        string siteUrl,
+        SearchQueryKind kind,
+        IReadOnlyCollection<SearchConsoleApiRow> rows,
+        string start,
+        string end,
+        string fetchedAt)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var kindStr = kind switch
+            {
+                SearchQueryKind.Daily => "daily",
+                SearchQueryKind.Query => "query",
+                SearchQueryKind.Page => "page",
+                SearchQueryKind.Country => "country",
+                SearchQueryKind.Device => "device",
+                _ => "query",
+            };
+
+            connection.Execute(
+                "DELETE FROM search_console WHERE site_url = @siteUrl AND kind = @kind AND date BETWEEN @start AND @end",
+                new { siteUrl, kind = kindStr, start, end });
+
+            if (kind == SearchQueryKind.Device)
+            {
+                connection.Execute(
+                    "DELETE FROM search_devices WHERE site_url = @siteUrl AND date BETWEEN @start AND @end",
+                    new { siteUrl, start, end });
+            }
+
+            long records = 0;
+            foreach (var row in rows)
+            {
+                connection.Execute(
+                    """
+                    INSERT INTO search_console
+                    (site_url, date, kind, query, page, clicks, impressions, ctr, position, country, fetched_at)
+                    VALUES (@siteUrl, @date, @kind, @query, @page, @clicks, @impressions, @ctr, @position, @country, @fetchedAt)
+                    """,
+                    new
+                    {
+                        siteUrl,
+                        date = row.Date,
+                        kind = kindStr,
+                        query = row.Query,
+                        page = row.Page,
+                        clicks = row.Clicks,
+                        impressions = row.Impressions,
+                        ctr = row.Ctr,
+                        position = row.Position,
+                        country = row.Country,
+                        fetchedAt,
+                    });
+                records++;
+
+                if (kind == SearchQueryKind.Device && !string.IsNullOrEmpty(row.Device))
+                {
+                    connection.Execute(
+                        """
+                        INSERT INTO search_devices (site_url, date, device, clicks, impressions, ctr, position)
+                        VALUES (@siteUrl, @date, @device, @clicks, @impressions, @ctr, @position)
+                        ON CONFLICT(site_url, date, device) DO UPDATE SET
+                            clicks = excluded.clicks,
+                            impressions = excluded.impressions,
+                            ctr = excluded.ctr,
+                            position = excluded.position
+                        """,
+                        new
+                        {
+                            siteUrl,
+                            date = row.Date,
+                            device = row.Device,
+                            clicks = row.Clicks,
+                            impressions = row.Impressions,
+                            ctr = row.Ctr,
+                            position = row.Position,
+                        });
+                }
+            }
+
+            return records;
+        });
+    }
+
+    public Task<long> ReplacePageQueryRowsAsync(
+        string siteUrl,
+        string periodStart,
+        string periodEnd,
+        IReadOnlyCollection<SearchConsoleApiRow> rows)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute(
+                "DELETE FROM search_page_queries WHERE site_url = @siteUrl AND period_start = @periodStart AND period_end = @periodEnd",
+                new { siteUrl, periodStart, periodEnd });
+
+            long records = 0;
+            foreach (var row in rows.Where(r => !string.IsNullOrEmpty(r.Page)))
+            {
+                connection.Execute(
+                    """
+                    INSERT OR REPLACE INTO search_page_queries
+                    (site_url, period_start, period_end, page, query, clicks, impressions, ctr, position)
+                    VALUES (@siteUrl, @periodStart, @periodEnd, @page, @query, @clicks, @impressions, @ctr, @position)
+                    """,
+                    new
+                    {
+                        siteUrl,
+                        periodStart,
+                        periodEnd,
+                        page = row.Page!,
+                        query = row.Query,
+                        clicks = row.Clicks,
+                        impressions = row.Impressions,
+                        ctr = row.Ctr,
+                        position = row.Position,
+                    });
+                records++;
+            }
+
+            return records;
         });
     }
 }

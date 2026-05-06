@@ -70,7 +70,7 @@ public sealed class SearchConsoleClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Google returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("Google OAuth", "token", response.StatusCode, ApiErrorMessage.FromBody(body));
         }
         var parsed = JsonSerializer.Deserialize<TokenResponse>(body, JsonOptions)
             ?? throw new InvalidOperationException("Could not parse Google token response");
@@ -94,7 +94,7 @@ public sealed class SearchConsoleClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Google Search Console returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("Google Search Console", "sites.list", response.StatusCode, ApiErrorMessage.FromBody(body));
         }
         var parsed = JsonSerializer.Deserialize<SitesResponse>(body, JsonOptions);
         return parsed?.SiteEntry?.Select(e => e.SiteUrl).ToList() ?? new List<string>();
@@ -162,7 +162,7 @@ public sealed class SearchConsoleClient
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Search Console query returned HTTP {(int)response.StatusCode}: {body}");
+            throw new ApiRequestException("Google Search Console", "searchAnalytics.query", response.StatusCode, ApiErrorMessage.FromBody(body));
         }
         var parsed = JsonSerializer.Deserialize<QueryResponse>(body, JsonOptions);
         var rows = new List<SearchConsoleApiRow>();
