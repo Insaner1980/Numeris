@@ -11,16 +11,16 @@ public partial class ShellViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
 
     [ObservableProperty]
-    private Period _selectedPeriod = Period.Last7Days;
+    public partial Period SelectedPeriod { get; set; }
 
     [ObservableProperty]
-    private string _selectedDomain = "all";
+    public partial string SelectedDomain { get; set; }
 
     [ObservableProperty]
-    private string _lastPage = "dashboard";
+    public partial string LastPage { get; set; }
 
     [ObservableProperty]
-    private bool _isRefreshing;
+    public partial bool IsRefreshing { get; set; }
 
     public string[] AvailableDomains { get; } = { "all", Domains.KnitTools, Domains.Finnvek };
 
@@ -28,9 +28,9 @@ public partial class ShellViewModel : ObservableObject
     {
         _settingsStore = settingsStore;
         var settings = _settingsStore.Load();
-        _selectedPeriod = settings.SelectedPeriod;
-        _selectedDomain = AvailableDomains.Contains(settings.SelectedDomain) ? settings.SelectedDomain : "all";
-        _lastPage = IsKnownPage(settings.LastPage) ? settings.LastPage : "dashboard";
+        SelectedPeriod = settings.SelectedPeriod;
+        SelectedDomain = AvailableDomains.Contains(settings.SelectedDomain) ? settings.SelectedDomain : "all";
+        LastPage = IsKnownPage(settings.LastPage) ? settings.LastPage : "dashboard";
     }
 
     partial void OnSelectedPeriodChanged(Period value) => SaveSettings();
