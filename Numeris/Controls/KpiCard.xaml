@@ -4,13 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-          BorderThickness="1"
-          CornerRadius="{StaticResource CardCornerRadius}"
-          Padding="{StaticResource CardPadding}"
-          MinHeight="100">
+    <Grid x:Name="MetricContent"
+          Style="{StaticResource KpiCardSurfaceStyle}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -19,19 +16,39 @@
         <TextBlock Grid.Row="0"
                    Text="{x:Bind Label, Mode=OneWay}"
                    Style="{ThemeResource CaptionTextBlockStyle}"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                   FontFamily="{StaticResource NumerisFontFamily}"
+                   FontSize="13"
+                   Foreground="{StaticResource NumerisTextTertiaryBrush}"
+                   TextTrimming="CharacterEllipsis"
+                   MaxLines="1" />
 
         <TextBlock Grid.Row="1"
                    Text="{x:Bind Value, Mode=OneWay}"
                    Style="{ThemeResource SubtitleTextBlockStyle}"
+                   FontFamily="{StaticResource NumerisFontFamily}"
+                   FontSize="28"
                    FontWeight="SemiBold"
-                   Margin="0,4,0,0" />
+                   Foreground="{StaticResource NumerisTextPrimaryBrush}"
+                   TextTrimming="CharacterEllipsis"
+                   MaxLines="1"
+                   Margin="0,6,0,0" />
 
         <TextBlock Grid.Row="2"
+                   Text="{x:Bind Detail, Mode=OneWay}"
+                   Style="{ThemeResource CaptionTextBlockStyle}"
+                   FontFamily="{StaticResource NumerisFontFamily}"
+                   FontSize="12"
+                   Foreground="{StaticResource NumerisTextTertiaryBrush}"
+                   TextTrimming="CharacterEllipsis"
+                   Margin="0,2,0,0" />
+
+        <TextBlock Grid.Row="3"
                    Text="{x:Bind ChangeText, Mode=OneWay}"
                    Foreground="{x:Bind ChangeBrush, Mode=OneWay}"
                    Style="{ThemeResource CaptionTextBlockStyle}"
+                   FontFamily="{StaticResource NumerisFontFamily}"
+                   FontSize="12"
                    Visibility="{x:Bind ShowChange, Mode=OneWay}"
-                   Margin="0,4,0,0" />
+                   Margin="0,8,0,0" />
     </Grid>
 </UserControl>

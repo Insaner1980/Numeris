@@ -5,28 +5,62 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Numeris.Controls">
 
-    <ScrollViewer Padding="{StaticResource PagePadding}">
-        <StackPanel Spacing="16">
+    <Grid x:Name="RootGrid"
+          Background="{StaticResource ContentLayerBrush}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="LayoutStates">
+                <VisualState x:Name="NarrowLayout">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="0" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+                <VisualState x:Name="WideLayout">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="{StaticResource WideBreakpoint}" />
+                    </VisualState.StateTriggers>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <ScrollViewer Background="Transparent"
+                      Padding="{StaticResource PagePadding}">
+            <StackPanel Spacing="24">
 
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           Text="Overview"
-                           Style="{ThemeResource TitleTextBlockStyle}"
-                           VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <ComboBox x:Name="DomainCombo" MinWidth="160" SelectionChanged="DomainCombo_SelectionChanged" />
-                    <ComboBox x:Name="PeriodCombo" MinWidth="100" SelectionChanged="PeriodCombo_SelectionChanged" />
-                    <Button x:Name="RefreshButton" Click="RefreshButton_Click" ToolTipService.ToolTip="Refresh">
-                        <FontIcon Glyph="&#xE72C;" />
-                    </Button>
-                </StackPanel>
-            </Grid>
+            <Border Style="{StaticResource PageHeaderBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Overview"
+                               Style="{StaticResource PageTitleTextBlockStyle}"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <ComboBox x:Name="DomainCombo"
+                                  MinWidth="176"
+                                  Height="{StaticResource ToolbarControlHeight}"
+                                  AutomationProperties.Name="Domain"
+                                  SelectionChanged="DomainCombo_SelectionChanged" />
+                        <ComboBox x:Name="PeriodCombo"
+                                  MinWidth="120"
+                                  Height="{StaticResource ToolbarControlHeight}"
+                                  DisplayMemberPath="Label"
+                                  AutomationProperties.Name="Period"
+                                  SelectionChanged="PeriodCombo_SelectionChanged" />
+                        <Button x:Name="RefreshButton"
+                                Width="{StaticResource RefreshButtonSize}"
+                                Height="{StaticResource RefreshButtonSize}"
+                                Click="RefreshButton_Click"
+                                IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
+                                AutomationProperties.Name="Refresh current report"
+                                ToolTipService.ToolTip="Refresh">
+                            <FontIcon Glyph="&#xE72C;" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
 
-            <Grid ColumnSpacing="12">
+            <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -35,100 +69,123 @@
                 </Grid.ColumnDefinitions>
                 <controls:KpiCard Grid.Column="0"
                                   Label="Visitors"
+                                  Detail="Unique visitors"
                                   Value="{x:Bind ViewModel.VisitorsTotal, Mode=OneWay}"
                                   ChangePct="{x:Bind ViewModel.VisitorsChangePct, Mode=OneWay}" />
                 <controls:KpiCard Grid.Column="1"
-                                  Label="Search Clicks"
+                                  Label="Google Clicks"
+                                  Detail="Google Search"
                                   Value="{x:Bind ViewModel.ClicksTotal, Mode=OneWay}"
                                   ChangePct="{x:Bind ViewModel.ClicksChangePct, Mode=OneWay}" />
                 <controls:KpiCard Grid.Column="2"
-                                  Label="Avg Position"
-                                  Value="{x:Bind ViewModel.AvgPosition, Mode=OneWay}" />
+                                  Label="Bing Clicks"
+                                  Detail="Bing Webmaster"
+                                  Value="{x:Bind ViewModel.BingClicksTotal, Mode=OneWay}"
+                                  ChangePct="{x:Bind ViewModel.BingClicksChangePct, Mode=OneWay}" />
                 <controls:KpiCard Grid.Column="3"
-                                  Label="Threats"
-                                  Value="{x:Bind ViewModel.ThreatsTotal, Mode=OneWay}" />
+                                  Label="Web Vitals"
+                                  Detail="{x:Bind ViewModel.WebVitalsDetail, Mode=OneWay}"
+                                  Value="{x:Bind ViewModel.WebVitalsStatus, Mode=OneWay}" />
             </Grid>
 
-            <Grid ColumnSpacing="16" RowSpacing="8">
+            <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="280" />
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0"
-                           Text="Traffic Trend"
-                           Style="{ThemeResource BodyStrongTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Grid.Row="0" Grid.Column="1"
-                           Text="Search Trend"
-                           Style="{ThemeResource BodyStrongTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Border Grid.Row="1" Grid.Column="0"
-                        x:Name="TrafficChartHost"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="{StaticResource CardCornerRadius}"
-                        Padding="12" />
-                <Border Grid.Row="1" Grid.Column="1"
-                        x:Name="SearchChartHost"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="{StaticResource CardCornerRadius}"
-                        Padding="12" />
+                <Border Grid.Column="0"
+                        Style="{StaticResource ChartCardBorderStyle}"
+                        MinHeight="326">
+                    <Grid x:Name="ChartCardGrid" RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0"
+                                   Text="Traffic Trend"
+                                   Style="{StaticResource SectionTitleTextBlockStyle}" />
+                        <Border Grid.Row="1"
+                                x:Name="TrafficChartHost"
+                                Background="Transparent" />
+                    </Grid>
+                </Border>
+                <Border Grid.Column="1"
+                        Style="{StaticResource ChartCardBorderStyle}"
+                        MinHeight="326">
+                    <Grid RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0"
+                                   Text="Search Trend"
+                                   Style="{StaticResource SectionTitleTextBlockStyle}" />
+                        <Border Grid.Row="1"
+                                x:Name="SearchChartHost"
+                                Background="Transparent" />
+                    </Grid>
+                </Border>
             </Grid>
 
-            <Grid ColumnSpacing="1"
-                  Background="{ThemeResource CardStrokeColorDefaultBrush}"
-                  CornerRadius="{StaticResource CardCornerRadius}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
+            <Border Style="{StaticResource StatusStripBorderStyle}">
+                <Grid ColumnSpacing="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Cache hit ratio"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.CacheHitRatio, Mode=OneWay}" FontWeight="SemiBold" />
-                </Grid>
-                <Grid Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
-                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Indexed"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.IndexedRatio, Mode=OneWay}" FontWeight="SemiBold" />
-                </Grid>
-                <Grid Grid.Column="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
-                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Uptime"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="1" Text="Pending" FontWeight="SemiBold" />
-                </Grid>
-                <Grid Grid.Column="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="16">
-                    <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Last sync"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Grid.Column="1" Text="—" FontWeight="SemiBold" />
+                    <Grid Grid.Column="0" Padding="{StaticResource StatusStripPadding}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Cache hit ratio"
+                                   Foreground="{StaticResource NumerisTextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind ViewModel.CacheHitRatio, Mode=OneWay}"
+                                   Style="{StaticResource StatusValueTextBlockStyle}" />
+                    </Grid>
+                    <Grid Grid.Column="1" Padding="{StaticResource StatusStripPadding}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Indexed"
+                                   Foreground="{StaticResource NumerisTextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind ViewModel.IndexedRatio, Mode=OneWay}"
+                                   Style="{StaticResource StatusValueTextBlockStyle}" />
+                    </Grid>
+                    <Grid Grid.Column="2" Padding="{StaticResource StatusStripPadding}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="PageSpeed mobile"
+                                   Foreground="{StaticResource NumerisTextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind ViewModel.PageSpeedMobile, Mode=OneWay}"
+                                   Style="{StaticResource StatusValueTextBlockStyle}"
+                                   Foreground="{StaticResource NumerisTextTertiaryBrush}" />
+                    </Grid>
+                    <Grid Grid.Column="3" Padding="{StaticResource StatusStripPadding}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Last sync"
+                                   Foreground="{StaticResource NumerisTextSecondaryBrush}" />
+                        <TextBlock x:Name="LastSyncText"
+                                   Grid.Column="1"
+                                   Text="{x:Bind ViewModel.LastSyncText, Mode=OneWay}"
+                                   Style="{StaticResource StatusValueTextBlockStyle}"
+                                   Foreground="{StaticResource NumerisTextTertiaryBrush}" />
+                    </Grid>
                 </Grid>
-            </Grid>
+            </Border>
 
-        </StackPanel>
-    </ScrollViewer>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
 </Page>

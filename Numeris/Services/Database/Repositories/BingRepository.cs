@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
+using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Database;
 using Numeris.Services.Performance;
@@ -24,6 +25,143 @@ public sealed class BingRepository
                 {where}
                 ORDER BY site_url
                 """).AsList();
+        });
+
+    public Task<List<BingTrafficDay>> GetTrafficDailyAsync(string siteUrl, string start, string end)
+        => _db.ReadAsync(connection =>
+        {
+            var sql = IsAll(siteUrl)
+                ? """
+                  SELECT date AS Date,
+                         COALESCE(SUM(clicks), 0) AS Clicks,
+                         COALESCE(SUM(impressions), 0) AS Impressions,
+                         CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
+                  FROM bing_rank_traffic
+                  WHERE date >= @start AND date <= @end
+                  GROUP BY date
+                  ORDER BY date
+                  """
+                : """
+                  SELECT date AS Date,
+                         COALESCE(SUM(clicks), 0) AS Clicks,
+                         COALESCE(SUM(impressions), 0) AS Impressions,
+                         CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
+                  FROM bing_rank_traffic
+                  WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                  GROUP BY date
+                  ORDER BY date
+                  """;
+            return connection.Query<BingTrafficDay>(sql, new { normalizedSiteUrl = NormalizeSiteUrl(siteUrl), start, end }).AsList();
+        });
+
+    public Task<List<BingQueryRow>> GetQueriesAsync(string siteUrl, string start, string end, string sortBy, int limit)
+        => _db.ReadAsync(connection =>
+        {
+            var orderClause = sortBy switch
+            {
+                "impressions" => "Impressions DESC",
+                "ctr" => "Ctr DESC",
+                "position" => "AvgImpressionPosition ASC",
+                _ => "Clicks DESC",
+            };
+            var sql = IsAll(siteUrl)
+                ? $"""
+                   SELECT query AS Query,
+                          COALESCE(SUM(clicks), 0) AS Clicks,
+                          COALESCE(SUM(impressions), 0) AS Impressions,
+                          CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
+                          COALESCE(AVG(avg_click_position), 0) AS AvgClickPosition,
+                          COALESCE(AVG(avg_impression_position), 0) AS AvgImpressionPosition
+                   FROM bing_query_stats
+                   WHERE date >= @start AND date <= @end
+                   GROUP BY query
+                   ORDER BY {orderClause}
+                   LIMIT @limit
+                   """
+                : $"""
+                   SELECT query AS Query,
+                          COALESCE(SUM(clicks), 0) AS Clicks,
+                          COALESCE(SUM(impressions), 0) AS Impressions,
+                          CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
+                          COALESCE(AVG(avg_click_position), 0) AS AvgClickPosition,
+                          COALESCE(AVG(avg_impression_position), 0) AS AvgImpressionPosition
+                   FROM bing_query_stats
+                   WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                   GROUP BY query
+                   ORDER BY {orderClause}
+                   LIMIT @limit
+                   """;
+            return connection.Query<BingQueryRow>(sql, new { normalizedSiteUrl = NormalizeSiteUrl(siteUrl), start, end, limit }).AsList();
+        });
+
+    public Task<List<BingPageRow>> GetPagesAsync(string siteUrl, string start, string end, int limit)
+        => _db.ReadAsync(connection =>
+        {
+            var sql = IsAll(siteUrl)
+                ? """
+                  SELECT page_url AS PageUrl,
+                         COALESCE(SUM(clicks), 0) AS Clicks,
+                         COALESCE(SUM(impressions), 0) AS Impressions,
+                         CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
+                  FROM bing_page_stats
+                  WHERE date >= @start AND date <= @end
+                  GROUP BY page_url
+                  ORDER BY Clicks DESC
+                  LIMIT @limit
+                  """
+                : """
+                  SELECT page_url AS PageUrl,
+                         COALESCE(SUM(clicks), 0) AS Clicks,
+                         COALESCE(SUM(impressions), 0) AS Impressions,
+                         CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
+                  FROM bing_page_stats
+                  WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                  GROUP BY page_url
+                  ORDER BY Clicks DESC
+                  LIMIT @limit
+                  """;
+            return connection.Query<BingPageRow>(sql, new { normalizedSiteUrl = NormalizeSiteUrl(siteUrl), start, end, limit }).AsList();
+        });
+
+    public Task<List<BingRawMethodSummary>> GetRawMethodSummaryAsync(string siteUrl)
+        => _db.ReadAsync(connection =>
+        {
+            var sql = IsAll(siteUrl)
+                ? """
+                  SELECT method AS Method, COUNT(*) AS ItemCount, COALESCE(MAX(fetched_at), '') AS LastFetchedAt
+                  FROM bing_raw_items
+                  GROUP BY method
+                  ORDER BY method
+                  """
+                : """
+                  SELECT method AS Method, COUNT(*) AS ItemCount, COALESCE(MAX(fetched_at), '') AS LastFetchedAt
+                  FROM bing_raw_items
+                  WHERE site_url = @normalizedSiteUrl
+                  GROUP BY method
+                  ORDER BY method
+                  """;
+            return connection.Query<BingRawMethodSummary>(sql, new { normalizedSiteUrl = NormalizeSiteUrl(siteUrl) }).AsList();
+        });
+
+    public Task<List<BingRawItem>> GetCrawlIssueItemsAsync(string siteUrl, int limit)
+        => _db.ReadAsync(connection =>
+        {
+            var sql = IsAll(siteUrl)
+                ? """
+                  SELECT method AS Method, site_url AS SiteUrl, item_key AS ItemKey, raw_json AS RawJson, fetched_at AS FetchedAt
+                  FROM bing_raw_items
+                  WHERE method = 'GetCrawlIssues'
+                  ORDER BY fetched_at DESC, item_key
+                  LIMIT @limit
+                  """
+                : """
+                  SELECT method AS Method, site_url AS SiteUrl, item_key AS ItemKey, raw_json AS RawJson, fetched_at AS FetchedAt
+                  FROM bing_raw_items
+                  WHERE method = 'GetCrawlIssues' AND site_url = @normalizedSiteUrl
+                  ORDER BY fetched_at DESC, item_key
+                  LIMIT @limit
+                  """;
+            return connection.Query<BingRawItem>(sql, new { normalizedSiteUrl = NormalizeSiteUrl(siteUrl), limit }).AsList();
         });
 
     public Task AddSiteAsync(string siteUrl, string source = "manual")
@@ -169,4 +307,10 @@ public sealed class BingRepository
             item,
             transaction);
     }
+
+    private static bool IsAll(string siteUrl)
+        => string.Equals(siteUrl, "all", System.StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeSiteUrl(string siteUrl)
+        => IsAll(siteUrl) ? "all" : SiteIdentity.NormalizeHomePageUrl(siteUrl);
 }

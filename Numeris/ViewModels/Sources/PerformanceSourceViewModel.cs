@@ -24,6 +24,8 @@ public partial class PerformanceSourceViewModel : ObservableObject
     [ObservableProperty] public partial string NewUrl { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; set; } = "";
     [ObservableProperty] public partial bool IsBusy { get; set; }
+    public bool CanRun => !IsBusy;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
 
     public PerformanceSourceViewModel(
         ConnectionsRepository connectionsRepo,
@@ -34,6 +36,9 @@ public partial class PerformanceSourceViewModel : ObservableObject
         _vault = vault;
         _sync = sync;
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public async Task LoadAsync()
     {
@@ -154,7 +159,7 @@ public partial class PerformanceSourceViewModel : ObservableObject
         try
         {
             var result = await _sync.SyncAsync();
-            StatusMessage = $"Synced {result.UrlsSynced} URL(s), {result.CruxMetricPoints} CrUX point(s), skipped {result.CruxSkipped} CrUX lookup(s), {result.PageSpeedRuns} PageSpeed run(s), {result.PageSpeedAudits} audit row(s), {result.PageSpeedErrors} PageSpeed error(s)";
+            StatusMessage = FormatSyncStatus(result);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -184,5 +189,16 @@ public partial class PerformanceSourceViewModel : ObservableObject
         var urls = await _sync.ListUrlsAsync();
         Urls.Clear();
         foreach (var url in urls) Urls.Add(url);
+    }
+
+    public static string FormatSyncStatus(PerformanceSyncResult result)
+    {
+        var cruxStatus = result.CruxMetricPoints > 0
+            ? $"CrUX: {result.CruxMetricPoints} point(s)"
+            : result.CruxSkipped > 0
+                ? "CrUX: no field data for configured URLs"
+                : "CrUX: not configured";
+
+        return $"Synced {result.UrlsSynced} URL(s). {cruxStatus}. PageSpeed: {result.PageSpeedRuns} run(s), {result.PageSpeedAudits} audit row(s), {result.PageSpeedErrors} error(s).";
     }
 }

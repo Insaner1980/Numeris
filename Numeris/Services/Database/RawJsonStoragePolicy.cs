@@ -30,7 +30,7 @@ public static partial class RawJsonStoragePolicy
         try
         {
             var node = JsonNode.Parse(value);
-            RedactNode(node);
+            node = RedactNode(node);
             return node?.ToJsonString() ?? value;
         }
         catch (JsonException)
@@ -52,14 +52,15 @@ public static partial class RawJsonStoragePolicy
                     }
                     else
                     {
-                        obj[property.Key] = RedactNode(property.Value);
+                        RedactChild(property.Value, redacted => obj[property.Key] = redacted);
                     }
                 }
                 return obj;
             case JsonArray array:
                 for (var i = 0; i < array.Count; i++)
                 {
-                    array[i] = RedactNode(array[i]);
+                    var index = i;
+                    RedactChild(array[i], redacted => array[index] = redacted);
                 }
                 return array;
             case JsonValue valueNode when valueNode.TryGetValue<string>(out var text):
@@ -67,6 +68,17 @@ public static partial class RawJsonStoragePolicy
             default:
                 return node;
         }
+    }
+
+    private static void RedactChild(JsonNode? node, Action<JsonNode?> replace)
+    {
+        if (node is JsonValue valueNode && valueNode.TryGetValue<string>(out var text))
+        {
+            replace(JsonValue.Create(RedactSecretText(text)));
+            return;
+        }
+
+        RedactNode(node);
     }
 
     private static bool IsSensitivePropertyName(string name)

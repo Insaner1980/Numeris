@@ -5,7 +5,7 @@ namespace Numeris.Services.Database;
 
 internal static class Migrations
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 4;
 
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS cloudflare_traffic (
@@ -170,7 +170,7 @@ internal static class Migrations
         CREATE TABLE IF NOT EXISTS connections (
             id TEXT PRIMARY KEY,
             source TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'mock',
+            status TEXT NOT NULL DEFAULT 'disconnected',
             config TEXT,
             last_sync TEXT
         );
@@ -343,6 +343,113 @@ internal static class Migrations
         CREATE INDEX IF NOT EXISTS idx_bing_raw_method
             ON bing_raw_items(method, site_url);
 
+        CREATE TABLE IF NOT EXISTS youtube_channels (
+            channel_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            uploads_playlist_id TEXT NOT NULL,
+            view_count INTEGER NOT NULL DEFAULT 0,
+            subscriber_count INTEGER NOT NULL DEFAULT 0,
+            video_count INTEGER NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_videos (
+            video_id TEXT PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            published_at TEXT NOT NULL,
+            duration TEXT,
+            thumbnail_url TEXT,
+            view_count INTEGER NOT NULL DEFAULT 0,
+            like_count INTEGER NOT NULL DEFAULT 0,
+            comment_count INTEGER NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_youtube_videos_channel_published
+            ON youtube_videos(channel_id, published_at);
+
+        CREATE TABLE IF NOT EXISTS youtube_daily (
+            channel_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
+            average_view_duration REAL NOT NULL DEFAULT 0,
+            subscribers_gained INTEGER NOT NULL DEFAULT 0,
+            subscribers_lost INTEGER NOT NULL DEFAULT 0,
+            likes INTEGER NOT NULL DEFAULT 0,
+            comments INTEGER NOT NULL DEFAULT 0,
+            shares INTEGER NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_video_stats (
+            channel_id TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
+            average_view_duration REAL NOT NULL DEFAULT 0,
+            average_view_percentage REAL NOT NULL DEFAULT 0,
+            likes INTEGER NOT NULL DEFAULT 0,
+            comments INTEGER NOT NULL DEFAULT 0,
+            shares INTEGER NOT NULL DEFAULT 0,
+            subscribers_gained INTEGER NOT NULL DEFAULT 0,
+            subscribers_lost INTEGER NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, video_id, period_start, period_end)
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_countries (
+            channel_id TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            country TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
+            average_view_duration REAL NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, period_start, period_end, country)
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_traffic_sources (
+            channel_id TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
+            average_view_duration REAL NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, period_start, period_end, source_type)
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_devices (
+            channel_id TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            device_type TEXT NOT NULL,
+            views INTEGER NOT NULL DEFAULT 0,
+            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
+            average_view_duration REAL NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, period_start, period_end, device_type)
+        );
+
+        CREATE TABLE IF NOT EXISTS youtube_retention_points (
+            channel_id TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            elapsed_ratio REAL NOT NULL DEFAULT 0,
+            audience_watch_ratio REAL NOT NULL DEFAULT 0,
+            relative_retention_performance REAL NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (channel_id, video_id, period_start, period_end, elapsed_ratio)
+        );
+
         CREATE TABLE IF NOT EXISTS uptime_checks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             domain TEXT NOT NULL,
@@ -364,14 +471,15 @@ internal static class Migrations
         """;
 
     private const string DefaultConnectionsSql = """
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('cf', 'cloudflare', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('sc', 'search_console', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ps', 'play_store', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('wa', 'web_analytics', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('perf', 'performance', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('crux', 'crux', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('pagespeed', 'pagespeed', 'mock');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'mock');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('cf', 'cloudflare', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('sc', 'search_console', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ps', 'play_store', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('wa', 'web_analytics', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('perf', 'performance', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('crux', 'crux', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('pagespeed', 'pagespeed', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('youtube', 'youtube', 'disconnected');
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
             VALUES ('https://finnvek.com/', 'https://finnvek.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
@@ -380,7 +488,7 @@ internal static class Migrations
             VALUES ('https://finnvek.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
             VALUES ('https://knittoolsapp.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
-        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '2');
+        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '4');
         """;
 
     public static void RunAll(SqliteConnection connection)
@@ -402,6 +510,16 @@ internal static class Migrations
         if (version < 2)
         {
             RunV2Migration(connection);
+        }
+
+        if (version < 3)
+        {
+            RunV3Migration(connection);
+        }
+
+        if (version < 4)
+        {
+            RunV4Migration(connection);
         }
 
         SetSchemaVersion(connection, CurrentSchemaVersion);
@@ -440,6 +558,86 @@ internal static class Migrations
                     """,
                     transaction);
             }
+
+            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static void RunV3Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            ExecuteBatch(
+                connection,
+                """
+                DELETE FROM cloudflare_traffic WHERE top_path IS NOT NULL OR top_country IS NOT NULL;
+                DELETE FROM cloudflare_countries;
+                DELETE FROM search_console
+                    WHERE query IN (
+                        'knitting counter app', 'neulonta sovellus', 'knitting row counter',
+                        'knitting calculator', 'gauge converter knitting', 'yarn estimator',
+                        'knittools', 'knittools app', 'finnvek', 'knitting app android',
+                        'best knitting apps 2026', 'neulonta laskuri', 'puikkojen koot',
+                        'lankatarve laskuri', 'neuleohje laskuri', 'knitting pattern calculator',
+                        'stitch counter', 'yarn weight calculator', 'knitting gauge',
+                        'crochet counter app', 'finnvek apps', 'finnvek knittools',
+                        'finnish app developer', 'finnvek software'
+                    );
+                DELETE FROM search_devices;
+                DELETE FROM search_page_queries;
+                DELETE FROM sitemap_urls
+                    WHERE url LIKE 'https://finnvek.com/features/tool-%'
+                       OR url LIKE 'https://finnvek.com/guide/lesson-%'
+                       OR url LIKE 'https://finnvek.com/blog/post-%'
+                       OR url LIKE 'https://finnvek.com/support/topic-%'
+                       OR url LIKE 'https://knittoolsapp.com/features/tool-%'
+                       OR url LIKE 'https://knittoolsapp.com/guide/lesson-%'
+                       OR url LIKE 'https://knittoolsapp.com/blog/post-%'
+                       OR url LIKE 'https://knittoolsapp.com/support/topic-%';
+                DELETE FROM web_analytics_daily;
+                DELETE FROM web_analytics_referrers;
+                DELETE FROM web_analytics_pages;
+                DELETE FROM web_analytics_countries;
+                DELETE FROM play_installs;
+                DELETE FROM play_ratings;
+                DELETE FROM play_revenue;
+                DELETE FROM play_crashes;
+                DELETE FROM uptime_checks;
+                UPDATE connections
+                SET status = 'disconnected', last_sync = NULL
+                WHERE status = 'mock';
+                """,
+                transaction);
+
+            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static void RunV4Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            ExecuteBatch(
+                connection,
+                """
+                INSERT OR IGNORE INTO connections (id, source, status)
+                VALUES ('youtube', 'youtube', 'disconnected');
+                """,
+                transaction);
 
             SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
             transaction.Commit();

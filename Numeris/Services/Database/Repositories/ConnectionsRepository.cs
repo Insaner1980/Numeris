@@ -137,7 +137,7 @@ public sealed class ConnectionsRepository
                 Id = "wa",
                 AccountId = cfg?.AccountId ?? "",
                 HasToken = !string.IsNullOrEmpty(_vault.GetWebAnalyticsToken(cfg?.AccountId ?? "")),
-                Status = row.Status ?? "mock",
+                Status = row.Status ?? "disconnected",
                 LastSync = row.LastSync,
             };
         });
@@ -172,7 +172,7 @@ public sealed class ConnectionsRepository
     {
         return _db.WriteAsync(connection =>
         {
-            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'wa'");
+            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'wa'");
         });
     }
 
@@ -195,7 +195,7 @@ public sealed class ConnectionsRepository
                 ClientId = clientId,
                 HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleClientSecret(clientId)),
                 HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleRefreshToken(clientId)),
-                Status = row.Status ?? "mock",
+                Status = row.Status ?? "disconnected",
                 LastSync = row.LastSync,
             };
         });
@@ -230,7 +230,7 @@ public sealed class ConnectionsRepository
     {
         return _db.WriteAsync(connection =>
         {
-            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'sc'");
+            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'sc'");
         });
     }
 
@@ -251,7 +251,7 @@ public sealed class ConnectionsRepository
                 Id = "perf",
                 HasCruxApiKey = !string.IsNullOrEmpty(_vault.GetCruxApiKey()),
                 HasPageSpeedApiKey = !string.IsNullOrEmpty(_vault.GetPageSpeedApiKey()),
-                Status = connected ? "connected" : configured ? "configured" : "mock",
+                Status = connected ? "connected" : configured ? "configured" : "disconnected",
                 LastSync = rows.Select(r => r.LastSync).Where(v => !string.IsNullOrWhiteSpace(v)).OrderByDescending(v => v).FirstOrDefault(),
             };
         });
@@ -312,7 +312,7 @@ public sealed class ConnectionsRepository
         return _db.WriteAsync(connection =>
         {
             connection.Execute(
-                "UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id IN ('perf', 'crux', 'pagespeed')");
+                "UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id IN ('perf', 'crux', 'pagespeed')");
         });
     }
 
@@ -333,7 +333,7 @@ public sealed class ConnectionsRepository
                 Id = "bing",
                 HasApiKey = !string.IsNullOrEmpty(_vault.GetBingApiKey()),
                 Sites = cfg?.Sites ?? new List<string>(),
-                Status = row.Status ?? "mock",
+                Status = row.Status ?? "disconnected",
                 LastSync = row.LastSync,
             };
         });
@@ -368,7 +368,73 @@ public sealed class ConnectionsRepository
     {
         return _db.WriteAsync(connection =>
         {
-            connection.Execute("UPDATE connections SET status = 'mock', config = NULL, last_sync = NULL WHERE id = 'bing'");
+            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'bing'");
+        });
+    }
+
+    public Task<YouTubeConnectionInfo?> GetYouTubeAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'youtube'");
+            YouTubeConnectionConfig? cfg = null;
+            if (!string.IsNullOrEmpty(row.Config))
+            {
+                try { cfg = JsonSerializer.Deserialize<YouTubeConnectionConfig>(row.Config, JsonOptions); }
+                catch { }
+            }
+
+            var clientId = cfg?.ClientId ?? "";
+            return (YouTubeConnectionInfo?)new YouTubeConnectionInfo
+            {
+                Id = "youtube",
+                ClientId = clientId,
+                ChannelId = cfg?.ChannelId ?? "",
+                ChannelTitle = cfg?.ChannelTitle ?? "",
+                HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetYouTubeClientSecret(clientId)),
+                HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetYouTubeRefreshToken(clientId)),
+                Status = row.Status ?? "disconnected",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertYouTubeAsync(YouTubeConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('youtube', 'youtube', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdateYouTubeLastSyncAsync(YouTubeConnectionConfig config, string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                UPDATE connections
+                SET status = @status, config = @json, last_sync = @lastSync
+                WHERE id = 'youtube'
+                """,
+                new { status, json, lastSync });
+        });
+    }
+
+    public Task DeleteYouTubeAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'youtube'");
         });
     }
 }

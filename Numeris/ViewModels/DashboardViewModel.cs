@@ -11,31 +11,36 @@ using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Database.Repositories;
+using Numeris.Themes;
 using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
 public partial class DashboardViewModel : ObservableObject
 {
-    private static readonly SKColor AccentGold = SKColor.Parse("#D9A24E");
-    private static readonly SKColor SecondaryGray = new(236, 238, 242, 80);
-    private static readonly SKColor Coral = SKColor.Parse("#C97B6A");
+    private static readonly CultureInfo EnglishCulture = CultureInfo.InvariantCulture;
 
     private readonly ShellViewModel _shell;
     private readonly SummaryRepository _summaryRepo;
     private readonly CloudflareRepository _cfRepo;
     private readonly SearchConsoleRepository _scRepo;
+    private readonly BingRepository _bingRepo;
     private readonly SitemapRepository _sitemapRepo;
 
     [ObservableProperty] public partial bool IsLoading { get; set; } = true;
+    public bool CanRefresh => !IsLoading;
     [ObservableProperty] public partial string VisitorsTotal { get; set; } = "—";
     [ObservableProperty] public partial double? VisitorsChangePct { get; set; }
     [ObservableProperty] public partial string ClicksTotal { get; set; } = "—";
     [ObservableProperty] public partial double? ClicksChangePct { get; set; }
-    [ObservableProperty] public partial string AvgPosition { get; set; } = "—";
-    [ObservableProperty] public partial string ThreatsTotal { get; set; } = "—";
+    [ObservableProperty] public partial string BingClicksTotal { get; set; } = "—";
+    [ObservableProperty] public partial double? BingClicksChangePct { get; set; }
+    [ObservableProperty] public partial string WebVitalsStatus { get; set; } = "No data";
+    [ObservableProperty] public partial string WebVitalsDetail { get; set; } = "No CrUX data";
     [ObservableProperty] public partial string CacheHitRatio { get; set; } = "—";
     [ObservableProperty] public partial string IndexedRatio { get; set; } = "—";
+    [ObservableProperty] public partial string PageSpeedMobile { get; set; } = "—";
+    [ObservableProperty] public partial string LastSyncText { get; set; } = "Not synced yet";
     [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
     [ObservableProperty] public partial Axis[] TrafficXAxes { get; set; } = Array.Empty<Axis>();
     [ObservableProperty] public partial Axis[] TrafficYAxes { get; set; } = Array.Empty<Axis>();
@@ -47,15 +52,19 @@ public partial class DashboardViewModel : ObservableObject
         SummaryRepository summaryRepo,
         CloudflareRepository cfRepo,
         SearchConsoleRepository scRepo,
+        BingRepository bingRepo,
         SitemapRepository sitemapRepo)
     {
         _shell = shell;
         _summaryRepo = summaryRepo;
         _cfRepo = cfRepo;
         _scRepo = scRepo;
+        _bingRepo = bingRepo;
         _sitemapRepo = sitemapRepo;
         _shell.PropertyChanged += OnShellChanged;
     }
+
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
 
     private void OnShellChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -77,47 +86,60 @@ public partial class DashboardViewModel : ObservableObject
             var domain = _shell.SelectedDomain;
             var sitemapDomain = domain == "all" ? Domains.KnitTools : domain;
 
-            var summaryTask = _summaryRepo.GetSummaryAsync(range.Days);
+            var summaryTask = _summaryRepo.GetSummaryAsync(domain, range.Days);
+            var bingSummaryTask = _summaryRepo.GetBingOverviewAsync(domain, range.Days);
+            var webVitalsTask = _summaryRepo.GetWebVitalsOverviewAsync(domain);
+            var pageSpeedTask = _summaryRepo.GetPageSpeedOverviewAsync(domain);
+            var lastSyncTask = _summaryRepo.GetLatestSyncAsync();
             var trafficTask = _cfRepo.GetTrafficDailyAsync(domain, startStr, endStr);
             var searchTask = _scRepo.GetSearchDailyAsync(domain, startStr, endStr);
+            var bingTrafficTask = _bingRepo.GetTrafficDailyAsync(domain, startStr, endStr);
             var cacheTask = _cfRepo.GetCacheDailyAsync(domain, startStr, endStr);
-            var securityTask = _cfRepo.GetSecurityDailyAsync(domain, startStr, endStr);
             var sitemapTask = _sitemapRepo.ListUrlsAsync(sitemapDomain);
 
-            await Task.WhenAll(summaryTask, trafficTask, searchTask, cacheTask, securityTask, sitemapTask);
+            await Task.WhenAll(summaryTask, bingSummaryTask, webVitalsTask, pageSpeedTask, lastSyncTask, trafficTask, searchTask, bingTrafficTask, cacheTask, sitemapTask);
 
             var summary = await summaryTask;
+            var bingSummary = await bingSummaryTask;
+            var webVitals = await webVitalsTask;
+            var pageSpeed = await pageSpeedTask;
             var traffic = await trafficTask;
             var search = await searchTask;
+            var bingTraffic = await bingTrafficTask;
             var cache = await cacheTask;
-            var security = await securityTask;
             var sitemap = await sitemapTask;
 
             VisitorsTotal = FormatNumber(summary.VisitorsTotal);
             VisitorsChangePct = summary.VisitorsChangePct;
             ClicksTotal = FormatNumber(summary.ClicksTotal);
             ClicksChangePct = summary.ClicksChangePct;
-
-            var avgPos = search.Count > 0 ? search.Average(d => d.AvgPosition) : 0.0;
-            AvgPosition = avgPos.ToString("0.0", CultureInfo.CurrentCulture);
-
-            var totalThreats = security.Sum(d => d.Threats);
-            ThreatsTotal = totalThreats.ToString("N0", CultureInfo.CurrentCulture);
+            BingClicksTotal = FormatNumber(bingSummary.Clicks);
+            BingClicksChangePct = bingSummary.ClicksChangePct;
+            WebVitalsStatus = webVitals.Status;
+            WebVitalsDetail = webVitals.Detail;
+            PageSpeedMobile = pageSpeed.MobilePerformanceScore.HasValue
+                ? (pageSpeed.MobilePerformanceScore.Value * 100.0).ToString("0", EnglishCulture)
+                : "—";
+            LastSyncText = string.IsNullOrWhiteSpace(await lastSyncTask) ? "Not synced yet" : await lastSyncTask;
 
             var totalReq = cache.Sum(d => d.TotalRequests);
             var cachedReq = cache.Sum(d => d.CachedRequests);
             CacheHitRatio = totalReq > 0
-                ? $"{(double)cachedReq / totalReq * 100.0:0.0}%"
+                ? $"{((double)cachedReq / totalReq * 100.0).ToString("0.0", EnglishCulture)}%"
                 : "—";
 
             var activeUrls = sitemap.Where(u => u.RemovedAt is null).ToList();
-            var passUrls = activeUrls.Count(u => u.Verdict == "PASS");
-            IndexedRatio = activeUrls.Count > 0
-                ? $"{passUrls} / {activeUrls.Count}"
-                : "—";
+            var inspectedUrls = activeUrls.Count(u => u.HasInspectionData);
+            var indexedUrls = activeUrls.Count(u => u.IsIndexed);
+            IndexedRatio = activeUrls.Count switch
+            {
+                0 => "—",
+                _ when inspectedUrls == 0 => "Not inspected",
+                _ => $"{indexedUrls} / {inspectedUrls}",
+            };
 
             BuildTrafficChart(traffic);
-            BuildSearchChart(search);
+            BuildSearchChart(search, bingTraffic);
         }
         finally
         {
@@ -134,10 +156,10 @@ public partial class DashboardViewModel : ObservableObject
             {
                 Name = "Visitors",
                 Values = rows.Select(r => r.UniqueVisitors).ToArray(),
-                Stroke = new SolidColorPaint(AccentGold) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(AccentGold) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(AccentGold),
-                Fill = new SolidColorPaint(AccentGold.WithAlpha(40)),
+                Stroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
+                GeometryStroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
+                GeometryFill = new SolidColorPaint(ChartPalette.Accent),
+                Fill = new SolidColorPaint(ChartPalette.Accent.WithAlpha(40)),
                 GeometrySize = 0,
                 LineSmoothness = 0.4,
             },
@@ -145,54 +167,55 @@ public partial class DashboardViewModel : ObservableObject
             {
                 Name = "Pageviews",
                 Values = rows.Select(r => r.Pageviews).ToArray(),
-                Stroke = new SolidColorPaint(SecondaryGray) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(SecondaryGray) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(SecondaryGray),
+                Stroke = new SolidColorPaint(ChartPalette.Muted) { StrokeThickness = 2 },
+                GeometryStroke = new SolidColorPaint(ChartPalette.Muted) { StrokeThickness = 2 },
+                GeometryFill = new SolidColorPaint(ChartPalette.Muted),
                 Fill = null,
                 GeometrySize = 0,
                 LineSmoothness = 0.4,
             },
         };
-        TrafficXAxes = new[] { new Axis { Labels = labels, LabelsRotation = 0 } };
-        TrafficYAxes = new[] { new Axis { MinLimit = 0 } };
+        TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels, LabelsRotation = 0 }) };
+        TrafficYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
     }
 
-    private void BuildSearchChart(IReadOnlyList<SearchDay> rows)
+    private void BuildSearchChart(IReadOnlyList<SearchDay> googleRows, IReadOnlyList<BingTrafficDay> bingRows)
     {
-        var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var dates = googleRows.Select(r => r.Date)
+            .Concat(bingRows.Select(r => r.Date))
+            .Distinct()
+            .OrderBy(d => d)
+            .ToArray();
+        var google = googleRows.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.Sum(r => r.TotalClicks));
+        var bing = bingRows.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.Sum(r => r.Clicks));
+        var labels = dates.Select(ShortDate).ToArray();
         SearchSeries = new ISeries[]
         {
             new LineSeries<long>
             {
-                Name = "Clicks",
-                Values = rows.Select(r => r.TotalClicks).ToArray(),
-                Stroke = new SolidColorPaint(AccentGold) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(AccentGold) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(AccentGold),
-                Fill = new SolidColorPaint(AccentGold.WithAlpha(40)),
+                Name = "Google clicks",
+                Values = dates.Select(d => google.TryGetValue(d, out var value) ? value : 0L).ToArray(),
+                Stroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
+                GeometryStroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
+                GeometryFill = new SolidColorPaint(ChartPalette.Accent),
+                Fill = new SolidColorPaint(ChartPalette.Accent.WithAlpha(40)),
                 GeometrySize = 0,
                 LineSmoothness = 0.4,
-                ScalesYAt = 0,
             },
             new LineSeries<long>
             {
-                Name = "Impressions",
-                Values = rows.Select(r => r.TotalImpressions).ToArray(),
-                Stroke = new SolidColorPaint(Coral) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(Coral) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(Coral),
+                Name = "Bing clicks",
+                Values = dates.Select(d => bing.TryGetValue(d, out var value) ? value : 0L).ToArray(),
+                Stroke = new SolidColorPaint(ChartPalette.Secondary) { StrokeThickness = 2 },
+                GeometryStroke = new SolidColorPaint(ChartPalette.Secondary) { StrokeThickness = 2 },
+                GeometryFill = new SolidColorPaint(ChartPalette.Secondary),
                 Fill = null,
                 GeometrySize = 0,
                 LineSmoothness = 0.4,
-                ScalesYAt = 1,
             },
         };
-        SearchXAxes = new[] { new Axis { Labels = labels, LabelsRotation = 0 } };
-        SearchYAxes = new[]
-        {
-            new Axis { MinLimit = 0 },
-            new Axis { MinLimit = 0, Position = LiveChartsCore.Measure.AxisPosition.End }
-        };
+        SearchXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels, LabelsRotation = 0 }) };
+        SearchYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
     }
 
     private static string ShortDate(string isoDate)
@@ -210,6 +233,6 @@ public partial class DashboardViewModel : ObservableObject
         {
             return $"{n / 1000.0:0.#}k";
         }
-        return n.ToString("N0", CultureInfo.CurrentCulture);
+        return n.ToString("N0", EnglishCulture);
     }
 }

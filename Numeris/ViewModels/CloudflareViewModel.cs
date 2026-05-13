@@ -13,22 +13,19 @@ using Numeris.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Database.Repositories;
+using Numeris.Themes;
 using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
 public partial class CloudflareViewModel : ObservableObject, IDisposable
 {
-    private static readonly SKColor AccentGold = SKColor.Parse("#D9A24E");
-    private static readonly SKColor SecondaryGray = new(236, 238, 242, 80);
-    private static readonly SKColor Coral = SKColor.Parse("#C97B6A");
-    private static readonly SKColor Success = SKColor.Parse("#84A98C");
-
     private readonly ShellViewModel _shell;
     private readonly CloudflareRepository _cfRepo;
     private readonly WebAnalyticsRepository _waRepo;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
+    public bool CanRefresh => !IsLoading;
     [ObservableProperty] public partial string ActiveTab { get; set; } = "traffic";
     // Traffic tab
     [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
@@ -51,6 +48,11 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial ISeries[] StatusCodesSeries { get; set; } = Array.Empty<ISeries>();
     [ObservableProperty] public partial Axis[] StatusCodesXAxes { get; set; } = Array.Empty<Axis>();
     [ObservableProperty] public partial Axis[] StatusCodesYAxes { get; set; } = Array.Empty<Axis>();
+    [ObservableProperty] public partial string StatusSuccessRateText { get; set; } = "—";
+    [ObservableProperty] public partial string StatusClientErrorsText { get; set; } = "—";
+    [ObservableProperty] public partial string StatusServerErrorsText { get; set; } = "—";
+    [ObservableProperty] public partial string StatusTopIssueText { get; set; } = "None";
+    [ObservableProperty] public partial List<StatusCodeIssueRow> StatusTopCodes { get; set; } = new();
     // Web Analytics tab
     [ObservableProperty] public partial ISeries[] WaSeries { get; set; } = Array.Empty<ISeries>();
     [ObservableProperty] public partial Axis[] WaXAxes { get; set; } = Array.Empty<Axis>();
@@ -65,6 +67,8 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         _waRepo = waRepo;
         _shell.PropertyChanged += OnShellChanged;
     }
+
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
 
     public void Dispose()
     {
@@ -121,11 +125,11 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
         TrafficSeries = new ISeries[]
         {
-            CreateLine("Visitors", rows.Select(r => r.UniqueVisitors).ToArray(), AccentGold, fill: true),
-            CreateLine("Pageviews", rows.Select(r => r.Pageviews).ToArray(), SecondaryGray, fill: false),
+            CreateLine("Visitors", rows.Select(r => r.UniqueVisitors).ToArray(), ChartPalette.Accent, fill: true),
+            CreateLine("Pageviews", rows.Select(r => r.Pageviews).ToArray(), ChartPalette.Muted, fill: false),
         };
-        TrafficXAxes = new[] { new Axis { Labels = labels } };
-        TrafficYAxes = new[] { new Axis { MinLimit = 0 } };
+        TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
+        TrafficYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
 
         TrafficCountries = countries.Select(c => new BarRow { Label = c.Country, Value = c.Value }).ToList();
         TrafficPages = pages.Select(p => new BarRow { Label = p.Path, Value = p.Pageviews }).ToList();
@@ -137,10 +141,10 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         var hitPct = rows.Select(r => r.HitRatio * 100.0).ToArray();
         CacheSeries = new ISeries[]
         {
-            CreateLine("Hit ratio %", hitPct, AccentGold, fill: true),
+            CreateLine("Hit ratio %", hitPct, ChartPalette.Accent, fill: true),
         };
-        CacheXAxes = new[] { new Axis { Labels = labels } };
-        CacheYAxes = new[] { new Axis { MinLimit = 0, MaxLimit = 100 } };
+        CacheXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
+        CacheYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0, MaxLimit = 100 }) };
 
         var totalReq = rows.Sum(r => r.TotalRequests);
         var cachedReq = rows.Sum(r => r.CachedRequests);
@@ -156,40 +160,172 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
         SecuritySeries = new ISeries[]
         {
-            CreateLine("Threats", rows.Select(r => r.Threats).ToArray(), Coral, fill: true),
+            CreateLine("Threats", rows.Select(r => r.Threats).ToArray(), ChartPalette.Secondary, fill: true),
         };
-        SecurityXAxes = new[] { new Axis { Labels = labels } };
-        SecurityYAxes = new[] { new Axis { MinLimit = 0 } };
+        SecurityXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
+        SecurityYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
         TotalThreatsText = rows.Sum(r => r.Threats).ToString("N0", CultureInfo.CurrentCulture);
     }
 
     private void BuildStatusCodesTab(IReadOnlyList<StatusCodeDay> rows)
     {
+        var insight = BuildStatusCodeInsight(rows);
+
+        StatusCodesSeries = insight.Groups.Select(group => new StackedColumnSeries<long>
+        {
+            Name = group.Label,
+            Values = group.Values,
+            Fill = new SolidColorPaint(StatusCodeGroupColor(group.Group)),
+            Stroke = null,
+        }).ToArray();
+        StatusCodesXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = insight.Labels }) };
+        StatusCodesYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
+        StatusSuccessRateText = insight.SuccessRateText;
+        StatusClientErrorsText = insight.ClientErrorsText;
+        StatusServerErrorsText = insight.ServerErrorsText;
+        StatusTopIssueText = insight.TopIssueText;
+        StatusTopCodes = insight.TopCodes;
+    }
+
+    public static StatusCodeInsight BuildStatusCodeInsight(IReadOnlyList<StatusCodeDay> rows)
+    {
         var dates = rows.Select(r => r.Date).Distinct().OrderBy(d => d).ToArray();
         var labels = dates.Select(ShortDate).ToArray();
+        var totalRequests = rows.Sum(r => r.Requests);
 
-        var byCode = rows.GroupBy(r => r.StatusCode).OrderBy(g => g.Key).ToList();
-        var palette = new[] { Success, AccentGold, SecondaryGray, Coral };
-
-        var seriesList = new List<ISeries>();
-        var i = 0;
-        foreach (var group in byCode)
+        var groups = new[]
         {
-            var dict = group.ToDictionary(r => r.Date, r => r.Requests);
-            var values = dates.Select(d => dict.TryGetValue(d, out var v) ? v : 0L).ToArray();
-            var color = palette[i % palette.Length];
-            seriesList.Add(new StackedColumnSeries<long>
+            StatusCodeGroup.Success,
+            StatusCodeGroup.Redirect,
+            StatusCodeGroup.ClientError,
+            StatusCodeGroup.ServerError,
+        }.Select(group =>
+        {
+            var values = dates
+                .Select(date => rows
+                    .Where(row => row.Date == date && ToStatusCodeGroup(row.StatusCode) == group)
+                    .Sum(row => row.Requests))
+                .ToArray();
+
+            return new StatusCodeGroupTrend
             {
-                Name = group.Key.ToString(CultureInfo.InvariantCulture),
+                Group = group,
+                Label = StatusCodeGroupLabel(group),
+                Total = values.Sum(),
                 Values = values,
-                Fill = new SolidColorPaint(color),
-                Stroke = null,
-            });
-            i++;
-        }
-        StatusCodesSeries = seriesList.ToArray();
-        StatusCodesXAxes = new[] { new Axis { Labels = labels } };
-        StatusCodesYAxes = new[] { new Axis { MinLimit = 0 } };
+            };
+        }).ToList();
+
+        var issueCodes = rows
+            .Where(row => row.StatusCode >= 400)
+            .GroupBy(row => row.StatusCode)
+            .Select(group => new
+            {
+                Code = group.Key,
+                Requests = group.Sum(row => row.Requests),
+            })
+            .OrderByDescending(row => row.Requests)
+            .ThenBy(row => row.Code)
+            .ToList();
+
+        var topCodes = issueCodes
+            .Take(6)
+            .Select(row => new StatusCodeIssueRow
+            {
+                Code = row.Code.ToString(CultureInfo.InvariantCulture),
+                Description = StatusCodeDescription(row.Code),
+                RequestsText = $"{row.Requests.ToString("N0", CultureInfo.InvariantCulture)} requests",
+                ShareText = FormatPercent(row.Requests, totalRequests),
+            })
+            .ToList();
+
+        var successRequests = groups.First(group => group.Group == StatusCodeGroup.Success).Total;
+        var clientErrors = groups.First(group => group.Group == StatusCodeGroup.ClientError).Total;
+        var serverErrors = groups.First(group => group.Group == StatusCodeGroup.ServerError).Total;
+        var topIssue = issueCodes.FirstOrDefault();
+
+        return new StatusCodeInsight
+        {
+            Labels = labels,
+            Groups = groups,
+            TopCodes = topCodes,
+            SuccessRateText = totalRequests > 0 ? FormatPercent(successRequests, totalRequests) : "—",
+            ClientErrorsText = totalRequests > 0 ? $"{clientErrors.ToString("N0", CultureInfo.InvariantCulture)} ({FormatPercent(clientErrors, totalRequests)})" : "—",
+            ServerErrorsText = totalRequests > 0 ? $"{serverErrors.ToString("N0", CultureInfo.InvariantCulture)} ({FormatPercent(serverErrors, totalRequests)})" : "—",
+            TopIssueText = topIssue is null
+                ? "None"
+                : $"{topIssue.Code.ToString(CultureInfo.InvariantCulture)} {StatusCodeDescription(topIssue.Code)} - {topIssue.Requests.ToString("N0", CultureInfo.InvariantCulture)} requests",
+        };
+    }
+
+    private static StatusCodeGroup ToStatusCodeGroup(int statusCode) => statusCode switch
+    {
+        >= 200 and <= 299 => StatusCodeGroup.Success,
+        >= 300 and <= 399 => StatusCodeGroup.Redirect,
+        >= 400 and <= 499 => StatusCodeGroup.ClientError,
+        _ => StatusCodeGroup.ServerError,
+    };
+
+    private static string StatusCodeGroupLabel(StatusCodeGroup group) => group switch
+    {
+        StatusCodeGroup.Success => "2xx Success",
+        StatusCodeGroup.Redirect => "3xx Redirects",
+        StatusCodeGroup.ClientError => "4xx Client errors",
+        StatusCodeGroup.ServerError => "5xx Server / edge errors",
+        _ => "Other",
+    };
+
+    private static SKColor StatusCodeGroupColor(StatusCodeGroup group) => group switch
+    {
+        StatusCodeGroup.Success => ChartPalette.Success,
+        StatusCodeGroup.Redirect => ChartPalette.Info,
+        StatusCodeGroup.ClientError => ChartPalette.Warning,
+        StatusCodeGroup.ServerError => ChartPalette.Danger,
+        _ => ChartPalette.Muted,
+    };
+
+    private static string StatusCodeDescription(int statusCode) => statusCode switch
+    {
+        200 => "OK",
+        204 => "No Content",
+        206 => "Partial Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        304 => "Not Modified",
+        308 => "Permanent Redirect",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        429 => "Too Many Requests",
+        499 => "Client Closed Request",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        520 => "Cloudflare Unknown Error",
+        521 => "Origin Refused Connection",
+        522 => "Origin Connection Timed Out",
+        523 => "Origin Unreachable",
+        524 => "Origin Timeout",
+        525 => "SSL Handshake Failed",
+        526 => "Invalid SSL Certificate",
+        530 => "Cloudflare Origin Error",
+        _ => ToStatusCodeGroup(statusCode) switch
+        {
+            StatusCodeGroup.Success => "Success",
+            StatusCodeGroup.Redirect => "Redirect",
+            StatusCodeGroup.ClientError => "Client error",
+            StatusCodeGroup.ServerError => "Server / edge error",
+            _ => "Status code",
+        },
+    };
+
+    private static string FormatPercent(long value, long total)
+    {
+        if (total <= 0) return "—";
+        return ((double)value / total * 100.0).ToString("0.0", CultureInfo.InvariantCulture) + "%";
     }
 
     private void BuildWebAnalyticsTab(
@@ -201,11 +337,11 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         var labels = daily.Select(r => ShortDate(r.Date)).ToArray();
         WaSeries = new ISeries[]
         {
-            CreateLine("Visits", daily.Select(r => r.Visits).ToArray(), AccentGold, fill: true),
-            CreateLine("Page views", daily.Select(r => r.PageViews).ToArray(), SecondaryGray, fill: false),
+            CreateLine("Visits", daily.Select(r => r.Visits).ToArray(), ChartPalette.Accent, fill: true),
+            CreateLine("Page views", daily.Select(r => r.PageViews).ToArray(), ChartPalette.Muted, fill: false),
         };
-        WaXAxes = new[] { new Axis { Labels = labels } };
-        WaYAxes = new[] { new Axis { MinLimit = 0 } };
+        WaXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
+        WaYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
 
         WaReferrers = referrers.Select(r => new BarRow { Label = r.Referrer, Value = r.Visits }).ToList();
         WaPages = pages.Select(p => new BarRow { Label = p.Path, Value = p.PageViews }).ToList();

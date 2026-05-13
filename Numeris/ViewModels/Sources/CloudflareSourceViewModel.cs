@@ -25,6 +25,8 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [ObservableProperty] public partial string NewToken { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; set; } = "";
     [ObservableProperty] public partial bool IsBusy { get; set; }
+    public bool CanRun => !IsBusy;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     [ObservableProperty] public partial int SyncDays { get; set; } = 90;
 
     public CloudflareSourceViewModel(
@@ -38,6 +40,9 @@ public partial class CloudflareSourceViewModel : ObservableObject
         _client = client;
         _sync = sync;
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public async Task LoadAsync()
     {

@@ -24,6 +24,8 @@ public partial class BingSourceViewModel : ObservableObject
     [ObservableProperty] public partial string NewSiteUrl { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; set; } = "";
     [ObservableProperty] public partial bool IsBusy { get; set; }
+    public bool CanRun => !IsBusy;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
 
     public BingSourceViewModel(
         ConnectionsRepository connectionsRepo,
@@ -34,6 +36,9 @@ public partial class BingSourceViewModel : ObservableObject
         _vault = vault;
         _sync = sync;
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public async Task LoadAsync()
     {
@@ -168,6 +173,6 @@ public partial class BingSourceViewModel : ObservableObject
         var sites = (await _sync.ListSitesAsync()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         await _connectionsRepo.UpsertBingAsync(
             new BingConnectionConfig { Sites = sites, LastValidatedAt = _connectionsRepo.FormatNow() },
-            string.IsNullOrWhiteSpace(_vault.GetBingApiKey()) ? "mock" : "configured");
+            string.IsNullOrWhiteSpace(_vault.GetBingApiKey()) ? "disconnected" : "configured");
     }
 }

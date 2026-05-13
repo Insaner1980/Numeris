@@ -16,7 +16,7 @@ public sealed class CloudflareConnectionInfo
     public string Domain { get; set; } = "";
     public string ZoneId { get; set; } = "";
     public bool HasToken { get; set; }
-    public string Status { get; set; } = "mock";
+    public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
     public string? LastValidatedAt { get; set; }
 }
@@ -33,7 +33,7 @@ public sealed class WebAnalyticsConnectionInfo
     public string Id { get; set; } = "";
     public string AccountId { get; set; } = "";
     public bool HasToken { get; set; }
-    public string Status { get; set; } = "mock";
+    public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
 }
 
@@ -51,7 +51,7 @@ public sealed class SearchConsoleConnectionInfo
     public string ClientId { get; set; } = "";
     public bool HasClientSecret { get; set; }
     public bool HasRefreshToken { get; set; }
-    public string Status { get; set; } = "mock";
+    public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
 }
 
@@ -66,7 +66,7 @@ public sealed class PerformanceConnectionInfo
     public string Id { get; set; } = "perf";
     public bool HasCruxApiKey { get; set; }
     public bool HasPageSpeedApiKey { get; set; }
-    public string Status { get; set; } = "mock";
+    public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
 }
 
@@ -92,7 +92,27 @@ public sealed class BingConnectionInfo
     public string Id { get; set; } = "bing";
     public bool HasApiKey { get; set; }
     public List<string> Sites { get; set; } = new();
-    public string Status { get; set; } = "mock";
+    public string Status { get; set; } = "disconnected";
+    public string? LastSync { get; set; }
+}
+
+public sealed class YouTubeConnectionConfig
+{
+    public string ClientId { get; set; } = "";
+    public string ChannelId { get; set; } = "";
+    public string ChannelTitle { get; set; } = "";
+    public string? LastValidatedAt { get; set; }
+}
+
+public sealed class YouTubeConnectionInfo
+{
+    public string Id { get; set; } = "youtube";
+    public string ClientId { get; set; } = "";
+    public string ChannelId { get; set; } = "";
+    public string ChannelTitle { get; set; } = "";
+    public bool HasClientSecret { get; set; }
+    public bool HasRefreshToken { get; set; }
+    public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
 }
 
@@ -101,6 +121,17 @@ public sealed class SyncResult
     public string Domain { get; set; } = "";
     public long DaysSynced { get; set; }
     public long RecordsUpserted { get; set; }
+}
+
+public sealed class IndexingInspectionResult
+{
+    public string Domain { get; set; } = "";
+    public long TotalUrls { get; set; }
+    public long UrlsChecked { get; set; }
+    public long Indexed { get; set; }
+    public long NotIndexed { get; set; }
+    public long Errors { get; set; }
+    public string? FirstError { get; set; }
 }
 
 public sealed class ConnectionTestResult

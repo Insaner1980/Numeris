@@ -12,6 +12,8 @@ public sealed class CredentialVault
     private const string CruxApiKeyResource = "Numeris.Crux.ApiKey";
     private const string PageSpeedApiKeyResource = "Numeris.PageSpeed.ApiKey";
     private const string BingApiKeyResource = "Numeris.BingWebmaster.ApiKey";
+    private const string YouTubeSecretResource = "Numeris.YouTube.ClientSecret";
+    private const string YouTubeRefreshResource = "Numeris.YouTube.RefreshToken";
 
     private readonly PasswordVault _vault = new();
 
@@ -77,6 +79,24 @@ public sealed class CredentialVault
 
     public void DeleteBingApiKey()
         => Delete(BingApiKeyResource, "default");
+
+    public void SetYouTubeClientSecret(string clientId, string secret)
+        => Save(YouTubeSecretResource, clientId.Trim(), secret);
+
+    public string? GetYouTubeClientSecret(string clientId)
+        => TryGet(YouTubeSecretResource, clientId.Trim());
+
+    public void DeleteYouTubeClientSecret(string clientId)
+        => Delete(YouTubeSecretResource, clientId.Trim());
+
+    public void SetYouTubeRefreshToken(string clientId, string token)
+        => Save(YouTubeRefreshResource, clientId.Trim(), token);
+
+    public string? GetYouTubeRefreshToken(string clientId)
+        => TryGet(YouTubeRefreshResource, clientId.Trim());
+
+    public void DeleteYouTubeRefreshToken(string clientId)
+        => Delete(YouTubeRefreshResource, clientId.Trim());
 
     private void Save(string resource, string user, string secret)
     {

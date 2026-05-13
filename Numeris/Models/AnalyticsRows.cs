@@ -42,4 +42,29 @@ public sealed class SitemapUrl
     public string? Verdict { get; set; }
     public string? CoverageState { get; set; }
     public string? IndexingState { get; set; }
+    public string? LastInspectedAt { get; set; }
+    public string? LastCrawlTime { get; set; }
+    public string? PageFetchState { get; set; }
+    public string? CrawledAs { get; set; }
+
+    public bool HasInspectionData =>
+        !string.IsNullOrWhiteSpace(Verdict)
+        || !string.IsNullOrWhiteSpace(CoverageState)
+        || !string.IsNullOrWhiteSpace(IndexingState);
+
+    public bool IsIndexed =>
+        string.Equals(Verdict, "PASS", System.StringComparison.OrdinalIgnoreCase)
+        || (CoverageState?.StartsWith("Indexed", System.StringComparison.OrdinalIgnoreCase) ?? false);
+
+    public string IndexingStatusText => HasInspectionData
+        ? IsIndexed ? "Indexed" : "Not indexed"
+        : "";
+
+    public string CoverageStatusText => string.IsNullOrWhiteSpace(CoverageState)
+        ? "—"
+        : CoverageState;
+
+    public string LastCrawlText => string.IsNullOrWhiteSpace(LastCrawlTime)
+        ? "—"
+        : LastCrawlTime;
 }

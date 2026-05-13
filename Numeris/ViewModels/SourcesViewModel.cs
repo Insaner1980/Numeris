@@ -11,6 +11,7 @@ public partial class SourcesViewModel : ObservableObject
     public WebAnalyticsSourceViewModel WebAnalytics { get; }
     public SearchConsoleSourceViewModel SearchConsole { get; }
     public PerformanceSourceViewModel Performance { get; }
+    public YouTubeSourceViewModel YouTube { get; }
     public BingSourceViewModel Bing { get; }
 
     public SourcesViewModel(
@@ -18,12 +19,14 @@ public partial class SourcesViewModel : ObservableObject
         WebAnalyticsSourceViewModel webAnalytics,
         SearchConsoleSourceViewModel searchConsole,
         PerformanceSourceViewModel performance,
+        YouTubeSourceViewModel YouTube,
         BingSourceViewModel bing)
     {
         Cloudflare = cloudflare;
         WebAnalytics = webAnalytics;
         SearchConsole = searchConsole;
         Performance = performance;
+        this.YouTube = YouTube;
         Bing = bing;
     }
 
@@ -34,5 +37,6 @@ public partial class SourcesViewModel : ObservableObject
             WebAnalytics.LoadAsync(),
             SearchConsole.LoadAsync(),
             Performance.LoadAsync(),
+            YouTube.LoadAsync(),
             Bing.LoadAsync());
 }

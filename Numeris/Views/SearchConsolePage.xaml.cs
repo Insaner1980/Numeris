@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Linq;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Numeris.Models;
+using Numeris.Themes;
 using Numeris.ViewModels;
 
 namespace Numeris.Views;
@@ -34,11 +36,11 @@ public sealed partial class SearchConsolePage : Page
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = new[] { Period.Last7Days, Period.Last30Days, Period.Last90Days, Period.All };
-        PeriodCombo.SelectedItem = Shell.SelectedPeriod;
+        PeriodCombo.ItemsSource = PeriodOptions.All;
+        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
         QuerySortCombo.ItemsSource = new[] { "clicks", "impressions", "ctr", "position" };
         QuerySortCombo.SelectedItem = ViewModel.QuerySortBy;
-        TabBar.SelectedItem = TabBar.MenuItems[0];
+        TabBar.SelectedItem = TabBar.Items[0];
         _wiringUi = false;
 
         ViewModel.PropertyChanged += OnViewModelChanged;
@@ -81,12 +83,8 @@ public sealed partial class SearchConsolePage : Page
     private static void BuildChart(ref CartesianChart? chart, Border host)
     {
         if (chart is not null) return;
-        chart = new CartesianChart
-        {
-            LegendPosition = LiveChartsCore.Measure.LegendPosition.Bottom,
-            TooltipPosition = LiveChartsCore.Measure.TooltipPosition.Top,
-        };
-        host.Child = chart;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateChartSurface(chart);
     }
 
     private void ApplyAllChartData()
@@ -105,9 +103,9 @@ public sealed partial class SearchConsolePage : Page
         }
     }
 
-    private void TabBar_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void TabBar_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (args.SelectedItem is not NavigationViewItem item) return;
+        if (sender.SelectedItem is not SelectorBarItem item) return;
         if (item.Tag is not string tag) return;
         OverviewPanel.Visibility = tag == "overview" ? Visibility.Visible : Visibility.Collapsed;
         QueriesPanel.Visibility = tag == "queries" ? Visibility.Visible : Visibility.Collapsed;
@@ -126,7 +124,7 @@ public sealed partial class SearchConsolePage : Page
     private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is Period p) Shell.SelectedPeriod = p;
+        if (PeriodCombo.SelectedItem is PeriodOption option) Shell.SelectedPeriod = option.Value;
     }
 
     private void QuerySortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -142,6 +140,12 @@ public sealed partial class SearchConsolePage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab == "indexing")
+        {
+            await ViewModel.InspectIndexingAsync();
+            return;
+        }
+
         await ViewModel.LoadAsync();
     }
 }

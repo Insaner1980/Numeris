@@ -15,3 +15,23 @@ public sealed class SummaryData
     public double CrashRate { get; set; }
     public double CrashRateChange { get; set; }
 }
+
+public sealed class BingOverviewSummary
+{
+    public long Clicks { get; set; }
+    public long PreviousClicks { get; set; }
+    public long Impressions { get; set; }
+    public double ClicksChangePct { get; set; }
+}
+
+public sealed class WebVitalsOverviewSummary
+{
+    public string Status { get; set; } = "No data";
+    public string Detail { get; set; } = "No CrUX data";
+}
+
+public sealed class PageSpeedOverviewSummary
+{
+    public double? MobilePerformanceScore { get; set; }
+    public string AnalysisUtc { get; set; } = "";
+}

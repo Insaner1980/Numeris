@@ -25,6 +25,8 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [ObservableProperty] public partial string NewSiteTag { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; set; } = "";
     [ObservableProperty] public partial bool IsBusy { get; set; }
+    public bool CanRun => !IsBusy;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     [ObservableProperty] public partial int SyncDays { get; set; } = 30;
 
     public WebAnalyticsSourceViewModel(
@@ -36,6 +38,9 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
         _vault = vault;
         _sync = sync;
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public async Task LoadAsync()
     {

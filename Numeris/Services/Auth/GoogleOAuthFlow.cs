@@ -1,21 +1,26 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web;
-using Numeris.Services.Api;
 
 namespace Numeris.Services.Auth;
 
 public sealed class GoogleOAuthFlow
 {
-    private readonly SearchConsoleClient _client;
+    private readonly GoogleOAuthClient _client;
 
-    public GoogleOAuthFlow(SearchConsoleClient client) => _client = client;
+    public GoogleOAuthFlow(GoogleOAuthClient client) => _client = client;
 
-    public async Task<OAuthTokens> AuthorizeAsync(string clientId, string clientSecret, Action<Uri> openBrowser, TimeSpan? timeout = null)
+    public async Task<OAuthTokens> AuthorizeAsync(
+        string clientId,
+        string clientSecret,
+        Action<Uri> openBrowser,
+        IReadOnlyList<string> scopes,
+        TimeSpan? timeout = null)
     {
         timeout ??= TimeSpan.FromMinutes(2);
 
@@ -27,7 +32,7 @@ public sealed class GoogleOAuthFlow
 
         try
         {
-            var authUrl = SearchConsoleClient.BuildAuthUrl(clientId, redirectUri, state);
+            var authUrl = _client.BuildAuthUrl(clientId, redirectUri, state, scopes);
             openBrowser(new Uri(authUrl));
 
             using var cts = new System.Threading.CancellationTokenSource(timeout.Value);

@@ -8,26 +8,267 @@
     <x:Double x:Key="Space2">8</x:Double>
     <x:Double x:Key="Space3">12</x:Double>
     <x:Double x:Key="Space4">16</x:Double>
+    <x:Double x:Key="Space5">20</x:Double>
     <x:Double x:Key="Space6">24</x:Double>
     <x:Double x:Key="Space8">32</x:Double>
 
-    <Thickness x:Key="PagePadding">24,16,24,24</Thickness>
-    <Thickness x:Key="CardPadding">20,16,20,16</Thickness>
+    <Thickness x:Key="PagePadding">32,24,32,32</Thickness>
+    <Thickness x:Key="PageHeaderMargin">32,24,32,0</Thickness>
+    <Thickness x:Key="PageScrollContentPadding">32,0,32,32</Thickness>
+    <Thickness x:Key="CardPadding">22,18,22,18</Thickness>
+    <Thickness x:Key="PageHeaderPadding">0,20,0,18</Thickness>
+    <Thickness x:Key="ChartCardPadding">22,18,22,18</Thickness>
+    <Thickness x:Key="StatusStripPadding">18,14,18,14</Thickness>
+    <Thickness x:Key="ScrollContentGutter">0,0,18,0</Thickness>
+    <Thickness x:Key="AppTitleBarPadding">24,0,148,0</Thickness>
 
-    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
-    <CornerRadius x:Key="ControlCornerRadius">4</CornerRadius>
+    <x:Double x:Key="AppBackdropOpacity">0.72</x:Double>
+    <x:Double x:Key="AppTitleBarHeight">48</x:Double>
+    <Color x:Key="AppBackdropScrimColor">#B3000000</Color>
+    <SolidColorBrush x:Key="AppBackdropScrimBrush" Color="{StaticResource AppBackdropScrimColor}" />
 
-    <!-- Accent (Numeris brand gold) -->
-    <Color x:Key="NumerisAccentColor">#D9A24E</Color>
+    <x:Double x:Key="ToolbarControlHeight">40</x:Double>
+    <x:Double x:Key="RefreshButtonSize">44</x:Double>
+    <x:Double x:Key="TableRowHeight">42</x:Double>
+    <x:Double x:Key="HorizontalBarLabelWidth">140</x:Double>
+    <x:Double x:Key="HorizontalBarValueWidth">80</x:Double>
+    <x:Double x:Key="NarrowBreakpoint">760</x:Double>
+    <x:Double x:Key="WideBreakpoint">1180</x:Double>
+
+    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+
+    <FontFamily x:Key="NumerisFontFamily">Segoe UI Variable</FontFamily>
+
+    <Color x:Key="AppBackgroundColor">#444444</Color>
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}" />
+
+    <Color x:Key="TransparentLayerColor">#00000000</Color>
+    <Color x:Key="NavigationLayerColor">#00000000</Color>
+    <Color x:Key="ContentLayerColor">#00000000</Color>
+    <SolidColorBrush x:Key="TransparentLayerBrush" Color="{StaticResource TransparentLayerColor}" />
+    <SolidColorBrush x:Key="NavigationLayerBrush" Color="{StaticResource NavigationLayerColor}" />
+    <SolidColorBrush x:Key="ContentLayerBrush" Color="{StaticResource ContentLayerColor}" />
+    <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="NavigationLayerBrush" />
+    <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="NavigationLayerBrush" />
+    <StaticResource x:Key="NavigationViewTopPaneBackground" ResourceKey="NavigationLayerBrush" />
+    <StaticResource x:Key="NavigationViewContentBackground" ResourceKey="ContentLayerBrush" />
+    <StaticResource x:Key="NavigationViewContentGridBorderBrush" ResourceKey="TransparentLayerBrush" />
+    <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
+    <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+
+    <Color x:Key="CardSurfaceColor">#52000000</Color>
+    <Color x:Key="CardSurfaceHoverColor">#60000000</Color>
+    <Color x:Key="NumerisCardBorderColor">#48FFFFFF</Color>
+    <SolidColorBrush x:Key="CardSurfaceBrush" Color="{StaticResource CardSurfaceColor}" />
+    <SolidColorBrush x:Key="CardSurfaceHoverBrush" Color="{StaticResource CardSurfaceHoverColor}" />
+    <SolidColorBrush x:Key="NumerisCardBorderBrush" Color="{StaticResource NumerisCardBorderColor}" />
+
+    <Color x:Key="ControlSurfaceColor">#38000000</Color>
+    <Color x:Key="ControlSurfaceHoverColor">#48000000</Color>
+    <Color x:Key="ControlSurfacePressedColor">#2C000000</Color>
+    <SolidColorBrush x:Key="ControlSurfaceBrush" Color="{StaticResource ControlSurfaceColor}" />
+    <SolidColorBrush x:Key="ControlSurfaceHoverBrush" Color="{StaticResource ControlSurfaceHoverColor}" />
+    <SolidColorBrush x:Key="ControlSurfacePressedBrush" Color="{StaticResource ControlSurfacePressedColor}" />
+
+    <Color x:Key="ChartPanelColor">#54000000</Color>
+    <Color x:Key="ChartGridLineColor">#38FFFFFF</Color>
+    <x:Double x:Key="ChartMeshOpacity">0.16</x:Double>
+    <Color x:Key="ChartMeshLineColor">#30D9A052</Color>
+    <Color x:Key="ChartMeshPointColor">#50FFFFFF</Color>
+    <Color x:Key="ChartMutedColor">#B0ECEEF2</Color>
+    <Color x:Key="ChartSecondaryColor">#C97B6A</Color>
+    <SolidColorBrush x:Key="ChartPanelBrush" Color="{StaticResource ChartPanelColor}" />
+    <SolidColorBrush x:Key="ChartGridLineBrush" Color="{StaticResource ChartGridLineColor}" />
+    <SolidColorBrush x:Key="ChartMeshLineBrush" Color="{StaticResource ChartMeshLineColor}" />
+    <SolidColorBrush x:Key="ChartMeshPointBrush" Color="{StaticResource ChartMeshPointColor}" />
+    <SolidColorBrush x:Key="HorizontalBarTrackBrush" Color="{StaticResource ControlSurfaceColor}" />
+
+    <Color x:Key="NumerisTextPrimaryColor">#F5F5F5</Color>
+    <Color x:Key="NumerisTextSecondaryColor">#D8D8D8</Color>
+    <Color x:Key="NumerisTextTertiaryColor">#B8B8B8</Color>
+    <Color x:Key="NumerisTextDisabledColor">#8F8F8F</Color>
+    <SolidColorBrush x:Key="NumerisTextPrimaryBrush" Color="{StaticResource NumerisTextPrimaryColor}" />
+    <SolidColorBrush x:Key="NumerisTextSecondaryBrush" Color="{StaticResource NumerisTextSecondaryColor}" />
+    <SolidColorBrush x:Key="NumerisTextTertiaryBrush" Color="{StaticResource NumerisTextTertiaryColor}" />
+    <SolidColorBrush x:Key="NumerisTextDisabledBrush" Color="{StaticResource NumerisTextDisabledColor}" />
+
+    <Color x:Key="NumerisAccentColor">#D9A052</Color>
+    <Color x:Key="NumerisAccentHoverColor">#E3AD64</Color>
+    <Color x:Key="NumerisAccentPressedColor">#C78D3F</Color>
     <SolidColorBrush x:Key="NumerisAccentBrush" Color="{StaticResource NumerisAccentColor}" />
 
-    <Color x:Key="NumerisChartGridColor">#15FFFFFF</Color>
+    <Color x:Key="NumerisChartGridColor">#24FFFFFF</Color>
     <SolidColorBrush x:Key="NumerisChartGridBrush" Color="{StaticResource NumerisChartGridColor}" />
 
-    <!-- Tone palette for KPI cards (overridden by system theme on light mode) -->
-    <Color x:Key="ToneAColor">#D9A24E</Color>
+    <Color x:Key="SuccessColor">#82C98F</Color>
+    <Color x:Key="WarningColor">#D9A052</Color>
+    <Color x:Key="DangerColor">#E07A7A</Color>
+    <Color x:Key="InfoColor">#8FB8E8</Color>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" />
+
+    <Color x:Key="ToneAColor">#D9A052</Color>
     <Color x:Key="ToneBColor">#92EBD8</Color>
     <Color x:Key="ToneCColor">#84A98C</Color>
     <Color x:Key="ToneDColor">#C97B6A</Color>
+
+    <Style x:Key="PageTitleTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource TitleTextBlockStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="32" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="AppTitleTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="PageHeaderBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="{StaticResource PageHeaderPadding}" />
+    </Style>
+
+    <Style x:Key="SectionTitleTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="KpiCardSurfaceStyle" TargetType="Grid">
+        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="Padding" Value="{StaticResource CardPadding}" />
+        <Setter Property="MinHeight" Value="122" />
+    </Style>
+
+    <Style x:Key="ChartCardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="Padding" Value="{StaticResource ChartCardPadding}" />
+    </Style>
+
+    <Style x:Key="ContentCardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="Padding" Value="{StaticResource CardPadding}" />
+    </Style>
+
+    <Style x:Key="StatusStripBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+    </Style>
+
+    <Style x:Key="ResponsiveKpiGridStyle" TargetType="Grid">
+        <Setter Property="ColumnSpacing" Value="{StaticResource Space4}" />
+        <Setter Property="RowSpacing" Value="{StaticResource Space4}" />
+    </Style>
+
+    <Style x:Key="ResponsiveTwoColumnGridStyle" TargetType="Grid">
+        <Setter Property="ColumnSpacing" Value="{StaticResource Space4}" />
+        <Setter Property="RowSpacing" Value="{StaticResource Space4}" />
+    </Style>
+
+    <Style x:Key="ResponsiveThreeColumnGridStyle" TargetType="Grid">
+        <Setter Property="ColumnSpacing" Value="{StaticResource Space4}" />
+        <Setter Property="RowSpacing" Value="{StaticResource Space4}" />
+    </Style>
+
+    <Style x:Key="CompactToolbarPanelStyle" TargetType="StackPanel">
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Spacing" Value="{StaticResource Space2}" />
+    </Style>
+
+    <Style x:Key="StatusValueTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <Style x:Key="TopTabSelectorBarStyle" TargetType="SelectorBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
+
+    <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="Height" Value="{StaticResource ToolbarControlHeight}" />
+        <Setter Property="Padding" Value="16,0,16,0" />
+    </Style>
+
+    <Style x:Key="SecondaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="DangerActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+    </Style>
+
+    <Style x:Key="DataTableHeaderBorderStyle" TargetType="Grid">
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
+    </Style>
+
+    <Style x:Key="DataTableRowBorderStyle" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+
+    <Style x:Key="StatusInfoBarStyle" TargetType="InfoBar">
+        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style x:Key="DataListViewStyle" TargetType="ListView">
+        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="SelectionMode" Value="None" />
+        <Setter Property="IsItemClickEnabled" Value="False" />
+    </Style>
+
+    <Style x:Key="DataTableHeaderTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="DataTableCellTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+    </Style>
 
 </ResourceDictionary>

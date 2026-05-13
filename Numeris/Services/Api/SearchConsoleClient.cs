@@ -6,15 +6,17 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
+using Numeris.Services.Auth;
 
 namespace Numeris.Services.Api;
 
 public sealed class SearchConsoleClient
 {
-    public const string TokenEndpoint = "https://oauth2.googleapis.com/token";
     public const string SitesEndpoint = "https://www.googleapis.com/webmasters/v3/sites";
+    public const string UrlInspectionEndpoint = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect";
     public const string Scope = "https://www.googleapis.com/auth/webmasters.readonly";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -23,63 +25,7 @@ public sealed class SearchConsoleClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
     private static readonly HttpClient Http = new();
-
-    public static string BuildAuthUrl(string clientId, string redirectUri, string state)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append("https://accounts.google.com/o/oauth2/v2/auth");
-        sb.Append("?client_id=").Append(HttpUtility.UrlEncode(clientId));
-        sb.Append("&redirect_uri=").Append(HttpUtility.UrlEncode(redirectUri));
-        sb.Append("&response_type=code");
-        sb.Append("&scope=").Append(HttpUtility.UrlEncode(Scope));
-        sb.Append("&access_type=offline&prompt=consent");
-        sb.Append("&state=").Append(HttpUtility.UrlEncode(state));
-        return sb.ToString();
-    }
-
-    public async Task<OAuthTokens> ExchangeCodeAsync(string clientId, string clientSecret, string code, string redirectUri)
-    {
-        var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["client_id"] = clientId,
-            ["client_secret"] = clientSecret,
-            ["code"] = code,
-            ["grant_type"] = "authorization_code",
-            ["redirect_uri"] = redirectUri,
-        });
-        using var response = await Http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
-        return await ParseTokenResponseAsync(response).ConfigureAwait(false);
-    }
-
-    public async Task<string> RefreshAccessTokenAsync(string clientId, string clientSecret, string refreshToken)
-    {
-        var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["client_id"] = clientId,
-            ["client_secret"] = clientSecret,
-            ["refresh_token"] = refreshToken,
-            ["grant_type"] = "refresh_token",
-        });
-        using var response = await Http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
-        var tokens = await ParseTokenResponseAsync(response).ConfigureAwait(false);
-        return tokens.AccessToken;
-    }
-
-    private static async Task<OAuthTokens> ParseTokenResponseAsync(HttpResponseMessage response)
-    {
-        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new ApiRequestException("Google OAuth", "token", response.StatusCode, ApiErrorMessage.FromBody(body));
-        }
-        var parsed = JsonSerializer.Deserialize<TokenResponse>(body, JsonOptions)
-            ?? throw new InvalidOperationException("Could not parse Google token response");
-        return new OAuthTokens
-        {
-            AccessToken = parsed.AccessToken,
-            RefreshToken = parsed.RefreshToken,
-        };
-    }
+    private static readonly TimeSpan UrlInspectionTimeout = TimeSpan.FromSeconds(15);
 
     public async Task<List<string>> ListSitesAsync(string accessToken)
     {
@@ -195,14 +141,61 @@ public sealed class SearchConsoleClient
         return rows;
     }
 
-    private sealed class TokenResponse
+    public async Task<UrlInspectionData> InspectUrlAsync(string accessToken, string propertyUrl, string inspectionUrl)
     {
-        [JsonPropertyName("access_token")]
-        public string AccessToken { get; set; } = "";
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            throw new InvalidOperationException("Google OAuth refresh did not return an access token");
+        }
 
-        [JsonPropertyName("refresh_token")]
-        public string? RefreshToken { get; set; }
+        var requestBody = new
+        {
+            inspectionUrl,
+            siteUrl = propertyUrl,
+        };
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, UrlInspectionEndpoint)
+        {
+            Content = JsonContent.Create(requestBody, options: JsonOptions),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Trim());
+
+        using var timeout = new CancellationTokenSource(UrlInspectionTimeout);
+        HttpResponseMessage response;
+        try
+        {
+            response = await Http.SendAsync(req, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (timeout.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Google Search Console URL inspection timed out after {UrlInspectionTimeout.TotalSeconds:0} seconds", ex);
+        }
+
+        using (response)
+        {
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ApiRequestException("Google Search Console", "urlInspection.index.inspect", response.StatusCode, ApiErrorMessage.FromBody(body));
+        }
+
+        var parsed = JsonSerializer.Deserialize<InspectionResponse>(body, JsonOptions)
+            ?? throw new InvalidOperationException("Could not parse URL inspection response");
+        var index = parsed.InspectionResult?.IndexStatusResult;
+        return new UrlInspectionData
+        {
+            Url = inspectionUrl,
+            Verdict = index?.Verdict,
+            CoverageState = index?.CoverageState,
+            IndexingState = index?.IndexingState,
+            RobotsTxtState = index?.RobotsTxtState,
+            PageFetchState = index?.PageFetchState,
+            CrawledAs = index?.CrawledAs,
+            LastCrawlTime = index?.LastCrawlTime,
+        };
+        }
     }
+
     private sealed class SitesResponse { public List<SiteEntry>? SiteEntry { get; set; } }
     private sealed class SiteEntry { public string SiteUrl { get; set; } = ""; }
     private sealed class QueryResponse { public List<QueryRow>? Rows { get; set; } }
@@ -214,12 +207,18 @@ public sealed class SearchConsoleClient
         public double Ctr { get; set; }
         public double Position { get; set; }
     }
-}
-
-public sealed class OAuthTokens
-{
-    public string AccessToken { get; set; } = "";
-    public string? RefreshToken { get; set; }
+    private sealed class InspectionResponse { public InspectionResult? InspectionResult { get; set; } }
+    private sealed class InspectionResult { public IndexStatusResult? IndexStatusResult { get; set; } }
+    private sealed class IndexStatusResult
+    {
+        public string? Verdict { get; set; }
+        public string? CoverageState { get; set; }
+        public string? IndexingState { get; set; }
+        public string? RobotsTxtState { get; set; }
+        public string? PageFetchState { get; set; }
+        public string? CrawledAs { get; set; }
+        public string? LastCrawlTime { get; set; }
+    }
 }
 
 public enum SearchQueryKind { Daily, Query, Page, Country, Device, PageQuery }
@@ -235,4 +234,16 @@ public sealed class SearchConsoleApiRow
     public long Impressions { get; set; }
     public double Ctr { get; set; }
     public double Position { get; set; }
+}
+
+public sealed class UrlInspectionData
+{
+    public string Url { get; set; } = "";
+    public string? Verdict { get; set; }
+    public string? CoverageState { get; set; }
+    public string? IndexingState { get; set; }
+    public string? RobotsTxtState { get; set; }
+    public string? PageFetchState { get; set; }
+    public string? CrawledAs { get; set; }
+    public string? LastCrawlTime { get; set; }
 }

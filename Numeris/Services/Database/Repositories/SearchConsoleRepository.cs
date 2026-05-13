@@ -48,10 +48,10 @@ public sealed class SearchConsoleRepository
         {
             var orderClause = sortBy switch
             {
-                "impressions" => "Impressions DESC",
-                "ctr" => "Ctr DESC",
-                "position" => "Position ASC",
-                _ => "Clicks DESC",
+                "impressions" => "Impressions DESC, Clicks DESC",
+                "ctr" => "Ctr DESC, Impressions DESC",
+                "position" => "Position ASC, Impressions DESC",
+                _ => "Clicks DESC, Impressions DESC",
             };
 
             var sql = siteUrl == "all"

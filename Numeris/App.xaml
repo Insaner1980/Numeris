@@ -13,6 +13,10 @@
             </ResourceDictionary.MergedDictionaries>
             <converters:PercentConverter x:Key="PercentConverter" />
             <converters:OneDecimalConverter x:Key="OneDecimalConverter" />
+            <converters:IsoDateTimeDisplayConverter x:Key="IsoDateTimeDisplayConverter" />
+            <converters:StatusTextConverter x:Key="StatusTextConverter" />
+            <converters:EmptyFallbackConverter x:Key="EmptyFallbackConverter" />
+            <converters:MillisecondsConverter x:Key="MillisecondsConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

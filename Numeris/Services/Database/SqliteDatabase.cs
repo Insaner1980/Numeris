@@ -89,22 +89,6 @@ public sealed class SqliteDatabase : IDisposable
         }
     }
 
-    public bool HasData()
-    {
-        _gate.Wait();
-        try
-        {
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM cloudflare_traffic";
-            var result = cmd.ExecuteScalar();
-            return Convert.ToInt64(result) > 0;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     public void ClearAllData()
     {
         _gate.Wait();
@@ -129,7 +113,22 @@ public sealed class SqliteDatabase : IDisposable
                 DELETE FROM web_analytics_countries;
                 DELETE FROM web_analytics_sites;
                 DELETE FROM uptime_checks;
-                UPDATE connections SET status = 'mock', last_sync = NULL;
+                DELETE FROM crux_metric_points;
+                DELETE FROM pagespeed_runs;
+                DELETE FROM pagespeed_audits;
+                DELETE FROM bing_rank_traffic;
+                DELETE FROM bing_query_stats;
+                DELETE FROM bing_page_stats;
+                DELETE FROM bing_raw_items;
+                DELETE FROM youtube_channels;
+                DELETE FROM youtube_videos;
+                DELETE FROM youtube_daily;
+                DELETE FROM youtube_video_stats;
+                DELETE FROM youtube_countries;
+                DELETE FROM youtube_traffic_sources;
+                DELETE FROM youtube_devices;
+                DELETE FROM youtube_retention_points;
+                UPDATE connections SET status = 'disconnected', last_sync = NULL;
                 """;
             cmd.ExecuteNonQuery();
         }

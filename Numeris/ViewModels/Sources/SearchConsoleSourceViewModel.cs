@@ -24,6 +24,8 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [ObservableProperty] public partial string NewClientSecret { get; set; } = "";
     [ObservableProperty] public partial string StatusMessage { get; set; } = "";
     [ObservableProperty] public partial bool IsBusy { get; set; }
+    public bool CanRun => !IsBusy;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     [ObservableProperty] public partial int SyncDays { get; set; } = 30;
 
     public SearchConsoleSourceViewModel(
@@ -37,6 +39,9 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
         _oauth = oauth;
         _sync = sync;
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public async Task LoadAsync()
     {
@@ -108,7 +113,8 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
             var tokens = await _oauth.AuthorizeAsync(
                 Connection.ClientId,
                 clientSecret,
-                uri => _ = Launcher.LaunchUriAsync(uri));
+                uri => _ = Launcher.LaunchUriAsync(uri),
+                new[] { SearchConsoleClient.Scope });
             if (!string.IsNullOrEmpty(tokens.RefreshToken))
             {
                 _vault.SetSearchConsoleRefreshToken(Connection.ClientId, tokens.RefreshToken);

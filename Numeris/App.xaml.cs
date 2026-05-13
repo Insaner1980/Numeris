@@ -5,7 +5,6 @@ using Numeris.Services.Auth;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Migration;
-using Numeris.Services.MockData;
 using Numeris.Services.Secrets;
 using Numeris.Services.Settings;
 using Numeris.Services.Sync;
@@ -30,12 +29,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        var db = Services.GetRequiredService<SqliteDatabase>();
-        if (!db.HasData())
-        {
-            var seeder = Services.GetRequiredService<MockSeeder>();
-            seeder.SeedAsync().GetAwaiter().GetResult();
-        }
+        _ = Services.GetRequiredService<SqliteDatabase>();
         var migration = Services.GetRequiredService<LegacyDataMigrationService>();
         migration.ImportAllAsync().GetAwaiter().GetResult();
 
@@ -48,7 +42,6 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddSingleton<SqliteDatabase>();
-        services.AddSingleton<MockSeeder>();
         services.AddSingleton<LegacyDataMigrationService>();
         services.AddSingleton<SettingsStore>();
 
@@ -61,6 +54,7 @@ public partial class App : Application
         services.AddSingleton<ConnectionsRepository>();
         services.AddSingleton<PerformanceRepository>();
         services.AddSingleton<BingRepository>();
+        services.AddSingleton<YouTubeRepository>();
 
         services.AddSingleton<UptimeClient>();
         services.AddSingleton<SitemapClient>();
@@ -70,6 +64,9 @@ public partial class App : Application
         services.AddSingleton<CruxClient>();
         services.AddSingleton<PageSpeedClient>();
         services.AddSingleton<BingWebmasterClient>();
+        services.AddSingleton<YouTubeDataClient>();
+        services.AddSingleton<YouTubeAnalyticsClient>();
+        services.AddSingleton<GoogleOAuthClient>();
         services.AddSingleton<GoogleOAuthFlow>();
         services.AddSingleton<CredentialVault>();
         services.AddSingleton<CloudflareSyncService>();
@@ -77,16 +74,21 @@ public partial class App : Application
         services.AddSingleton<SearchConsoleSyncService>();
         services.AddSingleton<PerformanceSyncService>();
         services.AddSingleton<BingWebmasterSyncService>();
+        services.AddSingleton<YouTubeSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<CloudflareViewModel>();
         services.AddTransient<SearchConsoleViewModel>();
+        services.AddTransient<BingViewModel>();
+        services.AddTransient<PerformanceViewModel>();
+        services.AddTransient<YouTubeViewModel>();
         services.AddTransient<HealthViewModel>();
         services.AddTransient<CloudflareSourceViewModel>();
         services.AddTransient<WebAnalyticsSourceViewModel>();
         services.AddTransient<SearchConsoleSourceViewModel>();
         services.AddTransient<PerformanceSourceViewModel>();
+        services.AddTransient<YouTubeSourceViewModel>();
         services.AddTransient<BingSourceViewModel>();
         services.AddTransient<SourcesViewModel>();
 
@@ -95,6 +97,9 @@ public partial class App : Application
         services.AddTransient<DashboardPage>();
         services.AddTransient<CloudflarePage>();
         services.AddTransient<SearchConsolePage>();
+        services.AddTransient<BingPage>();
+        services.AddTransient<PerformancePage>();
+        services.AddTransient<YouTubePage>();
         services.AddTransient<HealthPage>();
         services.AddTransient<SourcesPage>();
 

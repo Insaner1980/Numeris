@@ -13,22 +13,23 @@ using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
+using Numeris.Themes;
 using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
 public partial class SearchConsoleViewModel : ObservableObject, IDisposable
 {
-    private static readonly SKColor AccentGold = SKColor.Parse("#D9A24E");
-    private static readonly SKColor SecondaryGray = new(236, 238, 242, 80);
-    private static readonly SKColor Coral = SKColor.Parse("#C97B6A");
-
     private readonly ShellViewModel _shell;
     private readonly SearchConsoleRepository _scRepo;
     private readonly SitemapRepository _sitemapRepo;
+    private readonly SearchConsoleSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
+    public bool CanRefresh => !IsLoading && !IsInspectingIndexing;
     [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
     [ObservableProperty] public partial string QuerySortBy { get; set; } = "clicks";
     [ObservableProperty] public partial string QueryFilter { get; set; } = "";
@@ -53,13 +54,23 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
     // Indexing
     [ObservableProperty] public partial ObservableCollection<SitemapUrl> SitemapUrls { get; set; } = new();
     [ObservableProperty] public partial string IndexingSummaryText { get; set; } = "—";
-    public SearchConsoleViewModel(ShellViewModel shell, SearchConsoleRepository scRepo, SitemapRepository sitemapRepo)
+    [ObservableProperty] public partial string IndexingDetailText { get; set; } = "";
+    [ObservableProperty] public partial bool IsInspectingIndexing { get; set; }
+    public SearchConsoleViewModel(
+        ShellViewModel shell,
+        SearchConsoleRepository scRepo,
+        SitemapRepository sitemapRepo,
+        SearchConsoleSyncService sync)
     {
         _shell = shell;
         _scRepo = scRepo;
         _sitemapRepo = sitemapRepo;
+        _sync = sync;
         _shell.PropertyChanged += OnShellChanged;
     }
+
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsInspectingIndexingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
 
     public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
 
@@ -73,6 +84,42 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
 
     partial void OnQuerySortByChanged(string value) => _ = ReloadQueriesAsync();
     partial void OnQueryFilterChanged(string value) => ApplyQueryFilter();
+
+    [RelayCommand]
+    public async Task InspectIndexingAsync()
+    {
+        if (IsInspectingIndexing)
+        {
+            return;
+        }
+
+        IsInspectingIndexing = true;
+        try
+        {
+            var domain = _shell.SelectedDomain == "all" ? Domains.KnitTools : _shell.SelectedDomain;
+            IndexingDetailText = "Inspecting sitemap URLs with Google Search Console...";
+            var progress = new Progress<IndexingInspectionResult>(p =>
+            {
+                IndexingDetailText = $"Checked {p.UrlsChecked + p.Errors} / {p.TotalUrls} URLs";
+            });
+            var result = await _sync.InspectSitemapUrlsAsync(domain, progress);
+            var urls = await _sitemapRepo.ListUrlsAsync(domain);
+            BuildIndexing(urls);
+            IndexingDetailText = result.Errors > 0 && result.UrlsChecked == 0
+                ? $"Inspection failed for all URLs: {result.FirstError ?? "unknown error"}"
+                : result.Errors > 0
+                ? $"Checked {result.UrlsChecked} URLs; {result.Errors} failed"
+                : $"Checked {result.UrlsChecked} URLs";
+        }
+        catch (Exception ex)
+        {
+            IndexingDetailText = $"Inspection failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsInspectingIndexing = false;
+        }
+    }
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -140,14 +187,14 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
         OverviewSeries = new ISeries[]
         {
-            CreateLine("Clicks", rows.Select(r => r.TotalClicks).ToArray(), AccentGold, fill: true, scalesYAt: 0),
-            CreateLine("Impressions", rows.Select(r => r.TotalImpressions).ToArray(), Coral, fill: false, scalesYAt: 1),
+            CreateLine("Clicks", rows.Select(r => r.TotalClicks).ToArray(), ChartPalette.Accent, fill: true, scalesYAt: 0),
+            CreateLine("Impressions", rows.Select(r => r.TotalImpressions).ToArray(), ChartPalette.Secondary, fill: false, scalesYAt: 1),
         };
-        OverviewXAxes = new[] { new Axis { Labels = labels } };
+        OverviewXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         OverviewYAxes = new[]
         {
-            new Axis { MinLimit = 0 },
-            new Axis { MinLimit = 0, Position = LiveChartsCore.Measure.AxisPosition.End }
+            ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }),
+            ChartTheme.StyleYAxis(new Axis { MinLimit = 0, Position = LiveChartsCore.Measure.AxisPosition.End })
         };
 
         TotalClicksText = rows.Sum(r => r.TotalClicks).ToString("N0", CultureInfo.CurrentCulture);
@@ -161,7 +208,7 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         var dates = rows.Select(r => r.Date).Distinct().OrderBy(d => d).ToArray();
         var labels = dates.Select(ShortDate).ToArray();
         var devices = rows.Select(r => r.Device).Distinct().OrderBy(d => d).ToArray();
-        var palette = new[] { AccentGold, Coral, SecondaryGray };
+        var palette = new[] { ChartPalette.Accent, ChartPalette.Secondary, ChartPalette.Muted };
 
         var series = new List<ISeries>();
         for (var i = 0; i < devices.Length; i++)
@@ -174,18 +221,28 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
             series.Add(CreateLine(dev, values, palette[i % palette.Length], fill: false));
         }
         DevicesSeries = series.ToArray();
-        DevicesXAxes = new[] { new Axis { Labels = labels } };
-        DevicesYAxes = new[] { new Axis { MinLimit = 0 } };
+        DevicesXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
+        DevicesYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
     }
 
     private void BuildIndexing(IReadOnlyList<SitemapUrl> urls)
     {
         var active = urls.Where(u => u.RemovedAt is null).ToList();
-        var pass = active.Count(u => u.Verdict == "PASS");
+        var inspected = active.Count(u => u.HasInspectionData);
+        var indexed = active.Count(u => u.IsIndexed);
         ReplaceCollection(SitemapUrls, active);
-        IndexingSummaryText = active.Count > 0
-            ? $"{pass} / {active.Count} indexed"
-            : "No sitemap data — refresh on Health page";
+        IndexingSummaryText = active.Count switch
+        {
+            0 => "No sitemap data",
+            _ when inspected == 0 => $"{active.Count} URLs in sitemap",
+            _ => $"{indexed} indexed by URL Inspection",
+        };
+        IndexingDetailText = active.Count switch
+        {
+            0 => "Refresh sitemap on Health page",
+            _ when inspected == 0 => "Page indexing totals are not available in Numeris yet",
+            _ => $"{inspected} inspected sitemap URLs; Google Search Console's Page indexing report can differ because it is a separate aggregate report",
+        };
     }
 
     private static LineSeries<long> CreateLine(string name, long[] values, SKColor color, bool fill, int scalesYAt = 0)

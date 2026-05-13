@@ -139,6 +139,28 @@ public sealed partial class SourcesPage : Page
         PageSpeedApiKeyBox.Password = "";
     }
 
+    private async void SaveYouTubeButton_Click(object sender, RoutedEventArgs e)
+    {
+        SyncPasswordBoxesToViewModel();
+        await ViewModel.YouTube.SaveAsync();
+        YouTubeClientSecretBox.Password = "";
+    }
+
+    private async void ConnectYouTubeButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.YouTube.ConnectAsync();
+
+    private async void TestYouTubeButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.YouTube.TestAsync();
+
+    private async void SyncYouTubeButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.YouTube.SyncAsync();
+
+    private async void DeleteYouTubeButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.YouTube.DeleteAsync();
+        YouTubeClientSecretBox.Password = "";
+    }
+
     private async void SaveBingButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
@@ -176,6 +198,7 @@ public sealed partial class SourcesPage : Page
         ViewModel.SearchConsole.NewClientSecret = ScClientSecretBox.Password;
         ViewModel.Performance.NewCruxApiKey = CruxApiKeyBox.Password;
         ViewModel.Performance.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
+        ViewModel.YouTube.NewClientSecret = YouTubeClientSecretBox.Password;
         ViewModel.Bing.NewApiKey = BingApiKeyBox.Password;
     }
 }

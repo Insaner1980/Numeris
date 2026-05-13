@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Api;
+using Numeris.Services.Auth;
 using Numeris.Services.Database.Repositories;
 using Numeris.Services.Secrets;
 
@@ -13,14 +14,24 @@ namespace Numeris.Services.Sync;
 public sealed class SearchConsoleSyncService
 {
     private readonly SearchConsoleClient _client;
+    private readonly GoogleOAuthClient _oauthClient;
     private readonly SearchConsoleRepository _searchConsoleRepo;
+    private readonly SitemapRepository _sitemapRepo;
     private readonly CredentialVault _vault;
     private readonly ConnectionsRepository _connectionsRepo;
 
-    public SearchConsoleSyncService(SearchConsoleClient client, SearchConsoleRepository searchConsoleRepo, CredentialVault vault, ConnectionsRepository connectionsRepo)
+    public SearchConsoleSyncService(
+        SearchConsoleClient client,
+        GoogleOAuthClient oauthClient,
+        SearchConsoleRepository searchConsoleRepo,
+        SitemapRepository sitemapRepo,
+        CredentialVault vault,
+        ConnectionsRepository connectionsRepo)
     {
         _client = client;
+        _oauthClient = oauthClient;
         _searchConsoleRepo = searchConsoleRepo;
+        _sitemapRepo = sitemapRepo;
         _vault = vault;
         _connectionsRepo = connectionsRepo;
     }
@@ -33,7 +44,7 @@ public sealed class SearchConsoleSyncService
         var refreshToken = _vault.GetSearchConsoleRefreshToken(clientId)
             ?? throw new InvalidOperationException("Not authorized — connect Google account first");
 
-        var accessToken = await _client.RefreshAccessTokenAsync(clientId, clientSecret, refreshToken).ConfigureAwait(false);
+        var accessToken = await _oauthClient.RefreshAccessTokenAsync(clientId, clientSecret, refreshToken).ConfigureAwait(false);
         var sites = await _client.ListSitesAsync(accessToken).ConfigureAwait(false);
 
         var endDate = DateOnly.FromDateTime(DateTime.Today);
@@ -71,6 +82,72 @@ public sealed class SearchConsoleSyncService
         return new SyncResult { Domain = "search_console", DaysSynced = days, RecordsUpserted = records };
     }
 
+    public async Task<IndexingInspectionResult> InspectSitemapUrlsAsync(
+        string domain,
+        IProgress<IndexingInspectionResult>? progress = null)
+    {
+        var connection = await _connectionsRepo.GetSearchConsoleAsync().ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Search Console is not configured");
+        if (string.IsNullOrWhiteSpace(connection.ClientId))
+        {
+            throw new InvalidOperationException("Search Console client ID is missing");
+        }
+
+        var clientSecret = _vault.GetSearchConsoleClientSecret(connection.ClientId)
+            ?? throw new InvalidOperationException("No client secret saved");
+        var refreshToken = _vault.GetSearchConsoleRefreshToken(connection.ClientId)
+            ?? throw new InvalidOperationException("Not authorized — connect Google account first");
+
+        var accessToken = await _oauthClient.RefreshAccessTokenAsync(connection.ClientId, clientSecret, refreshToken).ConfigureAwait(false);
+        var sites = await _client.ListSitesAsync(accessToken).ConfigureAwait(false);
+        var property = SearchConsoleClient.PropertyForDomain(sites, domain)
+            ?? throw new InvalidOperationException($"Google Search Console property was not found for {domain}");
+
+        var urls = (await _sitemapRepo.ListUrlsAsync(domain).ConfigureAwait(false))
+            .FindAll(url => url.RemovedAt is null);
+        if (urls.Count == 0)
+        {
+            throw new InvalidOperationException("No sitemap URLs found. Refresh sitemap first.");
+        }
+
+        var result = new IndexingInspectionResult { Domain = domain, TotalUrls = urls.Count };
+        var consecutiveErrors = 0;
+        foreach (var url in urls)
+        {
+            try
+            {
+                var inspection = await _client.InspectUrlAsync(accessToken, property, url.Url).ConfigureAwait(false);
+                await _sitemapRepo.UpdateInspectionAsync(domain, inspection).ConfigureAwait(false);
+                result.UrlsChecked++;
+                consecutiveErrors = 0;
+                if (string.Equals(inspection.Verdict, "PASS", StringComparison.OrdinalIgnoreCase)
+                    || (inspection.CoverageState?.StartsWith("Indexed", StringComparison.OrdinalIgnoreCase) ?? false))
+                {
+                    result.Indexed++;
+                }
+                else
+                {
+                    result.NotIndexed++;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Errors++;
+                consecutiveErrors++;
+                result.FirstError ??= ApiErrorMessage.Sanitize(ex);
+                if (result.UrlsChecked == 0 && consecutiveErrors >= 3)
+                {
+                    progress?.Report(result);
+                    break;
+                }
+            }
+
+            progress?.Report(result);
+        }
+
+        return result;
+    }
+
     public async Task<ConnectionTestResult> TestAsync(string clientId)
     {
         clientId = clientId.Trim();
@@ -88,7 +165,7 @@ public sealed class SearchConsoleSyncService
 
         try
         {
-            var accessToken = await _client.RefreshAccessTokenAsync(clientId, clientSecret, refreshToken).ConfigureAwait(false);
+            var accessToken = await _oauthClient.RefreshAccessTokenAsync(clientId, clientSecret, refreshToken).ConfigureAwait(false);
             var sites = await _client.ListSitesAsync(accessToken).ConfigureAwait(false);
             return new ConnectionTestResult
             {
