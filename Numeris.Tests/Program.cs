@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -6,9 +7,9 @@ using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Api;
 using Numeris.Services.Database;
+using Numeris.Services.Insights;
 using Numeris.Services.Performance;
 using Numeris.ViewModels;
-using Numeris.ViewModels.Sources;
 
 Run("normalizes domain origin and home page into one site identity", () =>
 {
@@ -38,6 +39,94 @@ Run("keeps page url with trailing slash for PageSpeed", () =>
 {
     Equal("https://finnvek.com/", PerformanceUrl.NormalizePageUrl("https://finnvek.com"));
     Equal("https://knittoolsapp.com/tools/", PerformanceUrl.NormalizePageUrl(" https://knittoolsapp.com/tools "));
+});
+
+Run("insight trend math uses ratios and avoids fake percentage jumps", () =>
+{
+    Equal(nameof(TrendState.NoData), Trend.Classify(new MetricWindow(0, 0)).ToString());
+    Equal(nameof(TrendState.NewActivity), Trend.Classify(new MetricWindow(12, 0)).ToString());
+    Equal(nameof(TrendState.Flat), Trend.Classify(new MetricWindow(105, 100)).ToString());
+    Equal(nameof(TrendState.Up), Trend.Classify(new MetricWindow(125, 100)).ToString());
+    Equal(nameof(TrendState.Down), Trend.Classify(new MetricWindow(90, 100)).ToString());
+
+    Equal("+34%", Trend.FormatRatio(0.34));
+    Equal("-12%", Trend.FormatRatio(-0.12));
+    Equal("0%", Trend.FormatRatio(0));
+});
+
+Run("InsightEngine explains traffic mismatch with measured numbers", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        cloudflareVisitors: new MetricWindow(67, 50),
+        ga4Users: new MetricWindow(102, 100)));
+
+    var card = FindInsight(cards, "Traffic looks inconsistent");
+    Contains(card.Message, "Cloudflare recorded more visitors");
+    Contains(card.Message, "GA users stayed almost the same");
+    Contains(card.WhyShown, "34%");
+    Contains(card.WhyShown, "2%");
+    Contains(card.NextStep, "Open Cloudflare");
+});
+
+Run("InsightEngine explains Google visibility without clicks", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        googleImpressions: new MetricWindow(141, 100),
+        googleClicks: new MetricWindow(103, 100)));
+
+    var card = FindInsight(cards, "People see your pages, but do not click");
+    Contains(card.Message, "Google impressions are rising");
+    Contains(card.WhyShown, "41%");
+    Contains(card.WhyShown, "3%");
+    Contains(card.NextStep, "Open Google Search");
+});
+
+Run("InsightEngine explains indexing issues with counts", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        indexing: new IndexingSummary(ActiveSitemapUrls: 42, InspectedUrls: 42, IndexedUrls: 24)));
+
+    var card = FindInsight(cards, "Some sitemap pages may not be indexed");
+    Contains(card.Message, "sitemap URLs");
+    Contains(card.WhyShown, "24 of 42");
+    Contains(card.NextStep, "Open Google Search");
+});
+
+Run("InsightEngine explains HTTP errors without technical titles", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        httpStatus: new StatusCodeSummary(TotalRequests: 1000, ClientErrorResponses: 30, ServerErrorResponses: 14)));
+
+    var card = FindInsight(cards, "Some visitors may be hitting errors");
+    Contains(card.Message, "HTTP error responses");
+    Contains(card.WhyShown, "1.4%");
+    Contains(card.NextStep, "Open Cloudflare");
+    AssertPlainInsightTitles(cards);
+});
+
+Run("InsightEngine explains Bing visibility without clicks", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        bingImpressions: new MetricWindow(320, 100),
+        bingClicks: new MetricWindow(0, 0)));
+
+    var card = FindInsight(cards, "Bing sees the site, but brings no visitors");
+    Contains(card.WhyShown, "320 impressions");
+    Contains(card.WhyShown, "0 clicks");
+    Contains(card.NextStep, "Open Bing");
+});
+
+Run("InsightEngine returns clean empty state when connected data has no rule matches", () =>
+{
+    var metrics = Metrics(
+        cloudflareVisitors: new MetricWindow(100, 100),
+        ga4Users: new MetricWindow(100, 100),
+        googleImpressions: new MetricWindow(100, 100),
+        googleClicks: new MetricWindow(10, 10),
+        freshness: new SourceFreshnessSummary(ConnectedSources: 3, MissingLastSyncSources: 0, StaleSources: 0));
+
+    Equal("0", GenerateInsights(metrics).Count.ToString());
+    Equal("All connected sources look consistent for this period.", GetInsightEmptyState(metrics));
 });
 
 Run("viewmodels do not use ObservableProperty fields", () =>
@@ -98,7 +187,7 @@ Run("database migrations use explicit schema versions", () =>
     var root = FindRepositoryRoot();
     var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
 
-    Contains(migrations, "CurrentSchemaVersion = 4");
+    Contains(migrations, "CurrentSchemaVersion = 7");
     Contains(migrations, "PRAGMA user_version");
     Contains(migrations, "RunPendingMigrations");
 });
@@ -209,25 +298,6 @@ Run("CrUX test treats NotFound as missing field data instead of key failure", ()
     Contains(performanceSync, "CrUX API key works");
 });
 
-Run("Performance source sync status explains missing CrUX field data", () =>
-{
-    var status = PerformanceSourceViewModel.FormatSyncStatus(new()
-    {
-        UrlsSynced = 2,
-        CruxMetricPoints = 0,
-        CruxSkipped = 16,
-        PageSpeedRuns = 4,
-        PageSpeedAudits = 596,
-        PageSpeedErrors = 0,
-    });
-
-    Contains(status, "Synced 2 URL(s)");
-    Contains(status, "CrUX: no field data for configured URLs");
-    Contains(status, "PageSpeed: 4 run(s), 596 audit row(s), 0 error(s)");
-    NotContains(status, "skipped");
-    NotContains(status, "lookup");
-});
-
 Run("Bing page and raw stats keep dated history", () =>
 {
     var root = FindRepositoryRoot();
@@ -320,84 +390,91 @@ Run("Bing and Performance reports read through repositories", () =>
     NotContains(performanceViewModel, "SqliteDatabase");
 });
 
-Run("YouTube schema and connection registry are first-class", () =>
+Run("Google Analytics schema and connection registry are first-class", () =>
 {
     var root = FindRepositoryRoot();
     var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
     var sqliteDatabase = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "SqliteDatabase.cs"));
 
-    Contains(migrations, "CurrentSchemaVersion = 4");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_channels");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_videos");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_daily");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_video_stats");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_countries");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_traffic_sources");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_devices");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS youtube_retention_points");
-    Contains(migrations, "('youtube', 'youtube', 'disconnected')");
-    Contains(sqliteDatabase, "DELETE FROM youtube_daily;");
-    Contains(sqliteDatabase, "DELETE FROM youtube_retention_points;");
+    Contains(migrations, "CurrentSchemaVersion = 7");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_daily");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_pages");
+    Contains(migrations, "engaged_sessions INTEGER NOT NULL DEFAULT 0");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_sources");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_events");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_devices");
+    Contains(migrations, "('ga4', 'google_analytics', 'disconnected')");
+    Contains(sqliteDatabase, "DELETE FROM google_analytics_daily;");
+    Contains(sqliteDatabase, "DELETE FROM google_analytics_events;");
+    NotContains(migrations, "INSERT OR IGNORE INTO connections (id, source, status) VALUES ('youtube'");
 });
 
-Run("Google OAuth token handling is centralized for Search Console and YouTube", () =>
+Run("Google OAuth token handling is centralized for Search Console and Analytics", () =>
 {
     var root = FindRepositoryRoot();
     var oauthClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Auth", "GoogleOAuthClient.cs"));
     var oauthFlow = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Auth", "GoogleOAuthFlow.cs"));
     var searchClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "SearchConsoleClient.cs"));
-    var youtubeSync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "YouTubeSyncService.cs"));
+    var analyticsSync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "GoogleAnalyticsSyncService.cs"));
 
     Contains(oauthClient, "BuildAuthUrl");
     Contains(oauthClient, "ExchangeCodeAsync");
     Contains(oauthClient, "RefreshAccessTokenAsync");
     Contains(oauthFlow, "IReadOnlyList<string> scopes");
     Contains(oauthFlow, "BuildAuthUrl(clientId, redirectUri, state, scopes)");
-    Contains(youtubeSync, "GoogleOAuthClient");
+    Contains(analyticsSync, "GoogleOAuthClient");
+    Contains(analyticsSync, "GoogleAnalyticsClient.Scope");
     NotContains(searchClient, "TokenEndpoint");
     NotContains(searchClient, "ExchangeCodeAsync");
     NotContains(searchClient, "RefreshAccessTokenAsync");
 });
 
-Run("YouTube sync and reporting follow repository and visual architecture", () =>
+Run("Google Analytics sync and reporting follow repository and visual architecture", () =>
 {
     var root = FindRepositoryRoot();
     var appCode = File.ReadAllText(Path.Combine(root, "Numeris", "App.xaml.cs"));
-    var sync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "YouTubeSyncService.cs"));
-    var repository = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "YouTubeRepository.cs"));
-    var viewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "YouTubeViewModel.cs"));
-    var page = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "YouTubePage.xaml"));
-    var pageCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "YouTubePage.xaml.cs"));
+    var sync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "GoogleAnalyticsSyncService.cs"));
+    var client = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "GoogleAnalyticsClient.cs"));
+    var repository = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "GoogleAnalyticsRepository.cs"));
+    var viewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "GoogleAnalyticsViewModel.cs"));
+    var page = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml"));
+    var pageCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml.cs"));
 
-    Contains(appCode, "services.AddSingleton<YouTubeRepository>();");
-    Contains(appCode, "services.AddSingleton<YouTubeDataClient>();");
-    Contains(appCode, "services.AddSingleton<YouTubeAnalyticsClient>();");
-    Contains(appCode, "services.AddSingleton<YouTubeSyncService>();");
-    Contains(appCode, "services.AddTransient<YouTubeViewModel>();");
-    Contains(appCode, "services.AddTransient<YouTubePage>();");
+    Contains(appCode, "services.AddSingleton<GoogleAnalyticsRepository>();");
+    Contains(appCode, "services.AddSingleton<GoogleAnalyticsClient>();");
+    Contains(appCode, "services.AddSingleton<GoogleAnalyticsSyncService>();");
+    Contains(appCode, "services.AddTransient<GoogleAnalyticsViewModel>();");
+    Contains(appCode, "services.AddTransient<GoogleAnalyticsPage>();");
     NotContains(sync, "SqliteDatabase");
-    Contains(sync, "ApiErrorMessage.Sanitize");
-    Contains(sync, "retentionVideos = videos.Take(25)");
+    Contains(client, "analytics.readonly");
+    Contains(sync, "GoogleAnalyticsClient.Scope");
+    Contains(sync, "RunReportAsync");
     Contains(repository, "WriteTransactionAsync");
+    Contains(repository, "UpsertRollupAsync");
+    Contains(repository, "COALESCE(SUM(engaged_sessions), 0) AS EngagedSessions");
     Contains(viewModel, "ChartPalette.Accent");
     Contains(viewModel, "ChartPalette.Secondary");
-    Contains(page, "Text=\"YouTube\"");
+    Contains(viewModel, "EngagedSessionsText");
+    Contains(viewModel, "GeometrySize = 6");
+    Contains(viewModel, "DataPadding");
+    Contains(page, "Text=\"Analytics\"");
+    Contains(page, "Text=\"Engagement rate\"");
+    Contains(page, "Text=\"Engaged sessions\"");
     Contains(page, "Style=\"{StaticResource PageTitleTextBlockStyle}\"");
     Contains(page, "Style=\"{StaticResource TopTabSelectorBarStyle}\"");
     Contains(page, "Style=\"{StaticResource ChartCardBorderStyle}\"");
     Contains(page, "Style=\"{StaticResource ContentCardBorderStyle}\"");
     Contains(page, "Style=\"{StaticResource DataListViewStyle}\"");
     Contains(page, "Overview");
-    Contains(page, "Videos");
-    Contains(page, "Geography");
-    Contains(page, "Traffic");
+    Contains(page, "Pages");
+    Contains(page, "Acquisition");
+    Contains(page, "Events");
     Contains(page, "Devices");
-    Contains(page, "Retention");
     Contains(pageCode, "ChartTheme.CreateCartesianChart()");
     Contains(pageCode, "ChartTheme.CreateChartSurface(chart)");
 });
 
-Run("YouTube is available from navigation and Sources", () =>
+Run("Google Analytics is available from navigation and Sources", () =>
 {
     var root = FindRepositoryRoot();
     var mainWindow = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml"));
@@ -408,44 +485,21 @@ Run("YouTube is available from navigation and Sources", () =>
     var sourcesCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml.cs"));
     var projectFile = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
 
-    Contains(mainWindow, "Tag=\"youtube\" Content=\"YouTube\"");
-    Contains(mainWindow, "Source=\"ms-appx:///Assets/Icons/youtube-filled.png\"");
-    Contains(mainWindowCode, "[\"youtube\"] = typeof(YouTubePage)");
-    Contains(shellViewModel, "or \"youtube\"");
-    Contains(sourcesViewModel, "YouTubeSourceViewModel YouTube");
-    Contains(sourcesPage, "YouTube Analytics");
-    Contains(sourcesPage, "Uses the existing Google OAuth client when Search Console is configured.");
-    Contains(sourcesPage, "Advanced: override YouTube OAuth credentials");
-    Contains(sourcesPage, "ViewModel.YouTube.StatusMessage");
-    Contains(sourcesCode, "SaveYouTubeButton_Click");
-    Contains(sourcesCode, "ConnectYouTubeButton_Click");
-    Contains(projectFile, "Assets\\Icons\\youtube-filled.png");
-});
-
-Run("YouTube source reuses existing Google OAuth credentials by default", () =>
-{
-    var root = FindRepositoryRoot();
-    var sourceViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "Sources", "YouTubeSourceViewModel.cs"));
-    var sync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "YouTubeSyncService.cs"));
-
-    Contains(sourceViewModel, "EnsureConfiguredFromGoogleDefaultsAsync");
-    Contains(sourceViewModel, "GetSearchConsoleAsync()");
-    Contains(sourceViewModel, "ResolveClientSecret");
-    Contains(sourceViewModel, "GetSearchConsoleClientSecret(clientId)");
-    Contains(sync, "GetSearchConsoleClientSecret(clientId)");
-    NotContains(sourceViewModel, "Save YouTube client ID and secret first");
-});
-
-Run("YouTube videos list falls back to Data API metadata when Analytics has no rows", () =>
-{
-    var root = FindRepositoryRoot();
-    var repository = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "YouTubeRepository.cs"));
-
-    Contains(repository, "FROM youtube_videos v");
-    Contains(repository, "LEFT JOIN youtube_video_stats s ON s.video_id = v.video_id");
-    Contains(repository, "COALESCE(s.views, v.view_count, 0) AS Views");
-    Contains(repository, "COALESCE(s.likes, v.like_count, 0) AS Likes");
-    Contains(repository, "COALESCE(s.comments, v.comment_count, 0) AS Comments");
+    Contains(mainWindow, "Tag=\"analytics\" Content=\"Analytics\"");
+    Contains(mainWindow, "Source=\"ms-appx:///Assets/Icons/analytics-filled.png\"");
+    Contains(mainWindowCode, "[\"analytics\"] = typeof(GoogleAnalyticsPage)");
+    Contains(shellViewModel, "or \"analytics\"");
+    Contains(sourcesViewModel, "GoogleAnalyticsSourceViewModel GoogleAnalytics");
+    Contains(sourcesPage, "Text=\"Google Analytics\"");
+    Contains(sourcesPage, "GA4 traffic, pages, acquisition, and events");
+    Contains(sourcesPage, "Header=\"Edit Google Analytics credentials\"");
+    Contains(sourcesPage, "ViewModel.GoogleAnalytics.StatusMessage");
+    Contains(sourcesCode, "SaveGoogleAnalyticsButton_Click");
+    Contains(sourcesCode, "ConnectGoogleAnalyticsButton_Click");
+    Contains(projectFile, "Assets\\Icons\\analytics-filled.png");
+    NotContains(mainWindow, "Tag=\"youtube\" Content=\"YouTube\"");
+    NotContains(sourcesPage, "Text=\"YouTube\"");
+    NotContains(projectFile, "Assets\\Icons\\youtube-filled.png");
 });
 
 Run("Performance page formats PageSpeed query window from DateOnly safely", () =>
@@ -547,21 +601,108 @@ Run("legacy import uses Numeris service names and central source aliases", () =>
     var root = FindRepositoryRoot();
     var migrationDir = Path.Combine(root, "Numeris", "Services", "Migration");
     var files = Directory.EnumerateFiles(migrationDir, "*.cs").Select(Path.GetFileName).ToList();
-    if (files.Any(file => file is not null && file.StartsWith("Pulse", StringComparison.Ordinal)))
+    var oldProductName = string.Concat("Pu", "lse");
+    var oldProductNameLower = oldProductName.ToLowerInvariant();
+    if (files.Any(file => file is not null && file.StartsWith(oldProductName, StringComparison.Ordinal)))
     {
-        throw new InvalidOperationException("Migration files should use neutral legacy names, not Pulse-prefixed service names");
+        throw new InvalidOperationException("Migration files should use neutral legacy names, not old-product-prefixed service names");
     }
 
     var app = File.ReadAllText(Path.Combine(root, "Numeris", "App.xaml.cs"));
+    var appPaths = File.ReadAllText(Path.Combine(root, "Numeris", "Helpers", "AppPaths.cs"));
     var legacyMigration = File.ReadAllText(Path.Combine(migrationDir, "LegacyDataMigrationService.cs"));
     var legacyCredentials = File.ReadAllText(Path.Combine(migrationDir, "LegacyCredentialReader.cs"));
 
     Contains(app, "LegacyDataMigrationService");
     Contains(legacyMigration, "LegacyAppSource");
-    Contains(legacyMigration, "AppDataFolder = \"com.finnvek.pulse\"");
-    Contains(legacyMigration, "DatabaseFile = \"pulse.db\"");
-    Contains(legacyMigration, "CredentialService = \"Pulse\"");
+    Contains(appPaths, "LegacyNumerisDatabasePath");
+    Contains(appPaths, "Path.Combine(DataDir, \"legacy\", \"numeris\")");
+    Contains(legacyMigration, "AppPaths.LegacyNumerisDatabasePath");
+    NotContains(legacyMigration, "Environment.SpecialFolder.ApplicationData");
+    NotContains(legacyMigration, "com.finnvek." + oldProductNameLower);
+    NotContains(legacyMigration, "CredentialService = \"" + oldProductName + "\"");
     Contains(legacyCredentials, "ReadKeyringPassword");
+});
+
+Run("repository files no longer use the old product name", () =>
+{
+    var root = FindRepositoryRoot();
+    var oldProductName = string.Concat("Pu", "lse");
+    var oldProductNameLower = oldProductName.ToLowerInvariant();
+    var textExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".cs",
+        ".xaml",
+        ".md",
+        ".json",
+        ".csproj",
+        ".slnx",
+        ".props",
+        ".targets",
+        ".ps1",
+    };
+
+    foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+    {
+        var relativePath = Path.GetRelativePath(root, file);
+        var segments = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (segments.Any(segment => segment is ".git" or "bin" or "obj" or ".vs" or "reports"))
+        {
+            continue;
+        }
+
+        if (relativePath.Contains(oldProductName, StringComparison.Ordinal)
+            || relativePath.Contains(oldProductNameLower, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Old product name remains in file path: {relativePath}");
+        }
+
+        if (!textExtensions.Contains(Path.GetExtension(file)))
+        {
+            continue;
+        }
+
+        var text = File.ReadAllText(file);
+        if (text.Contains(oldProductName, StringComparison.Ordinal)
+            || text.Contains(oldProductNameLower, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Old product name remains in file content: {relativePath}");
+        }
+    }
+});
+
+Run("legacy credential reader falls back to renamed credential targets", () =>
+{
+    var root = FindRepositoryRoot();
+    var legacyCredentials = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Migration", "LegacyCredentialReader.cs"));
+    var oldProductName = string.Concat("Pu", "lse");
+    var oldTarget = "cloudflare:example.com." + oldProductName;
+    var currentTarget = "cloudflare:example.com.Numeris";
+
+    var readerType = Type.GetType("Numeris.Services.Migration.LegacyCredentialReader, Numeris")
+        ?? throw new InvalidOperationException("LegacyCredentialReader type was not found");
+    var orderMethod = readerType.GetMethod("OrderCredentialTargets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+        ?? throw new InvalidOperationException("LegacyCredentialReader.OrderCredentialTargets was not found");
+    var candidates = ((IEnumerable<string>?)orderMethod.Invoke(
+            null,
+            new object[]
+            {
+                "cloudflare:example.com",
+                "Numeris",
+                new[]
+                {
+                    "web_analytics:account." + oldProductName,
+                    oldTarget,
+                    currentTarget,
+                },
+            }))
+        ?.ToList() ?? throw new InvalidOperationException("Legacy credential candidate ordering returned null");
+
+    Equal("2", candidates.Count.ToString());
+    Equal(currentTarget, candidates[0]);
+    Equal(oldTarget, candidates[1]);
+    Contains(legacyCredentials, "CredEnumerate");
+    NotContains(legacyCredentials, oldProductName);
 });
 
 Run("legacy import preserves existing Numeris secrets", () =>
@@ -662,13 +803,14 @@ Run("GraphQL operation names use Numeris branding", () =>
     var root = FindRepositoryRoot();
     var cloudflareClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "CloudflareGraphqlClient.cs"));
     var rumClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "CloudflareRumClient.cs"));
+    var oldProductName = string.Concat("Pu", "lse");
 
     Contains(cloudflareClient, "query NumerisDailyTraffic");
     Contains(rumClient, "query NumerisWebAnalytics");
-    if (cloudflareClient.Contains("query Pulse", StringComparison.Ordinal)
-        || rumClient.Contains("query Pulse", StringComparison.Ordinal))
+    if (cloudflareClient.Contains("query " + oldProductName, StringComparison.Ordinal)
+        || rumClient.Contains("query " + oldProductName, StringComparison.Ordinal))
     {
-        throw new InvalidOperationException("GraphQL operation names still use Pulse branding");
+        throw new InvalidOperationException("GraphQL operation names still use old product branding");
     }
 });
 
@@ -685,7 +827,7 @@ Run("WinUI visual system uses Mica shell and centralized surface tokens", () =>
     Contains(mainWindow, "Background=\"Transparent\"");
     Contains(mainWindow, "PaneDisplayMode=\"Left\"");
     Contains(mainWindow, "IsPaneToggleButtonVisible=\"False\"");
-    Contains(tokens, "AppBackgroundColor\">#444444");
+    Contains(tokens, "AppBackgroundColor\">#070808");
     Contains(tokens, "NavigationLayerBrush");
     Contains(tokens, "NavigationViewDefaultPaneBackground");
     Contains(tokens, "ContentLayerBrush");
@@ -702,28 +844,43 @@ Run("Shell uses a global branded bitmap backdrop", () =>
 {
     var root = FindRepositoryRoot();
     var mainWindow = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml"));
+    var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
     var dashboard = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml"));
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
     var project = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
-    var backdropAssetPath = Path.Combine(root, "Numeris", "Assets", "AppBackdrop.png");
+    var backdropAssetPath = Path.Combine(root, "Numeris", "Assets", "AppBackdrop.webp");
+    var oldBackdropAssetPath = Path.Combine(root, "Numeris", "Assets", "AppBackdrop.png");
 
     if (!File.Exists(backdropAssetPath))
     {
-        throw new InvalidOperationException("AppBackdrop.png is missing");
+        throw new InvalidOperationException("AppBackdrop.webp is missing");
     }
-
-    var header = File.ReadAllBytes(backdropAssetPath).Take(8).ToArray();
-    var expectedPngHeader = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
-    if (!header.SequenceEqual(expectedPngHeader))
+    if (File.Exists(oldBackdropAssetPath))
     {
-        throw new InvalidOperationException("AppBackdrop.png must be a PNG image");
+        throw new InvalidOperationException("Old AppBackdrop.png asset should not remain next to the WebP backdrop");
     }
 
-    Contains(project, "Assets\\AppBackdrop.png");
+    var header = File.ReadAllBytes(backdropAssetPath).Take(12).ToArray();
+    if (header.Length < 12 ||
+        !header.Take(4).SequenceEqual("RIFF"u8.ToArray()) ||
+        !header.Skip(8).Take(4).SequenceEqual("WEBP"u8.ToArray()))
+    {
+        throw new InvalidOperationException("AppBackdrop.webp must be a WebP image");
+    }
+
+    Contains(project, "Assets\\AppBackdrop.webp");
+    NotContains(project, "Assets\\AppBackdrop.png");
     Contains(mainWindow, "x:Name=\"AppBackdropImage\"");
-    Contains(mainWindow, "Source=\"ms-appx:///Assets/AppBackdrop.png\"");
+    NotContains(mainWindow, "Source=\"ms-appx:///Assets/AppBackdrop.png\"");
+    NotContains(mainWindow, "Source=\"ms-appx:///Assets/AppBackdrop.webp\"");
+    Contains(mainWindow, "Loaded=\"AppBackdropImage_Loaded\"");
     Contains(mainWindow, "Stretch=\"UniformToFill\"");
     Contains(mainWindow, "Opacity=\"{StaticResource AppBackdropOpacity}\"");
+    Contains(mainWindowCode, "ms-appx:///Assets/AppBackdrop.webp");
+    Contains(mainWindowCode, "BitmapDecoder.WebpDecoderId");
+    Contains(mainWindowCode, "SoftwareBitmapSource");
+    Contains(mainWindowCode, "BitmapPixelFormat.Bgra8");
+    Contains(mainWindowCode, "BitmapAlphaMode.Premultiplied");
     Contains(mainWindow, "x:Name=\"AppBackdropScrim\"");
     Contains(tokens, "AppBackdropOpacity");
     Contains(tokens, "AppBackdropScrimBrush");
@@ -734,6 +891,28 @@ Run("Shell uses a global branded bitmap backdrop", () =>
     NotContains(dashboard, "HeroBackdropImage");
 });
 
+Run("App backdrop loader uses local output path before ms-appx fallback", () =>
+{
+    var root = FindRepositoryRoot();
+    var project = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
+    var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
+
+    Contains(project, "<WindowsPackageType>None</WindowsPackageType>");
+    Contains(mainWindowCode, "AppContext.BaseDirectory");
+    Contains(mainWindowCode, "Path.Combine(\"Assets\", \"AppBackdrop.webp\")");
+    Contains(mainWindowCode, "StorageFile.GetFileFromPathAsync");
+    Contains(mainWindowCode, "StorageFile.GetFileFromApplicationUriAsync");
+    if (mainWindowCode.IndexOf("StorageFile.GetFileFromPathAsync", StringComparison.Ordinal)
+        > mainWindowCode.IndexOf("StorageFile.GetFileFromApplicationUriAsync", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Unpackaged backdrop loading should try the local output path before ms-appx fallback");
+    }
+
+    NotContains(mainWindowCode, "var file = await StorageFile.GetFileFromApplicationUriAsync(new Uri(AppBackdropUri));");
+    Contains(mainWindowCode, "catch (Exception ex)");
+    Contains(mainWindowCode, "AppBackdropImage.Visibility = Visibility.Collapsed");
+});
+
 Run("Global backdrop is subdued behind readable Fluent surfaces", () =>
 {
     var root = FindRepositoryRoot();
@@ -742,15 +921,15 @@ Run("Global backdrop is subdued behind readable Fluent surfaces", () =>
     var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
     var chartPalette = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartPalette.cs"));
 
-    Contains(tokens, "AppBackdropOpacity\">0.72");
-    Contains(tokens, "AppBackdropScrimColor\">#B3000000");
+    Contains(tokens, "AppBackdropOpacity\">0.94");
+    Contains(tokens, "AppBackdropScrimColor\">#66000000");
     Contains(tokens, "ContentLayerColor\">#00000000");
     Contains(tokens, "NavigationLayerColor\">#00000000");
-    Contains(tokens, "CardSurfaceColor\">#52000000");
-    Contains(tokens, "ControlSurfaceColor\">#38000000");
-    Contains(tokens, "ChartPanelColor\">#54000000");
-    Contains(tokens, "NumerisCardBorderColor\">#48FFFFFF");
-    Contains(tokens, "ChartGridLineColor\">#38FFFFFF");
+    Contains(tokens, "CardSurfaceColor\">#A0101216");
+    Contains(tokens, "ControlSurfaceColor\">#8F0D0F13");
+    Contains(tokens, "ChartPanelColor\">#9A090B0E");
+    Contains(tokens, "NumerisCardBorderColor\">#38FFFFFF");
+    Contains(tokens, "ChartGridLineColor\">#30FFFFFF");
     Contains(tokens, "ChartMutedColor");
     Contains(chartPalette, "ChartMutedColor");
     Contains(tokens, "NavigationViewContentBackground");
@@ -759,6 +938,28 @@ Run("Global backdrop is subdued behind readable Fluent surfaces", () =>
     Contains(mainWindowCode, "ConfigureTitleBarColors");
     Contains(mainWindowCode, "AppWindowTitleBar.IsCustomizationSupported");
     Contains(mainWindow, "Background=\"Transparent\"");
+});
+
+Run("Matte chart and delta resources are centralized in Tokens.xaml", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+
+    Contains(tokens, "NumerisAccentColor\">#4F73FF");
+    Contains(tokens, "ChartBarNeutralTopColor");
+    Contains(tokens, "ChartBarNeutralMidColor");
+    Contains(tokens, "ChartBarNeutralBottomColor");
+    Contains(tokens, "ChartBarHighlightTopColor");
+    Contains(tokens, "ChartBarHighlightMidColor");
+    Contains(tokens, "ChartBarHighlightBottomColor");
+    Contains(tokens, "ChartBarCapColor");
+    Contains(tokens, "ChartReferenceLineColor");
+    Contains(tokens, "PositiveDeltaColor");
+    Contains(tokens, "NegativeDeltaColor");
+    Contains(tokens, "NeutralDeltaColor");
+    Contains(tokens, "PositiveDeltaBrush");
+    Contains(tokens, "NegativeDeltaBrush");
+    Contains(tokens, "NeutralDeltaBrush");
 });
 
 Run("main window uses a custom transparent title bar integrated into the shell", () =>
@@ -836,7 +1037,78 @@ Run("Overview charts use a shared Fluent chart theme", () =>
     Contains(chartTheme, "Polyline");
     Contains(chartTheme, "Ellipse");
     Contains(chartTheme, "LegendTextPaint");
+    Contains(chartTheme, "HorizontalAlignment = HorizontalAlignment.Stretch");
+    Contains(chartTheme, "VerticalAlignment = VerticalAlignment.Stretch");
     NotContains(chartTheme, "DrawMarginFrame = new DrawMarginFrame");
+});
+
+Run("Overview promotes traffic as a matte bar hero", () =>
+{
+    var root = FindRepositoryRoot();
+    var dashboardPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml"));
+    var dashboardCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml.cs"));
+    var dashboardViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "DashboardViewModel.cs"));
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+
+    Contains(dashboardPage, "x:Name=\"TrafficHeroCard\"");
+    Contains(dashboardPage, "Text=\"Visitors\"");
+    Contains(dashboardPage, "Text=\"{x:Bind ViewModel.VisitorsTotal, Mode=OneWay}\"");
+    Contains(dashboardPage, "<controls:DeltaBadge");
+    Contains(dashboardPage, "Value=\"{x:Bind ViewModel.VisitorsChangeValue, Mode=OneWay}\"");
+    Contains(dashboardPage, "x:Name=\"KpiGrid\"");
+    Contains(dashboardPage, "Label=\"Google Clicks\"");
+    Contains(dashboardPage, "Label=\"Bing Clicks\"");
+    Contains(dashboardPage, "Label=\"Web Vitals\"");
+    Contains(dashboardPage, "Label=\"PageSpeed Mobile\"");
+    Contains(dashboardPage, "x:Name=\"StatusStrip\"");
+    NotContains(dashboardPage, "Label=\"Visitors\"");
+
+    Contains(dashboardCode, "BuildBarChart(ref _trafficChart, TrafficChartHost)");
+    Contains(dashboardCode, "ChartTheme.CreateBarChartSurface(chart)");
+
+    Contains(dashboardViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visitors\"");
+    Contains(dashboardViewModel, "HighlightIndex(rows)");
+    Contains(dashboardViewModel, "private static int? HighlightIndex(IReadOnlyList<TrafficDay> rows)");
+    Contains(dashboardViewModel, "rows[^1].UniqueVisitors");
+    NotContains(dashboardViewModel, "Name = \"Pageviews\"");
+
+    Contains(tokens, "StatusStripBorderStyle");
+    Contains(tokens, "<Setter Property=\"Background\" Value=\"Transparent\" />");
+    Contains(tokens, "<Setter Property=\"BorderThickness\" Value=\"0,1,0,0\" />");
+});
+
+Run("ChartTheme centralizes matte LiveCharts column styling", () =>
+{
+    var root = FindRepositoryRoot();
+    var chartTheme = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartTheme.cs"));
+
+    Contains(chartTheme, "CreateMatteColumnSeries<T>(string name, IReadOnlyList<T> values, int? highlightIndex = null)");
+    Contains(chartTheme, "CreateMutedColumnSeries<T>");
+    Contains(chartTheme, "CreateHighlightColumnSeries<T>");
+    Contains(chartTheme, "CreateMatteBarFill");
+    Contains(chartTheme, "CreateHighlightBarFill");
+    Contains(chartTheme, "LinearGradientPaint");
+    Contains(chartTheme, "new SKPoint(0.5f, 0f)");
+    Contains(chartTheme, "new SKPoint(0.5f, 1f)");
+    Contains(chartTheme, "ChartPalette.BarNeutralTop");
+    Contains(chartTheme, "ChartPalette.BarNeutralMid");
+    Contains(chartTheme, "ChartPalette.BarNeutralBottom");
+    Contains(chartTheme, "ChartPalette.BarHighlightTop");
+    Contains(chartTheme, "ChartPalette.BarHighlightMid");
+    Contains(chartTheme, "ChartPalette.BarHighlightBottom");
+    Contains(chartTheme, "PointMeasured +=");
+    Contains(chartTheme, "point.Index == highlightIndex.Value");
+    Contains(chartTheme, "StyleColumnSeries<T>");
+    Contains(chartTheme, "Stroke = null");
+    Contains(chartTheme, "MaxBarWidth =");
+    Contains(chartTheme, "Padding =");
+    Contains(chartTheme, "Rx =");
+    Contains(chartTheme, "Ry =");
+    Contains(chartTheme, "DataPadding =");
+    Contains(chartTheme, "StyleChartForBars");
+    Contains(chartTheme, "AnimationsSpeed = TimeSpan.FromMilliseconds");
+    Contains(chartTheme, "EasingFunction = EasingFunctions");
+    Contains(chartTheme, "CreateBarChartSurface");
 });
 
 Run("Overview KPI and status surfaces carry context instead of empty boxes", () =>
@@ -848,15 +1120,53 @@ Run("Overview KPI and status surfaces carry context instead of empty boxes", () 
 
     Contains(kpiCard, "MetricContent");
     Contains(kpiCard, "Detail");
-    Contains(dashboardPage, "Detail=\"Unique visitors\"");
+    Contains(dashboardPage, "x:Name=\"TrafficHeroCard\"");
     Contains(dashboardPage, "Detail=\"Google Search\"");
     Contains(dashboardPage, "Label=\"Bing Clicks\"");
     Contains(dashboardPage, "Label=\"Web Vitals\"");
-    Contains(dashboardPage, "PageSpeed mobile");
+    Contains(dashboardPage, "Label=\"PageSpeed Mobile\"");
     Contains(dashboardPage, "StatusValueTextBlockStyle");
     Contains(tokens, "StatusValueTextBlockStyle");
     NotContains(kpiCard, "AccentIndicator");
     NotContains(dashboardPage, "StatusValueBadgeBorderStyle");
+});
+
+Run("KPI deltas use compact tokenized delta badges", () =>
+{
+    var root = FindRepositoryRoot();
+    var kpiCard = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "KpiCard.xaml"));
+    var kpiCardCode = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "KpiCard.xaml.cs"));
+    var deltaBadgePath = Path.Combine(root, "Numeris", "Controls", "DeltaBadge.xaml");
+    var deltaBadgeCodePath = Path.Combine(root, "Numeris", "Controls", "DeltaBadge.xaml.cs");
+
+    if (!File.Exists(deltaBadgePath) || !File.Exists(deltaBadgeCodePath))
+    {
+        throw new InvalidOperationException("DeltaBadge control is missing");
+    }
+
+    var deltaBadge = File.ReadAllText(deltaBadgePath);
+    var deltaBadgeCode = File.ReadAllText(deltaBadgeCodePath);
+
+    Contains(kpiCard, "DeltaBadge");
+    Contains(kpiCard, "ToolTipService.ToolTip");
+    Contains(kpiCard, "ChangeTooltip");
+    Contains(kpiCard, "ChangeValue");
+    NotContains(kpiCard, "ChangeText");
+    NotContains(kpiCard, "vs previous period");
+
+    Contains(deltaBadge, "DeltaBadgePadding");
+    Contains(deltaBadgeCode, "ValueProperty");
+    Contains(deltaBadgeCode, "InvertProperty");
+    Contains(deltaBadgeCode, "SuffixProperty");
+    Contains(deltaBadgeCode, "ShowSignProperty");
+    Contains(deltaBadgeCode, "CultureInfo.InvariantCulture");
+    Contains(deltaBadgeCode, "\\u25B2");
+    Contains(deltaBadgeCode, "\\u25BC");
+    Contains(deltaBadgeCode, "PositiveDeltaBrush");
+    Contains(deltaBadgeCode, "NegativeDeltaBrush");
+    Contains(deltaBadgeCode, "NeutralDeltaBrush");
+    Contains(kpiCardCode, "ChangeTooltip");
+    NotContains(kpiCardCode, "TextFillColorSecondaryBrush");
 });
 
 Run("Overview summary KPIs honor selected domain", () =>
@@ -881,7 +1191,7 @@ Run("English UI uses English-facing numeric formatting", () =>
     Contains(dashboardViewModel, "EnglishCulture");
     Contains(dashboardViewModel, "CultureInfo.InvariantCulture");
     Contains(kpiCardCode, "CultureInfo.InvariantCulture");
-    Contains(kpiCardCode, "vs previous period");
+    Contains(kpiCardCode, "ChangeTooltip");
 });
 
 Run("Overview controls use user-facing period labels and polished health states", () =>
@@ -892,25 +1202,76 @@ Run("Overview controls use user-facing period labels and polished health states"
     var cloudflareCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "CloudflarePage.xaml.cs"));
     var searchCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SearchConsolePage.xaml.cs"));
     var healthCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "HealthPage.xaml.cs"));
+    var periodSelectorPath = Path.Combine(root, "Numeris", "Controls", "PeriodSelector.xaml");
+    var periodSelectorCodePath = Path.Combine(root, "Numeris", "Controls", "PeriodSelector.xaml.cs");
     var periodModel = File.ReadAllText(Path.Combine(root, "Numeris", "Models", "Period.cs"));
     var converters = File.ReadAllText(Path.Combine(root, "Numeris", "Converters", "NumberConverters.cs"));
     var healthPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "HealthPage.xaml"));
 
+    if (!File.Exists(periodSelectorPath) || !File.Exists(periodSelectorCodePath))
+    {
+        throw new InvalidOperationException("PeriodSelector control is missing");
+    }
+
+    var periodSelector = File.ReadAllText(periodSelectorPath);
+    var periodSelectorCode = File.ReadAllText(periodSelectorCodePath);
+
     Contains(dashboardPage, "LastSyncText");
     Contains(dashboardPage, "PageSpeed mobile");
+    Contains(periodModel, "ShortLabel");
     Contains(periodModel, "DisplayLabel");
     Contains(periodModel, "Last 7 days");
-    Contains(dashboardCode, "PeriodOptions.All");
-    Contains(cloudflareCode, "PeriodOptions.All");
-    Contains(searchCode, "PeriodOptions.All");
-    Contains(healthCode, "PeriodOptions.All");
+    Contains(periodModel, "Period.Last7Days.ShortLabel()");
+    Contains(periodSelector, "PeriodSelectorSegmentButtonStyle");
+    Contains(periodSelector, "AutomationProperties.Name=\"Period\"");
+    Contains(periodSelectorCode, "SelectedPeriodProperty");
+    Contains(periodSelectorCode, "SelectionChanged");
+    Contains(periodSelectorCode, "PeriodOptions.All");
+    Contains(periodSelectorCode, "option.Value.ShortLabel()");
+    Contains(dashboardCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
+    Contains(cloudflareCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
+    Contains(searchCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
+    Contains(healthCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
     Contains(converters, "CultureInfo.InvariantCulture");
     Contains(healthPage, "PrimaryActionButtonStyle");
     NotContains(dashboardPage, "Text=\"Pending\"");
+    NotContains(dashboardPage, "x:Name=\"PeriodCombo\"");
+    NotContains(dashboardCode, "PeriodCombo");
     NotContains(cloudflareCode, "new[] { Period.Last7Days");
     NotContains(searchCode, "new[] { Period.Last7Days");
     NotContains(healthCode, "new[] { Period.Last7Days");
     NotContains(healthPage, "AccentButtonStyle");
+});
+
+Run("Report pages use shared PeriodSelector instead of period ComboBox", () =>
+{
+    var root = FindRepositoryRoot();
+    var pages = new[]
+    {
+        "DashboardPage",
+        "CloudflarePage",
+        "SearchConsolePage",
+        "GoogleAnalyticsPage",
+        "BingPage",
+        "PerformancePage",
+        "HealthPage",
+    };
+
+    foreach (var page in pages)
+    {
+        var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", $"{page}.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "Numeris", "Views", $"{page}.xaml.cs"));
+
+        Contains(xaml, "<controls:PeriodSelector");
+        Contains(xaml, "x:Name=\"PeriodSelector\"");
+        Contains(xaml, "SelectionChanged=\"PeriodSelector_SelectionChanged\"");
+        NotContains(xaml, "x:Name=\"PeriodCombo\"");
+        NotContains(xaml, "DisplayMemberPath=\"Label\"");
+        Contains(code, "PeriodSelector_SelectionChanged");
+        Contains(code, "Shell.SelectedPeriod = PeriodSelector.SelectedPeriod");
+        NotContains(code, "PeriodCombo");
+        NotContains(code, "PeriodOptions.All.FirstOrDefault");
+    }
 });
 
 Run("Dashboard chart colors come from the shared visual palette", () =>
@@ -935,6 +1296,37 @@ Run("Dashboard chart colors come from the shared visual palette", () =>
     NotContains(dashboardViewModel, "SKColor.Parse(\"#C97B6A\")");
 });
 
+Run("ChartPalette exposes matte bar and delta colors from tokens", () =>
+{
+    var root = FindRepositoryRoot();
+    var palette = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartPalette.cs"));
+    var chartTheme = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartTheme.cs"));
+    var viewModelDir = Path.Combine(root, "Numeris", "ViewModels");
+
+    Contains(palette, "BarNeutralTop => FromResource(\"ChartBarNeutralTopColor\"");
+    Contains(palette, "BarNeutralMid => FromResource(\"ChartBarNeutralMidColor\"");
+    Contains(palette, "BarNeutralBottom => FromResource(\"ChartBarNeutralBottomColor\"");
+    Contains(palette, "BarHighlightTop => FromResource(\"ChartBarHighlightTopColor\"");
+    Contains(palette, "BarHighlightMid => FromResource(\"ChartBarHighlightMidColor\"");
+    Contains(palette, "BarHighlightBottom => FromResource(\"ChartBarHighlightBottomColor\"");
+    Contains(palette, "BarCap => FromResource(\"ChartBarCapColor\"");
+    Contains(palette, "ReferenceLine => FromResource(\"ChartReferenceLineColor\"");
+    Contains(palette, "PositiveDelta => FromResource(\"PositiveDeltaColor\"");
+    Contains(palette, "NegativeDelta => FromResource(\"NegativeDeltaColor\"");
+    Contains(palette, "NeutralDelta => FromResource(\"NeutralDeltaColor\"");
+    Contains(chartTheme, "ChartPalette.BarNeutralTop");
+    Contains(chartTheme, "ChartPalette.BarHighlightMid");
+    NotContains(chartTheme, "GetColor(\"ChartBar");
+
+    foreach (var file in Directory.EnumerateFiles(viewModelDir, "*.cs", SearchOption.AllDirectories))
+    {
+        var text = File.ReadAllText(file);
+        NotContains(text, "SKColor.Parse(");
+        NotContains(text, "#4F73FF");
+        NotContains(text, "#D9A24E");
+    }
+});
+
 Run("Cloudflare page uses shared visual surfaces and chart palette", () =>
 {
     var root = FindRepositoryRoot();
@@ -957,7 +1349,7 @@ Run("Cloudflare page uses shared visual surfaces and chart palette", () =>
     Contains(cloudflarePage, "Items=\"{x:Bind ViewModel.TrafficCountries, Mode=OneWay}\"");
     Contains(cloudflarePage, "x:Name=\"TopPagesCard\"");
     Contains(cloudflareViewModel, "ChartPalette.Accent");
-    Contains(cloudflareViewModel, "ChartPalette.Secondary");
+    Contains(cloudflareViewModel, "ChartPalette.Muted");
     Contains(cloudflareViewModel, "ChartPalette.Success");
     Contains(horizontalBars, "HorizontalBarTrackBrush");
     Contains(horizontalBars, "NumerisTextTertiaryBrush");
@@ -985,6 +1377,120 @@ Run("Cloudflare page uses shared visual surfaces and chart palette", () =>
     NotContains(projectFile, "Assets\\Maps\\d3-array.min.js");
     NotContains(cloudflareViewModel, "SKColor.Parse(\"#D9A24E\")");
     NotContains(cloudflareViewModel, "SKColor.Parse(\"#C97B6A\")");
+});
+
+Run("Cloudflare volume charts use the shared matte bar style", () =>
+{
+    var root = FindRepositoryRoot();
+    var cloudflarePage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "CloudflarePage.xaml"));
+    var cloudflareCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "CloudflarePage.xaml.cs"));
+    var cloudflareViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "CloudflareViewModel.cs"));
+
+    Contains(cloudflareViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visitors\"");
+    Contains(cloudflareViewModel, "ChartTheme.CreateMutedColumnSeries(\"Pageviews\"");
+    Contains(cloudflareViewModel, "ChartTheme.CreateMatteColumnSeries(\"Threats\"");
+    Contains(cloudflareViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visits\"");
+    Contains(cloudflareViewModel, "ChartTheme.CreateMutedColumnSeries(\"Page views\"");
+    Contains(cloudflareViewModel, "private static int? HighlightIndex(IReadOnlyList<long> values)");
+    Contains(cloudflareViewModel, "private static int? LargestValueIndex(IReadOnlyList<long> values)");
+    Contains(cloudflareViewModel, "HighlightIndex(visitors)");
+    Contains(cloudflareViewModel, "LargestValueIndex(threats)");
+    Contains(cloudflareViewModel, "StatusCodeGroup.Success => ChartPalette.Success.WithAlpha");
+    Contains(cloudflareViewModel, "StatusCodeGroup.Redirect => ChartPalette.Muted.WithAlpha");
+    Contains(cloudflareViewModel, "StatusCodeGroup.ClientError => ChartPalette.Warning.WithAlpha");
+    Contains(cloudflareViewModel, "StatusCodeGroup.ServerError => ChartPalette.Danger.WithAlpha");
+    Contains(cloudflareViewModel, "ChartTheme.StyleStackedColumnSeries(new StackedColumnSeries<long>");
+    NotContains(cloudflareViewModel, "CreateLine(\"Visitors\"");
+    NotContains(cloudflareViewModel, "CreateLine(\"Threats\"");
+    NotContains(cloudflareViewModel, "CreateLine(\"Visits\"");
+
+    Contains(cloudflareCode, "BuildBarChart(ref _trafficChart, TrafficChartHost)");
+    Contains(cloudflareCode, "BuildBarChart(ref _securityChart, SecurityChartHost)");
+    Contains(cloudflareCode, "BuildBarChart(ref _statusChart, StatusChartHost)");
+    Contains(cloudflareCode, "BuildBarChart(ref _waChart, WaChartHost)");
+    Contains(cloudflareCode, "ChartTheme.CreateBarChartSurface(chart)");
+
+    Contains(cloudflarePage, "x:Name=\"TrafficCountryBars\"");
+    Contains(cloudflarePage, "Items=\"{x:Bind ViewModel.TrafficPages, Mode=OneWay}\"");
+    Contains(cloudflarePage, "Items=\"{x:Bind ViewModel.WaReferrers, Mode=OneWay}\"");
+});
+
+Run("Cloudflare traffic sync persists top country and page breakdowns", () =>
+{
+    var root = FindRepositoryRoot();
+    var client = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "CloudflareGraphqlClient.cs"));
+    var repository = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "CloudflareRepository.cs"));
+    var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
+    var database = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "SqliteDatabase.cs"));
+
+    Contains(client, "topCountries: httpRequestsAdaptiveGroups");
+    Contains(client, "topPages: httpRequestsAdaptiveGroups");
+    Contains(client, "clientCountryName");
+    Contains(client, "clientRequestPath");
+    Contains(client, "requestSource: \"eyeball\"");
+    Contains(client, "List<CloudflareCountryRow> Countries");
+    Contains(client, "List<CloudflarePageRow> Pages");
+
+    Contains(migrations, "CurrentSchemaVersion = 7");
+    Contains(migrations, "CREATE TABLE IF NOT EXISTS cloudflare_pages");
+    Contains(migrations, "UNIQUE(domain, date, path)");
+    Contains(migrations, "RunV5Migration");
+    Contains(database, "DELETE FROM cloudflare_pages;");
+
+    Contains(repository, "INSERT INTO cloudflare_countries");
+    Contains(repository, "INSERT INTO cloudflare_pages");
+    Contains(repository, "DELETE FROM cloudflare_countries WHERE domain = @domain AND date = @date");
+    Contains(repository, "DELETE FROM cloudflare_pages WHERE domain = @domain AND date = @date");
+    Contains(repository, "FROM cloudflare_pages");
+    NotContains(repository, "top_path AS Path");
+});
+
+Run("HorizontalBars rerenders when observable item collections change", () =>
+{
+    var root = FindRepositoryRoot();
+    var horizontalBars = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "HorizontalBars.xaml.cs"));
+
+    Contains(horizontalBars, "using System.Collections.Specialized;");
+    Contains(horizontalBars, "INotifyCollectionChanged?");
+    Contains(horizontalBars, "CollectionChanged +=");
+    Contains(horizontalBars, "CollectionChanged -=");
+    Contains(horizontalBars, "OnItemsCollectionChanged");
+    Contains(horizontalBars, "bars.Render();");
+});
+
+Run("HorizontalBars renders matte gradient bars with optional top highlight", () =>
+{
+    var root = FindRepositoryRoot();
+    var horizontalBars = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "HorizontalBars.xaml.cs"));
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+
+    Contains(horizontalBars, "HighlightTopValueProperty");
+    Contains(horizontalBars, "public bool HighlightTopValue");
+    Contains(horizontalBars, "CompactProperty");
+    Contains(horizontalBars, "public bool Compact");
+    NotContains(horizontalBars, "ValueFormatProperty");
+
+    Contains(horizontalBars, "CreateBarFill(isHighlight)");
+    Contains(horizontalBars, "new LinearGradientBrush");
+    Contains(horizontalBars, "new GradientStop");
+    Contains(horizontalBars, "StartPoint = new Point(0, 0.5)");
+    Contains(horizontalBars, "EndPoint = new Point(1, 0.5)");
+    Contains(horizontalBars, "ChartBarHighlightTopColor");
+    Contains(horizontalBars, "ChartBarNeutralTopColor");
+    Contains(horizontalBars, "ChartBarNeutralMidColor");
+    Contains(horizontalBars, "ChartBarNeutralBottomColor");
+    Contains(horizontalBars, "row.Value == max");
+    Contains(horizontalBars, "HighlightTopValue");
+    Contains(horizontalBars, "NumerisTextSecondaryBrush");
+    Contains(horizontalBars, "NumerisTextTertiaryBrush");
+    Contains(horizontalBars, "Text = \"No data\"");
+    Contains(horizontalBars, "Foreground = tertiaryText");
+    NotContains(horizontalBars, "Fill = accent");
+
+    Contains(tokens, "HorizontalBarHeight");
+    Contains(tokens, "HorizontalBarCompactHeight");
+    Contains(tokens, "HorizontalBarCornerRadius");
+    Contains(tokens, "HorizontalBarCompactCornerRadius");
 });
 
 Run("Cloudflare status codes are summarized into understandable HTTP groups", () =>
@@ -1068,9 +1574,9 @@ Run("Bing page uses shared visual surfaces and chart palette", () =>
     Contains(bingPage, "Style=\"{StaticResource ContentCardBorderStyle}\"");
     Contains(bingPage, "Style=\"{StaticResource DataListViewStyle}\"");
     Contains(bingPageCode, "ChartTheme.CreateCartesianChart()");
-    Contains(bingPageCode, "ChartTheme.CreateChartSurface(chart)");
-    Contains(bingViewModel, "ChartPalette.Accent");
-    Contains(bingViewModel, "ChartPalette.Secondary");
+    Contains(bingPageCode, "ChartTheme.CreateBarChartSurface(chart)");
+    Contains(bingViewModel, "ChartTheme.CreateMatteColumnSeries(\"Clicks\"");
+    Contains(bingViewModel, "ChartTheme.CreateMutedColumnSeries(\"Impressions\"");
     NotContains(bingViewModel, "SKColor.Parse(\"#D9A24E\")");
 });
 
@@ -1089,7 +1595,7 @@ Run("Performance page uses shared visual surfaces and chart palette", () =>
     Contains(performancePageCode, "ChartTheme.CreateCartesianChart()");
     Contains(performancePageCode, "ChartTheme.CreateChartSurface(chart)");
     Contains(performanceViewModel, "ChartPalette.Accent");
-    Contains(performanceViewModel, "ChartPalette.Secondary");
+    Contains(performanceViewModel, "ChartTheme.CreateMutedColumnSeries(\"Desktop\"");
     NotContains(performanceViewModel, "SKColor.Parse(\"#D9A24E\")");
 });
 
@@ -1112,11 +1618,54 @@ Run("Health page uses shared visual surfaces and chart palette", () =>
     Contains(healthPage, "Last seen");
     Contains(healthPage, "IsoDateTimeDisplayConverter");
     Contains(healthViewModel, "ChartPalette.Accent");
-    Contains(healthViewModel, "ChartPalette.Secondary");
+    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Incidents\"");
     Contains(healthViewModel, "BuildResponseAxisMax");
     Contains(healthViewModel, "SitemapLastUpdatedText");
     NotContains(healthViewModel, "SKColor.Parse(\"#D9A24E\")");
     NotContains(healthViewModel, "SKColor.Parse(\"#C97B6A\")");
+});
+
+Run("Report volume charts use matte bars without forcing continuous metrics", () =>
+{
+    var root = FindRepositoryRoot();
+    var searchCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SearchConsolePage.xaml.cs"));
+    var searchViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "SearchConsoleViewModel.cs"));
+    var analyticsCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml.cs"));
+    var analyticsViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "GoogleAnalyticsViewModel.cs"));
+    var bingCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "BingPage.xaml.cs"));
+    var bingViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "BingViewModel.cs"));
+    var performanceCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "PerformancePage.xaml.cs"));
+    var performanceViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "PerformanceViewModel.cs"));
+    var healthCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "HealthPage.xaml.cs"));
+    var healthViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "HealthViewModel.cs"));
+
+    Contains(searchViewModel, "ChartTheme.CreateMatteColumnSeries(device");
+    NotContains(searchViewModel, "series.Add(CreateLine(dev");
+    Contains(searchCode, "BuildChart(ref _overviewChart, OverviewChartHost)");
+    Contains(searchCode, "BuildBarChart(ref _devicesChart, DevicesChartHost)");
+
+    Contains(analyticsViewModel, "ChartTheme.CreateMatteColumnSeries(device");
+    NotContains(analyticsViewModel, "return CreateLine(device");
+    Contains(analyticsCode, "BuildChart(ref _overviewChart, OverviewChartHost)");
+    Contains(analyticsCode, "BuildBarChart(ref _deviceChart, DevicesPanel)");
+
+    Contains(bingViewModel, "ChartTheme.CreateMatteColumnSeries(\"Clicks\"");
+    Contains(bingViewModel, "ChartTheme.CreateMutedColumnSeries(\"Impressions\"");
+    NotContains(bingViewModel, "CreateLine(\"Clicks\"");
+    Contains(bingCode, "BuildBarChart(ref _trafficChart, TrafficChartHost)");
+
+    Contains(performanceViewModel, "ChartTheme.CreateMatteColumnSeries(\"Mobile\"");
+    Contains(performanceViewModel, "ChartTheme.CreateMutedColumnSeries(\"Desktop\"");
+    NotContains(performanceViewModel, "CreateScoreLine(\"Mobile\"");
+    Contains(performanceCode, "BuildChart(ref _cruxChart, CruxChartHost)");
+    Contains(performanceCode, "BuildBarChart(ref _pageSpeedChart, PageSpeedChartHost)");
+
+    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Incidents\"");
+    Contains(healthViewModel, "new LineSeries<double>");
+    Contains(healthCode, "BuildChart(ref _responseChart, ResponseChartHost)");
+    Contains(healthCode, "BuildBarChart(ref _incidentsChart, IncidentsChartHost)");
+
+    Contains(searchCode + analyticsCode + bingCode + performanceCode + healthCode, "ChartTheme.CreateBarChartSurface(chart)");
 });
 
 Run("Sources page presents integrations as shared settings cards", () =>
@@ -1133,6 +1682,7 @@ Run("Sources page presents integrations as shared settings cards", () =>
     Contains(sourcesPage, "<Setter Property=\"HorizontalContentAlignment\" Value=\"Stretch\" />");
     Contains(sourcesPage, "Traffic, cache, security events");
     Contains(sourcesPage, "Clicks, impressions, pages, indexing");
+    Contains(sourcesPage, "GA4 traffic, pages, acquisition, and events");
     Contains(sourcesPage, "Core Web Vitals and PageSpeed lab data");
     Contains(sourcesPage, "Search visibility and indexing data");
     Contains(sourcesPage, "StatusMessage");
@@ -1150,9 +1700,11 @@ Run("Sources page groups settings by provider", () =>
     Contains(sourcesPage, "Text=\"Bing\"");
     Contains(sourcesPage, "Zone Analytics");
     Contains(sourcesPage, "Web Analytics");
+    Contains(sourcesPage, "Google Analytics");
     Contains(sourcesPage, "Search Console");
     Contains(sourcesPage, "Web Performance");
     Contains(sourcesPage, "Bing Webmaster");
+    NotContains(sourcesPage, "Text=\"YouTube\"");
     NotContains(sourcesPage, "Text=\"Cloudflare Web Analytics\"");
     NotContains(sourcesPage, "Text=\"Google Search Console\"");
     NotContains(sourcesPage, "Text=\"Microsoft Bing Webmaster Tools\"");
@@ -1165,17 +1717,30 @@ Run("Sources page hides credential forms behind collapsed editors", () =>
 
     Contains(sourcesPage, "Header=\"Add Cloudflare Zone Analytics connection\"");
     Contains(sourcesPage, "Header=\"Edit Cloudflare Web Analytics credentials\"");
+    Contains(sourcesPage, "Header=\"Edit Google Analytics credentials\"");
     Contains(sourcesPage, "Header=\"Edit Google Search Console credentials\"");
     Contains(sourcesPage, "Header=\"Edit Google Web Performance API keys\"");
     Contains(sourcesPage, "Header=\"Edit Bing Webmaster API key\"");
     Equal("6", CountOccurrences(sourcesPage, "IsExpanded=\"False\"").ToString());
     Contains(sourcesPage, "Content=\"Test CrUX\"");
     Contains(sourcesPage, "Content=\"Test PageSpeed\"");
-    Contains(sourcesPage, "Header=\"Advanced: override YouTube OAuth credentials\"");
-    Contains(sourcesPage, "Content=\"Sync\"");
+    NotContains(sourcesPage, "Header=\"Advanced: override YouTube OAuth credentials\"");
+    NotContains(sourcesPage, "Content=\"Sync\"");
     Contains(sourcesPage, "Content=\"Delete\"");
     Contains(sourcesPage, "API key saved");
     Contains(sourcesPage, "OAuth credentials saved");
+});
+
+Run("Sources page does not expose per-integration sync actions", () =>
+{
+    var root = FindRepositoryRoot();
+    var sourcesPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml"));
+    var sourcesCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml.cs"));
+
+    NotContains(sourcesPage, "Content=\"Sync\"");
+    NotContains(sourcesPage, "SyncButton_Click");
+    NotContains(sourcesCode, "SyncButton_Click");
+    NotContains(sourcesCode, ".SyncAsync(");
 });
 
 Run("Sources page provider headers reuse navigation brand icons", () =>
@@ -1186,6 +1751,7 @@ Run("Sources page provider headers reuse navigation brand icons", () =>
     Contains(sourcesPage, "Source=\"ms-appx:///Assets/Icons/cloudflare-filled.png\"");
     Contains(sourcesPage, "Source=\"ms-appx:///Assets/Icons/google-search-filled.png\"");
     Contains(sourcesPage, "Source=\"ms-appx:///Assets/Icons/bing-filled.png\"");
+    NotContains(sourcesPage, "Source=\"ms-appx:///Assets/Icons/youtube-filled.png\"");
     Contains(sourcesPage, "<ImageIcon Grid.Column=\"0\"");
     Contains(sourcesPage, "Height=\"20\"");
     NotContains(sourcesPage, "<FontIcon Grid.Column=\"0\"");
@@ -1218,8 +1784,8 @@ Run("Report pages use SelectorBar for local view switching", () =>
         "SearchConsolePage.xaml",
         "BingPage.xaml",
         "PerformancePage.xaml",
+        "GoogleAnalyticsPage.xaml",
         "HealthPage.xaml",
-        "YouTubePage.xaml",
     };
 
     foreach (var page in pages)
@@ -1245,8 +1811,8 @@ Run("Report toolbars expose automation names and loading guards", () =>
         "SearchConsolePage.xaml",
         "BingPage.xaml",
         "PerformancePage.xaml",
+        "GoogleAnalyticsPage.xaml",
         "HealthPage.xaml",
-        "YouTubePage.xaml",
     };
 
     foreach (var page in pages)
@@ -1257,10 +1823,38 @@ Run("Report toolbars expose automation names and loading guards", () =>
         Contains(xaml, "IsEnabled=\"{x:Bind ViewModel.CanRefresh, Mode=OneWay}\"");
     }
 
-    foreach (var page in pages.Where(page => page != "YouTubePage.xaml"))
+    foreach (var page in pages)
     {
         var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
         Contains(xaml, "AutomationProperties.Name=\"Domain\"");
+    }
+});
+
+Run("Report refresh buttons run service sync before reloading local data", () =>
+{
+    var root = FindRepositoryRoot();
+    var reportPages = new[]
+    {
+        "CloudflarePage.xaml.cs",
+        "SearchConsolePage.xaml.cs",
+        "BingPage.xaml.cs",
+        "PerformancePage.xaml.cs",
+        "GoogleAnalyticsPage.xaml.cs",
+    };
+
+    foreach (var page in reportPages)
+    {
+        var code = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
+        Contains(code, "await ViewModel.RefreshAsync();");
+        NotContains(code, "RefreshButton_Click(object sender, RoutedEventArgs e)\r\n    {\r\n        await ViewModel.LoadAsync();");
+    }
+
+    foreach (var viewModel in new[] { "CloudflareViewModel.cs", "SearchConsoleViewModel.cs", "BingViewModel.cs", "PerformanceViewModel.cs", "GoogleAnalyticsViewModel.cs" })
+    {
+        var code = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", viewModel));
+        Contains(code, "public async Task RefreshAsync()");
+        Contains(code, "SyncConfiguredAsync");
+        Contains(code, "await LoadAsync();");
     }
 });
 
@@ -1274,8 +1868,8 @@ Run("Report pages define responsive visual states", () =>
         "SearchConsolePage.xaml",
         "BingPage.xaml",
         "PerformancePage.xaml",
+        "GoogleAnalyticsPage.xaml",
         "HealthPage.xaml",
-        "YouTubePage.xaml",
     };
 
     foreach (var page in pages)
@@ -1285,6 +1879,144 @@ Run("Report pages define responsive visual states", () =>
         Contains(xaml, "x:Name=\"NarrowLayout\"");
         Contains(xaml, "x:Name=\"WideLayout\"");
     }
+});
+
+Run("Report layouts use responsive headers, hero spacing, and narrow KPI grids", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+    var periodSelector = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "PeriodSelector.xaml"));
+    var pages = new[]
+    {
+        "DashboardPage.xaml",
+        "CloudflarePage.xaml",
+        "SearchConsolePage.xaml",
+        "BingPage.xaml",
+        "PerformancePage.xaml",
+        "GoogleAnalyticsPage.xaml",
+        "HealthPage.xaml",
+    };
+
+    Contains(tokens, "ReportHeroMinHeight");
+    Contains(tokens, "ReportHeroChartHeight");
+    Contains(tokens, "ReportSecondaryChartHeight");
+    Contains(tokens, "ReportCompactChartHeight");
+    Contains(tokens, "PeriodSelectorMinWidth");
+    Contains(tokens, "ChartCardPadding\">28,22,28,22");
+    Contains(periodSelector, "MinWidth=\"{StaticResource PeriodSelectorMinWidth}\"");
+
+    foreach (var page in pages)
+    {
+        var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
+        Contains(xaml, "x:Name=\"HeaderGrid\"");
+        Contains(xaml, "x:Name=\"HeaderControls\"");
+        Contains(xaml, "Target=\"HeaderControls.Orientation\" Value=\"Vertical\"");
+        Contains(xaml, "Target=\"HeaderControls.Orientation\" Value=\"Horizontal\"");
+        Contains(xaml, "Target=\"HeaderControls.(Grid.Row)\" Value=\"1\"");
+        Contains(xaml, "Target=\"HeaderControls.(Grid.Row)\" Value=\"0\"");
+        Contains(xaml, "Target=\"HeaderControls.(Grid.ColumnSpan)\" Value=\"2\"");
+        Contains(xaml, "Target=\"PeriodSelector.HorizontalAlignment\" Value=\"Stretch\"");
+    }
+
+    var dashboard = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml"));
+    Contains(dashboard, "MinHeight=\"{StaticResource ReportHeroMinHeight}\"");
+    Contains(dashboard, "Style=\"{StaticResource ResponsiveKpiGridStyle}\"");
+    Contains(dashboard, "x:Name=\"GoogleClicksKpi\"");
+    Contains(dashboard, "x:Name=\"BingClicksKpi\"");
+    Contains(dashboard, "x:Name=\"WebVitalsKpi\"");
+    Contains(dashboard, "x:Name=\"PageSpeedKpi\"");
+    Contains(dashboard, "Target=\"WebVitalsKpi.(Grid.Row)\" Value=\"1\"");
+    Contains(dashboard, "Target=\"PageSpeedKpi.(Grid.Row)\" Value=\"1\"");
+
+    var cloudflare = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "CloudflarePage.xaml"));
+    Contains(cloudflare, "MinHeight=\"{StaticResource ReportHeroChartHeight}\"");
+    Contains(cloudflare, "x:Name=\"StatusMetricsGrid\"");
+    Contains(cloudflare, "Target=\"StatusServerErrorsKpi.(Grid.Row)\" Value=\"1\"");
+    Contains(cloudflare, "Target=\"StatusTopIssueCard.(Grid.Row)\" Value=\"1\"");
+});
+
+Run("Matte UI test coverage enforces centralized visual resources", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+    var chartPalette = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartPalette.cs"));
+    var chartTheme = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartTheme.cs"));
+    var kpiCard = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "KpiCard.xaml"));
+    var deltaBadgeCode = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "DeltaBadge.xaml.cs"));
+    var horizontalBars = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "HorizontalBars.xaml.cs"));
+    var periodSelectorCode = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "PeriodSelector.xaml.cs"));
+    var dashboardViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "DashboardViewModel.cs"));
+    var viewModelFiles = Directory.EnumerateFiles(Path.Combine(root, "Numeris", "ViewModels"), "*ViewModel.cs", SearchOption.AllDirectories)
+        .Select(path => (Path: path, Text: File.ReadAllText(path)))
+        .ToArray();
+    var reportPages = new[]
+    {
+        "DashboardPage.xaml",
+        "CloudflarePage.xaml",
+        "SearchConsolePage.xaml",
+        "GoogleAnalyticsPage.xaml",
+        "BingPage.xaml",
+        "PerformancePage.xaml",
+        "HealthPage.xaml",
+    };
+
+    foreach (var resource in new[]
+    {
+        "ChartBarNeutralTopColor",
+        "ChartBarNeutralMidColor",
+        "ChartBarNeutralBottomColor",
+        "ChartBarHighlightTopColor",
+        "ChartBarHighlightMidColor",
+        "ChartBarHighlightBottomColor",
+        "ChartBarCapColor",
+        "ChartReferenceLineColor",
+        "PositiveDeltaColor",
+        "NegativeDeltaColor",
+        "NeutralDeltaColor",
+    })
+    {
+        Contains(tokens, $"x:Key=\"{resource}\"");
+        Contains(chartPalette, $"FromResource(\"{resource}\"");
+    }
+
+    Contains(chartTheme, "CreateMatteColumnSeries<T>");
+    Contains(chartTheme, "CreateMatteBarFill");
+    Contains(chartTheme, "CreateHighlightBarFill");
+    Contains(chartTheme, "CreateVerticalGradient(");
+    Contains(dashboardViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visitors\"");
+    Contains(kpiCard, "<controls:DeltaBadge");
+    Contains(deltaBadgeCode, "PositiveDeltaBrush");
+    Contains(deltaBadgeCode, "NegativeDeltaBrush");
+    Contains(deltaBadgeCode, "NeutralDeltaBrush");
+    Contains(horizontalBars, "GetBrush(\"HorizontalBarTrackBrush\")");
+    Contains(horizontalBars, "GetBrush(\"NumerisTextSecondaryBrush\")");
+    Contains(horizontalBars, "GetBrush(\"NumerisTextTertiaryBrush\")");
+    Contains(horizontalBars, "GetColor(isHighlight ? \"ChartBarHighlightTopColor\" : \"ChartBarNeutralTopColor\")");
+
+    foreach (var page in reportPages)
+    {
+        var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
+        Contains(xaml, "<controls:PeriodSelector");
+        NotContains(xaml, "x:Name=\"PeriodCombo\"");
+    }
+
+    foreach (var viewModel in viewModelFiles)
+    {
+        NotContains(viewModel.Text, "LinearGradientPaint");
+        NotContains(viewModel.Text, "LinearGradientBrush");
+        NotContains(viewModel.Text, "GradientStop");
+        NotContains(viewModel.Text, "SKColor.Parse(");
+        NotContains(viewModel.Text, "#4F73FF");
+        NotContains(viewModel.Text, "#D9A24E");
+        NotContains(viewModel.Text, "#C97B6A");
+    }
+
+    NotContains(chartPalette, ", new SKColor(");
+    NotContains(chartTheme, "Windows.UI.Color.FromArgb");
+    NotContains(deltaBadgeCode, "Color.FromArgb");
+    NotContains(horizontalBars, "Color.FromArgb");
+    NotContains(periodSelectorCode, "Color.FromArgb");
+    NotContains(kpiCard, "TextFillColorSecondaryBrush");
 });
 
 Run("Sources page exposes status bars and guarded actions", () =>
@@ -1298,15 +2030,15 @@ Run("Sources page exposes status bars and guarded actions", () =>
     Contains(sourcesPage, "<InfoBar");
     Contains(sourcesPage, "AutomationProperties.Name=\"Cloudflare status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Google Search Console status\"");
+    Contains(sourcesPage, "AutomationProperties.Name=\"Google Analytics status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Web Performance status\"");
-    Contains(sourcesPage, "AutomationProperties.Name=\"YouTube status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Bing status\"");
     Contains(sourcesPage, "Style=\"{StaticResource DangerActionButtonStyle}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}\"");
+    Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}\"");
-    Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}\"");
 
     foreach (var viewModel in sourceViewModels)
@@ -1385,6 +2117,91 @@ static void Throws<TException>(Action action)
         return;
     }
     throw new InvalidOperationException($"Expected {typeof(TException).Name}");
+}
+
+static InsightMetrics Metrics(
+    MetricWindow? cloudflareVisitors = null,
+    MetricWindow? ga4Users = null,
+    MetricWindow? googleImpressions = null,
+    MetricWindow? googleClicks = null,
+    MetricWindow? googleMobileClicks = null,
+    MetricWindow? googleMobileImpressions = null,
+    MetricWindow? pageSpeedMobileScore = null,
+    MetricWindow? bingImpressions = null,
+    MetricWindow? bingClicks = null,
+    MetricWindow? ga4EngagementRate = null,
+    MetricWindow? ga4KeyEvents = null,
+    MetricWindow? cloudflareCacheHitRatio = null,
+    MetricWindow? cloudflareThreats = null,
+    StatusCodeSummary? httpStatus = null,
+    IndexingSummary? indexing = null,
+    SourceFreshnessSummary? freshness = null,
+    SearchPageTrend? worstDecliningPage = null,
+    int newSearchQueryCount = 0,
+    bool isSingleDomain = true)
+{
+    var empty = new MetricWindow(0, 0);
+    return new InsightMetrics(
+        CloudflareVisitors: cloudflareVisitors ?? empty,
+        Ga4Users: ga4Users ?? empty,
+        GoogleImpressions: googleImpressions ?? empty,
+        GoogleClicks: googleClicks ?? empty,
+        GoogleMobileClicks: googleMobileClicks ?? empty,
+        GoogleMobileImpressions: googleMobileImpressions ?? empty,
+        PageSpeedMobileScore: pageSpeedMobileScore ?? empty,
+        BingImpressions: bingImpressions ?? empty,
+        BingClicks: bingClicks ?? empty,
+        Ga4EngagementRate: ga4EngagementRate ?? empty,
+        Ga4KeyEvents: ga4KeyEvents ?? empty,
+        CloudflareCacheHitRatio: cloudflareCacheHitRatio ?? empty,
+        CloudflareThreats: cloudflareThreats ?? empty,
+        HttpStatus: httpStatus ?? new StatusCodeSummary(0, 0, 0),
+        Indexing: indexing ?? new IndexingSummary(0, 0, 0),
+        Freshness: freshness ?? new SourceFreshnessSummary(1, 0, 0),
+        WorstDecliningPage: worstDecliningPage,
+        NewSearchQueryCount: newSearchQueryCount,
+        IsSingleDomain: isSingleDomain);
+}
+
+static IReadOnlyList<InsightCard> GenerateInsights(InsightMetrics metrics)
+{
+    var engine = CreateInsightEngine();
+    var method = engine.GetType().GetMethod("Generate", new[] { typeof(InsightMetrics) })
+        ?? throw new InvalidOperationException("InsightEngine.Generate(InsightMetrics) is missing");
+    return ((IEnumerable<InsightCard>?)method.Invoke(engine, new object[] { metrics }))
+        ?.ToList() ?? throw new InvalidOperationException("InsightEngine.Generate returned null");
+}
+
+static string GetInsightEmptyState(InsightMetrics metrics)
+{
+    var engine = CreateInsightEngine();
+    var method = engine.GetType().GetMethod("GetEmptyStateText", new[] { typeof(InsightMetrics) })
+        ?? throw new InvalidOperationException("InsightEngine.GetEmptyStateText(InsightMetrics) is missing");
+    return (string?)method.Invoke(engine, new object[] { metrics })
+        ?? throw new InvalidOperationException("InsightEngine.GetEmptyStateText returned null");
+}
+
+static object CreateInsightEngine()
+{
+    var type = Type.GetType("Numeris.Services.Insights.InsightEngine, Numeris")
+        ?? throw new InvalidOperationException("Numeris.Services.Insights.InsightEngine is missing");
+    return Activator.CreateInstance(type)
+        ?? throw new InvalidOperationException("InsightEngine could not be created");
+}
+
+static InsightCard FindInsight(IReadOnlyList<InsightCard> cards, string title)
+    => cards.FirstOrDefault(card => string.Equals(card.Title, title, StringComparison.Ordinal))
+       ?? throw new InvalidOperationException($"Expected insight title '{title}'");
+
+static void AssertPlainInsightTitles(IReadOnlyList<InsightCard> cards)
+{
+    foreach (var card in cards)
+    {
+        NotContains(card.Title, "CTR");
+        NotContains(card.Title, "CrUX");
+        NotContains(card.Title, "5xx");
+        NotContains(card.Title, "GA4");
+    }
 }
 
 static string RunPowerShellScript(string scriptPath, string root, string argument)

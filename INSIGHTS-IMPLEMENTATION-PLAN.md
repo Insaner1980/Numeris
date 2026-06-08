@@ -30,8 +30,8 @@ Tulos: suunnitelman API-oletukset ovat edelleen yhteensopivia nykyisten virallis
 ## Phase Status
 
 - [x] Phase 0: Handoff, branch, and progress document
-- [ ] Phase 1: Tests for trend math and rule output
-- [ ] Phase 2: Insight domain model and trend helpers
+- [x] Phase 1: Tests for trend math and rule output
+- [x] Phase 2: Insight domain model and trend helpers
 - [ ] Phase 3: Repository aggregation for insight metrics
 - [ ] Phase 4: InsightEngine rules
 - [ ] Phase 5: Dashboard ViewModel integration
@@ -56,3 +56,38 @@ Completed: 2026-06-08 10:17:43 +03:00
   - `?? INSIGHTS-IMPLEMENTATION-PLAN.md` before commit; only the expected progress document was selected for the phase commit.
 - Notes:
   - Nykyinen tyopuu sisaltaa paljon aiempia muokkauksia. Tahan vaiheeseen committoidaan vain tama progress-dokumentti.
+
+### Phase 1: Tests for trend math and rule output
+
+Status: complete
+
+Completed: 2026-06-08 10:23:50 +03:00
+
+- Changed files:
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Expected RED failure: `CS0234: The type or namespace name 'Insights' does not exist in the namespace 'Numeris.Services'`.
+- Notes:
+  - Testit kattavat trendiluokittelun, prosenttiformatoinnin, liikenne-/Google-/indexing-/HTTP-/Bing-saannot, plain-English title -vaatimuksen ja puhtaan empty staten.
+  - `InsightEngine`-saannot kutsutaan reflektiolla, jotta Phase 2 voi viela kaantya mallien ja trend-helperien jalkeen ilman engine-toteutusta.
+
+### Phase 2: Insight domain model and trend helpers
+
+Status: complete
+
+Completed: 2026-06-08 10:26:43 +03:00
+
+- Changed files:
+  - `Numeris/Models/InsightRows.cs`
+  - `Numeris/Services/Insights/Trend.cs`
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Expected partial RED: trend math test passed; remaining six insight rule tests failed with `Numeris.Services.Insights.InsightEngine is missing`.
+- Notes:
+  - `InsightMetrics` includes small optional fields for worst declining search page and new query count because those rules cannot be derived from aggregate windows alone.
