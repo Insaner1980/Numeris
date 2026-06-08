@@ -37,7 +37,7 @@ Tulos: suunnitelman API-oletukset ovat edelleen yhteensopivia nykyisten virallis
 - [x] Phase 5: Dashboard ViewModel integration
 - [x] Phase 6: Dashboard UI
 - [x] Phase 7: Documentation and project memory
-- [ ] Phase 8: Verification and final cleanup
+- [x] Phase 8: Verification and final cleanup
 
 ## Phase Log
 
@@ -184,3 +184,23 @@ Completed: 2026-06-08 10:53:01 +03:00
 - Notes:
   - `migration-plan.md` was intentionally not updated because no schema or core migration order changed.
   - Docs now record that Insights is deterministic, local SQLite/repository based, ratio-driven, and has no AI/prompt/new API path.
+
+### Phase 8: Verification and final cleanup
+
+Status: complete
+
+Completed: 2026-06-08 10:55:31 +03:00
+
+- Changed files:
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification commands:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+  - `dotnet build Numeris.slnx -p:Platform=x64`
+  - `rg -n "CurrentSchemaVersion|insight|Insight|CREATE TABLE IF NOT EXISTS insights|insight_metrics" Numeris\Services\Database\Migrations.cs Numeris\Themes\Tokens.xaml INSIGHTS-IMPLEMENTATION-PLAN.md`
+  - `git diff --stat HEAD~5..HEAD -- INSIGHTS-IMPLEMENTATION-PLAN.md Numeris.Tests/Program.cs Numeris/Models/InsightRows.cs Numeris/Services/Insights/Trend.cs Numeris/Services/Insights/InsightEngine.cs Numeris/Services/Database/Repositories/InsightMetricsRepository.cs Numeris/App.xaml.cs Numeris/ViewModels/DashboardViewModel.cs Numeris/Views/DashboardPage.xaml AGENTS.md memory/MEMORY.md PROJECT.md Numeris/Services/Database/Migrations.cs Numeris/Themes/Tokens.xaml`
+- Result:
+  - Test harness passed.
+  - Solution build passed with 0 warnings and 0 errors.
+  - Targeted diff check showed no `Migrations.cs` or `Tokens.xaml` changes in the Insights commits; `Migrations.CurrentSchemaVersion` remains `7`; no `insights` or `insight_metrics` tables were added.
+- Notes:
+  - Working tree still contains pre-existing unrelated changes outside the Insights commits. They were not staged by the final verification step.
