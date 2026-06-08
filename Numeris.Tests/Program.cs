@@ -502,6 +502,44 @@ Run("Google Analytics is available from navigation and Sources", () =>
     NotContains(projectFile, "Assets\\Icons\\youtube-filled.png");
 });
 
+Run("Insight metrics aggregation reads local repositories without schema or API drift", () =>
+{
+    var root = FindRepositoryRoot();
+    var repositoryPath = Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "InsightMetricsRepository.cs");
+    if (!File.Exists(repositoryPath))
+    {
+        throw new InvalidOperationException("InsightMetricsRepository.cs is missing");
+    }
+
+    var repository = File.ReadAllText(repositoryPath);
+    var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
+
+    Contains(repository, "GetInsightMetricsAsync");
+    Contains(repository, "cloudflare_traffic");
+    Contains(repository, "cloudflare_status_codes");
+    Contains(repository, "search_console");
+    Contains(repository, "search_devices");
+    Contains(repository, "sitemap_urls");
+    Contains(repository, "google_analytics_daily");
+    Contains(repository, "google_analytics_events");
+    Contains(repository, "pagespeed_runs");
+    Contains(repository, "bing_rank_traffic");
+    Contains(repository, "connections");
+    Contains(repository, "SiteIdentity.NormalizeDomain");
+    Contains(repository, "SiteIdentity.NormalizeHomePageUrl");
+    NotContains(repository, "CloudflareGraphqlClient");
+    NotContains(repository, "SearchConsoleClient");
+    NotContains(repository, "GoogleAnalyticsClient");
+    NotContains(repository, "PageSpeedClient");
+    NotContains(repository, "BingWebmasterClient");
+    NotContains(repository, "RunReportAsync");
+    NotContains(repository, "RunPageSpeedAsync");
+    NotContains(repository, "SyncConfiguredAsync");
+    Contains(migrations, "CurrentSchemaVersion = 7");
+    NotContains(migrations, "CREATE TABLE IF NOT EXISTS insights");
+    NotContains(migrations, "insight_metrics");
+});
+
 Run("Performance page formats PageSpeed query window from DateOnly safely", () =>
 {
     var root = FindRepositoryRoot();

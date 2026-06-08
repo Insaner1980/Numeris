@@ -32,7 +32,7 @@ Tulos: suunnitelman API-oletukset ovat edelleen yhteensopivia nykyisten virallis
 - [x] Phase 0: Handoff, branch, and progress document
 - [x] Phase 1: Tests for trend math and rule output
 - [x] Phase 2: Insight domain model and trend helpers
-- [ ] Phase 3: Repository aggregation for insight metrics
+- [x] Phase 3: Repository aggregation for insight metrics
 - [ ] Phase 4: InsightEngine rules
 - [ ] Phase 5: Dashboard ViewModel integration
 - [ ] Phase 6: Dashboard UI
@@ -91,3 +91,21 @@ Completed: 2026-06-08 10:26:43 +03:00
   - Expected partial RED: trend math test passed; remaining six insight rule tests failed with `Numeris.Services.Insights.InsightEngine is missing`.
 - Notes:
   - `InsightMetrics` includes small optional fields for worst declining search page and new query count because those rules cannot be derived from aggregate windows alone.
+
+### Phase 3: Repository aggregation for insight metrics
+
+Status: complete
+
+Completed: 2026-06-08 10:33:53 +03:00
+
+- Changed files:
+  - `Numeris/Services/Database/Repositories/InsightMetricsRepository.cs`
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Expected partial RED: insight metrics aggregation test passed; remaining six insight rule tests failed with `Numeris.Services.Insights.InsightEngine is missing`.
+- Notes:
+  - Aggregointi lukee vain nykyisia SQLite-tauluja ja kayttaa lahdekohtaisia domain/site/url-filttereita.
+  - `Migrations.CurrentSchemaVersion` pysyi arvossa `7`; uusia insight-tauluja ei lisatty.
