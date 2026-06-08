@@ -26,7 +26,10 @@ public sealed record InsightCard(
     string WhyShown,
     string NextStep,
     InsightSeverity Severity,
-    int Priority);
+    int Priority)
+{
+    public string SeverityText => Severity.ToString();
+}
 
 public sealed record StatusCodeSummary(
     long TotalRequests,
@@ -86,4 +89,3 @@ public sealed record InsightMetrics(
     SearchPageTrend? WorstDecliningPage,
     int NewSearchQueryCount,
     bool IsSingleDomain);
-

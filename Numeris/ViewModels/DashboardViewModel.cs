@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -11,6 +12,7 @@ using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Insights;
 using Numeris.Themes;
 using SkiaSharp;
 
@@ -26,11 +28,17 @@ public partial class DashboardViewModel : ObservableObject
     private readonly SearchConsoleRepository _scRepo;
     private readonly BingRepository _bingRepo;
     private readonly SitemapRepository _sitemapRepo;
+    private readonly InsightMetricsRepository _insightMetricsRepo;
+    private readonly InsightEngine _insightEngine;
 
     [ObservableProperty] public partial bool IsLoading { get; set; } = true;
     public bool CanRefresh => !IsLoading;
+    public ObservableCollection<InsightCard> Insights { get; } = new();
+    [ObservableProperty] public partial string InsightsSummaryText { get; set; } = "Connect or refresh sources to generate insights.";
+    public bool HasInsightRows => Insights.Count > 0;
     [ObservableProperty] public partial string VisitorsTotal { get; set; } = "—";
     [ObservableProperty] public partial double? VisitorsChangePct { get; set; }
+    public double VisitorsChangeValue => VisitorsChangePct ?? 0;
     [ObservableProperty] public partial string ClicksTotal { get; set; } = "—";
     [ObservableProperty] public partial double? ClicksChangePct { get; set; }
     [ObservableProperty] public partial string BingClicksTotal { get; set; } = "—";
@@ -53,7 +61,9 @@ public partial class DashboardViewModel : ObservableObject
         CloudflareRepository cfRepo,
         SearchConsoleRepository scRepo,
         BingRepository bingRepo,
-        SitemapRepository sitemapRepo)
+        SitemapRepository sitemapRepo,
+        InsightMetricsRepository insightMetricsRepo,
+        InsightEngine insightEngine)
     {
         _shell = shell;
         _summaryRepo = summaryRepo;
@@ -61,10 +71,17 @@ public partial class DashboardViewModel : ObservableObject
         _scRepo = scRepo;
         _bingRepo = bingRepo;
         _sitemapRepo = sitemapRepo;
+        _insightMetricsRepo = insightMetricsRepo;
+        _insightEngine = insightEngine;
         _shell.PropertyChanged += OnShellChanged;
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+
+    partial void OnVisitorsChangePctChanged(double? value)
+    {
+        OnPropertyChanged(nameof(VisitorsChangeValue));
+    }
 
     private void OnShellChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -96,8 +113,9 @@ public partial class DashboardViewModel : ObservableObject
             var bingTrafficTask = _bingRepo.GetTrafficDailyAsync(domain, startStr, endStr);
             var cacheTask = _cfRepo.GetCacheDailyAsync(domain, startStr, endStr);
             var sitemapTask = _sitemapRepo.ListUrlsAsync(sitemapDomain);
+            var insightsTask = _insightMetricsRepo.GetInsightMetricsAsync(domain, range.Days);
 
-            await Task.WhenAll(summaryTask, bingSummaryTask, webVitalsTask, pageSpeedTask, lastSyncTask, trafficTask, searchTask, bingTrafficTask, cacheTask, sitemapTask);
+            await Task.WhenAll(summaryTask, bingSummaryTask, webVitalsTask, pageSpeedTask, lastSyncTask, trafficTask, searchTask, bingTrafficTask, cacheTask, sitemapTask, insightsTask);
 
             var summary = await summaryTask;
             var bingSummary = await bingSummaryTask;
@@ -108,6 +126,7 @@ public partial class DashboardViewModel : ObservableObject
             var bingTraffic = await bingTrafficTask;
             var cache = await cacheTask;
             var sitemap = await sitemapTask;
+            var insightMetrics = await insightsTask;
 
             VisitorsTotal = FormatNumber(summary.VisitorsTotal);
             VisitorsChangePct = summary.VisitorsChangePct;
@@ -140,6 +159,7 @@ public partial class DashboardViewModel : ObservableObject
 
             BuildTrafficChart(traffic);
             BuildSearchChart(search, bingTraffic);
+            ApplyInsights(insightMetrics);
         }
         finally
         {
@@ -147,36 +167,55 @@ public partial class DashboardViewModel : ObservableObject
         }
     }
 
+    private void ApplyInsights(InsightMetrics insightMetrics)
+    {
+        var rows = _insightEngine.Generate(insightMetrics);
+        Insights.Clear();
+        foreach (var row in rows)
+        {
+            Insights.Add(row);
+        }
+
+        InsightsSummaryText = rows.Count == 0
+            ? _insightEngine.GetEmptyStateText(insightMetrics)
+            : "";
+        OnPropertyChanged(nameof(HasInsightRows));
+    }
+
     private void BuildTrafficChart(IReadOnlyList<TrafficDay> rows)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var visitors = rows.Select(r => r.UniqueVisitors).ToArray();
         TrafficSeries = new ISeries[]
         {
-            new LineSeries<long>
-            {
-                Name = "Visitors",
-                Values = rows.Select(r => r.UniqueVisitors).ToArray(),
-                Stroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(ChartPalette.Accent) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(ChartPalette.Accent),
-                Fill = new SolidColorPaint(ChartPalette.Accent.WithAlpha(40)),
-                GeometrySize = 0,
-                LineSmoothness = 0.4,
-            },
-            new LineSeries<long>
-            {
-                Name = "Pageviews",
-                Values = rows.Select(r => r.Pageviews).ToArray(),
-                Stroke = new SolidColorPaint(ChartPalette.Muted) { StrokeThickness = 2 },
-                GeometryStroke = new SolidColorPaint(ChartPalette.Muted) { StrokeThickness = 2 },
-                GeometryFill = new SolidColorPaint(ChartPalette.Muted),
-                Fill = null,
-                GeometrySize = 0,
-                LineSmoothness = 0.4,
-            },
+            ChartTheme.CreateMatteColumnSeries("Visitors", visitors, HighlightIndex(rows)),
         };
         TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels, LabelsRotation = 0 }) };
         TrafficYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
+    }
+
+    private static int? HighlightIndex(IReadOnlyList<TrafficDay> rows)
+    {
+        if (rows.Count == 0 || rows.All(row => row.UniqueVisitors == 0))
+        {
+            return null;
+        }
+
+        if (rows[^1].UniqueVisitors > 0)
+        {
+            return rows.Count - 1;
+        }
+
+        var maxValue = rows.Max(row => row.UniqueVisitors);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (rows[index].UniqueVisitors == maxValue)
+            {
+                return index;
+            }
+        }
+
+        return null;
     }
 
     private void BuildSearchChart(IReadOnlyList<SearchDay> googleRows, IReadOnlyList<BingTrafficDay> bingRows)

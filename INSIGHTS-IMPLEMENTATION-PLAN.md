@@ -34,9 +34,9 @@ Tulos: suunnitelman API-oletukset ovat edelleen yhteensopivia nykyisten virallis
 - [x] Phase 2: Insight domain model and trend helpers
 - [x] Phase 3: Repository aggregation for insight metrics
 - [x] Phase 4: InsightEngine rules
-- [ ] Phase 5: Dashboard ViewModel integration
-- [ ] Phase 6: Dashboard UI
-- [ ] Phase 7: Documentation and project memory
+- [x] Phase 5: Dashboard ViewModel integration
+- [x] Phase 6: Dashboard UI
+- [x] Phase 7: Documentation and project memory
 - [ ] Phase 8: Verification and final cleanup
 
 ## Phase Log
@@ -127,3 +127,60 @@ Completed: 2026-06-08 10:39:54 +03:00
 - Notes:
   - Saannot ovat deterministic ja thresholdit on keskitetty `InsightEngine`in private vakioihin.
   - `Generate` palauttaa enintaan nelja rivia severity-desc/priority-asc jarjestyksessa.
+
+### Phase 5: Dashboard ViewModel integration
+
+Status: complete
+
+Completed: 2026-06-08 10:44:08 +03:00
+
+- Changed files:
+  - `Numeris/App.xaml.cs`
+  - `Numeris/ViewModels/DashboardViewModel.cs`
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Pass. Dashboard ViewModel DI/static architecture test passed with existing harness.
+- Notes:
+  - `DashboardViewModel.LoadAsync` hakee insight-metriikat muiden Overview-tehtavien rinnalla ja paivittaa `Insights`, `InsightsSummaryText` ja `HasInsightRows`.
+  - Insights-polku ei kaynnista synceja eika lue `SqliteDatabase`a ViewModelista.
+
+### Phase 6: Dashboard UI
+
+Status: complete
+
+Completed: 2026-06-08 10:48:49 +03:00
+
+- Changed files:
+  - `Numeris/Views/DashboardPage.xaml`
+  - `Numeris/Models/InsightRows.cs`
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Pass. Dashboard Insights UI static test passed and XAML compilation succeeded through the test project build.
+- Notes:
+  - Insights-osio on yksi `ChartCardBorderStyle`-kortti KPI-gridin ja status stripin valissa.
+  - Rivirakenne kayttaa simple separator -riveja ja yhteisia tekstin/rajojen tokeneita.
+
+### Phase 7: Documentation and project memory
+
+Status: complete
+
+Completed: 2026-06-08 10:53:01 +03:00
+
+- Changed files:
+  - `AGENTS.md`
+  - `memory/MEMORY.md`
+  - `PROJECT.md`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Pass. Documentation-sensitive harness checks still passed.
+- Notes:
+  - `migration-plan.md` was intentionally not updated because no schema or core migration order changed.
+  - Docs now record that Insights is deterministic, local SQLite/repository based, ratio-driven, and has no AI/prompt/new API path.

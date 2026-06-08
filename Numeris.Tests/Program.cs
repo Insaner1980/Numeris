@@ -586,6 +586,49 @@ Run("Insight metrics aggregation reads local repositories without schema or API 
     NotContains(migrations, "insight_metrics");
 });
 
+Run("Dashboard ViewModel consumes insight engine and metrics repository only", () =>
+{
+    var root = FindRepositoryRoot();
+    var app = File.ReadAllText(Path.Combine(root, "Numeris", "App.xaml.cs"));
+    var viewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "DashboardViewModel.cs"));
+
+    Contains(app, "services.AddSingleton<InsightMetricsRepository>();");
+    Contains(app, "services.AddSingleton<InsightEngine>();");
+    Contains(viewModel, "InsightMetricsRepository");
+    Contains(viewModel, "InsightEngine");
+    Contains(viewModel, "ObservableCollection<InsightCard> Insights");
+    Contains(viewModel, "InsightsSummaryText");
+    Contains(viewModel, "HasInsightRows");
+    Contains(viewModel, "GetInsightMetricsAsync(domain, range.Days)");
+    Contains(viewModel, "_insightEngine.Generate");
+    Contains(viewModel, "_insightEngine.GetEmptyStateText");
+    NotContains(viewModel, "SqliteDatabase");
+});
+
+Run("Dashboard Insights section binds rows with shared UI resources", () =>
+{
+    var root = FindRepositoryRoot();
+    var dashboard = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml"));
+
+    Contains(dashboard, "x:Name=\"InsightsCard\"");
+    Contains(dashboard, "AutomationProperties.Name=\"Overview insights\"");
+    Contains(dashboard, "Style=\"{StaticResource ChartCardBorderStyle}\"");
+    Contains(dashboard, "ItemsSource=\"{x:Bind ViewModel.Insights, Mode=OneWay}\"");
+    Contains(dashboard, "Text=\"{x:Bind ViewModel.InsightsSummaryText, Mode=OneWay}\"");
+    Contains(dashboard, "x:DataType=\"models:InsightCard\"");
+    Contains(dashboard, "AutomationProperties.Name=\"Insight row\"");
+    Contains(dashboard, "Text=\"Why shown\"");
+    Contains(dashboard, "Text=\"Next step\"");
+    Contains(dashboard, "Text=\"{x:Bind SeverityText, Mode=OneWay}\"");
+    Contains(dashboard, "Text=\"{x:Bind WhyShown, Mode=OneWay}\"");
+    Contains(dashboard, "Text=\"{x:Bind NextStep, Mode=OneWay}\"");
+    Contains(dashboard, "BorderBrush=\"{StaticResource NumerisCardBorderBrush}\"");
+    NotContains(dashboard, "CTR");
+    NotContains(dashboard, "CrUX");
+    NotContains(dashboard, "5xx");
+    NotContains(dashboard, "GA4");
+});
+
 Run("Performance page formats PageSpeed query window from DateOnly safely", () =>
 {
     var root = FindRepositoryRoot();
