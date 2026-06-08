@@ -33,7 +33,7 @@ Tulos: suunnitelman API-oletukset ovat edelleen yhteensopivia nykyisten virallis
 - [x] Phase 1: Tests for trend math and rule output
 - [x] Phase 2: Insight domain model and trend helpers
 - [x] Phase 3: Repository aggregation for insight metrics
-- [ ] Phase 4: InsightEngine rules
+- [x] Phase 4: InsightEngine rules
 - [ ] Phase 5: Dashboard ViewModel integration
 - [ ] Phase 6: Dashboard UI
 - [ ] Phase 7: Documentation and project memory
@@ -109,3 +109,21 @@ Completed: 2026-06-08 10:33:53 +03:00
 - Notes:
   - Aggregointi lukee vain nykyisia SQLite-tauluja ja kayttaa lahdekohtaisia domain/site/url-filttereita.
   - `Migrations.CurrentSchemaVersion` pysyi arvossa `7`; uusia insight-tauluja ei lisatty.
+
+### Phase 4: InsightEngine rules
+
+Status: complete
+
+Completed: 2026-06-08 10:39:54 +03:00
+
+- Changed files:
+  - `Numeris/Services/Insights/InsightEngine.cs`
+  - `Numeris.Tests/Program.cs`
+  - `INSIGHTS-IMPLEMENTATION-PLAN.md`
+- Verification command:
+  - `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`
+- Result:
+  - Pass. Trend, rule output, max-4/sort, false-positive, repository and existing architecture tests passed.
+- Notes:
+  - Saannot ovat deterministic ja thresholdit on keskitetty `InsightEngine`in private vakioihin.
+  - `Generate` palauttaa enintaan nelja rivia severity-desc/priority-asc jarjestyksessa.

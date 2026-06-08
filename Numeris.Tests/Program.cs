@@ -62,7 +62,7 @@ Run("InsightEngine explains traffic mismatch with measured numbers", () =>
 
     var card = FindInsight(cards, "Traffic looks inconsistent");
     Contains(card.Message, "Cloudflare recorded more visitors");
-    Contains(card.Message, "GA users stayed almost the same");
+    Contains(card.Message, "Analytics users stayed almost the same");
     Contains(card.WhyShown, "34%");
     Contains(card.WhyShown, "2%");
     Contains(card.NextStep, "Open Cloudflare");
@@ -127,6 +127,52 @@ Run("InsightEngine returns clean empty state when connected data has no rule mat
 
     Equal("0", GenerateInsights(metrics).Count.ToString());
     Equal("All connected sources look consistent for this period.", GetInsightEmptyState(metrics));
+});
+
+Run("InsightEngine sorts by severity then priority and caps rows at four", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        cloudflareVisitors: new MetricWindow(67, 50),
+        ga4Users: new MetricWindow(102, 100),
+        googleImpressions: new MetricWindow(141, 100),
+        googleClicks: new MetricWindow(103, 100),
+        bingImpressions: new MetricWindow(320, 100),
+        bingClicks: new MetricWindow(0, 0),
+        httpStatus: new StatusCodeSummary(1000, 70, 14),
+        indexing: new IndexingSummary(42, 42, 24),
+        freshness: new SourceFreshnessSummary(3, 1, 1)));
+
+    Equal("4", cards.Count.ToString());
+    for (var index = 1; index < cards.Count; index++)
+    {
+        var previous = cards[index - 1];
+        var current = cards[index];
+        if (previous.Severity < current.Severity
+            || (previous.Severity == current.Severity && previous.Priority > current.Priority))
+        {
+            throw new InvalidOperationException("Insights are not sorted by severity then priority");
+        }
+    }
+
+    Equal("Some visitors may be hitting errors", cards[0].Title);
+});
+
+Run("InsightEngine avoids false positives for tiny or missing windows", () =>
+{
+    var cards = GenerateInsights(Metrics(
+        cloudflareVisitors: new MetricWindow(2, 1),
+        ga4Users: new MetricWindow(1, 1),
+        googleImpressions: new MetricWindow(80, 40),
+        googleClicks: new MetricWindow(0, 0),
+        bingImpressions: new MetricWindow(49, 100),
+        bingClicks: new MetricWindow(0, 0),
+        httpStatus: new StatusCodeSummary(99, 10, 9),
+        indexing: new IndexingSummary(4, 0, 0),
+        freshness: new SourceFreshnessSummary(1, 0, 0)));
+
+    Equal("0", cards.Count.ToString());
+    Equal("Connect or refresh sources to generate insights.", GetInsightEmptyState(Metrics(
+        freshness: new SourceFreshnessSummary(0, 0, 0))));
 });
 
 Run("viewmodels do not use ObservableProperty fields", () =>
