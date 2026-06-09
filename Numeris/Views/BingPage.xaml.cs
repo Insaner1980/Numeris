@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Linq;
+using System;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -29,13 +28,12 @@ public sealed partial class BingPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        BuildChart(ref _trafficChart, TrafficChartHost);
+        BuildBarChart(ref _trafficChart, TrafficChartHost);
 
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         QuerySortCombo.ItemsSource = new[] { "clicks", "impressions", "ctr", "position" };
         QuerySortCombo.SelectedItem = ViewModel.QuerySortBy;
         TabBar.SelectedItem = TabBar.Items[0];
@@ -61,11 +59,11 @@ public sealed partial class BingPage : Page
         }
     }
 
-    private static void BuildChart(ref CartesianChart? chart, Border host)
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
     {
         if (chart is not null) return;
         chart = ChartTheme.CreateCartesianChart();
-        host.Child = ChartTheme.CreateChartSurface(chart);
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
     }
 
     private void ApplyChartData()
@@ -93,10 +91,10 @@ public sealed partial class BingPage : Page
         if (DomainCombo.SelectedItem is string s) Shell.SelectedDomain = s;
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option) Shell.SelectedPeriod = option.Value;
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private void QuerySortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -107,6 +105,6 @@ public sealed partial class BingPage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 }

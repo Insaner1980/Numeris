@@ -11,7 +11,9 @@ using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
 using Numeris.Themes;
 using SkiaSharp;
 
@@ -21,6 +23,7 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
     private readonly PerformanceRepository _performanceRepo;
+    private readonly PerformanceSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
     public bool CanRefresh => !IsLoading;
@@ -51,10 +54,11 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
 
     public string[] FormFactorOptions { get; } = ["PHONE", "DESKTOP", "TABLET", "ALL"];
 
-    public PerformanceViewModel(ShellViewModel shell, PerformanceRepository performanceRepo)
+    public PerformanceViewModel(ShellViewModel shell, PerformanceRepository performanceRepo, PerformanceSyncService sync)
     {
         _shell = shell;
         _performanceRepo = performanceRepo;
+        _sync = sync;
         _shell.PropertyChanged += OnShellChanged;
     }
 
@@ -113,6 +117,31 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        if (IsLoading)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            await _sync.SyncConfiguredAsync();
+        }
+        catch (Exception ex)
+        {
+            _ = ApiErrorMessage.Sanitize(ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        await LoadAsync();
+    }
+
     private async Task ReloadCruxTrendAsync()
     {
         var range = _shell.SelectedPeriod.ToDateRange();
@@ -169,30 +198,17 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
         var dates = rows.Select(r => r.AnalysisUtc).Distinct().OrderBy(v => v).ToArray();
         PageSpeedSeries = new ISeries[]
         {
-            CreateScoreLine("Mobile", rows, dates, "MOBILE", ChartPalette.Accent),
-            CreateScoreLine("Desktop", rows, dates, "DESKTOP", ChartPalette.Secondary),
+            ChartTheme.CreateMatteColumnSeries("Mobile", ScoreValues(rows, dates, "MOBILE")),
+            ChartTheme.CreateMutedColumnSeries("Desktop", ScoreValues(rows, dates, "DESKTOP")),
         };
         PageSpeedXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         PageSpeedYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0, MaxLimit = 100 }) };
     }
 
-    private static LineSeries<double?> CreateScoreLine(string name, IReadOnlyList<PageSpeedScorePoint> rows, string[] dates, string strategy, SKColor color)
-    {
-        var values = dates
-            .Select(date => rows.FirstOrDefault(r => r.AnalysisUtc == date && r.Strategy == strategy)?.PerformanceScore * 100.0)
+    private static double[] ScoreValues(IReadOnlyList<PageSpeedScorePoint> rows, string[] dates, string strategy)
+        => dates
+            .Select(date => rows.FirstOrDefault(r => r.AnalysisUtc == date && r.Strategy == strategy)?.PerformanceScore * 100.0 ?? 0.0)
             .ToArray();
-        return new LineSeries<double?>
-        {
-            Name = name,
-            Values = values,
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryStroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryFill = new SolidColorPaint(color),
-            Fill = null,
-            GeometrySize = 0,
-            LineSmoothness = 0.4,
-        };
-    }
 
     private static string ScoreText(double? score)
         => score.HasValue ? (score.Value * 100.0).ToString("0", CultureInfo.InvariantCulture) : "—";

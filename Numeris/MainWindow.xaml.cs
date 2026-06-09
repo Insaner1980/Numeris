@@ -20,7 +20,7 @@ public sealed partial class MainWindow : Window
         ["search"] = typeof(SearchConsolePage),
         ["bing"] = typeof(BingPage),
         ["performance"] = typeof(PerformancePage),
-        ["youtube"] = typeof(YouTubePage),
+        ["analytics"] = typeof(GoogleAnalyticsPage),
         ["health"] = typeof(HealthPage),
         ["sources"] = typeof(SourcesPage),
     };

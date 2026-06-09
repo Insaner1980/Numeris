@@ -26,7 +26,6 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     public bool CanRun => !IsBusy;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
-    [ObservableProperty] public partial int SyncDays { get; set; } = 30;
 
     public SearchConsoleSourceViewModel(
         ConnectionsRepository connectionsRepo,
@@ -120,7 +119,7 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
                 _vault.SetSearchConsoleRefreshToken(Connection.ClientId, tokens.RefreshToken);
             }
             await LoadAsync();
-            StatusMessage = "Authorized. Press Sync to fetch live data.";
+            StatusMessage = "Authorized. Use Google Search page refresh to fetch live data.";
         }
         catch (Exception ex)
         {
@@ -147,32 +146,6 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
         {
             var result = await _sync.TestAsync(Connection.ClientId);
             StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    public async Task SyncAsync()
-    {
-        if (Connection is null || !Connection.HasRefreshToken)
-        {
-            StatusMessage = "Connect Google account first";
-            return;
-        }
-        IsBusy = true;
-        StatusMessage = "Syncing...";
-        try
-        {
-            var result = await _sync.SyncAsync(Connection.ClientId, SyncDays);
-            StatusMessage = $"Synced {result.RecordsUpserted} rows";
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {

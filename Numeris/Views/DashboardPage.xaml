@@ -22,6 +22,8 @@
                         <Setter Target="HeaderControls.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="DomainCombo.HorizontalAlignment" Value="Stretch" />
                         <Setter Target="PeriodSelector.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="ToolbarActionRow.HorizontalAlignment" Value="Stretch" />
+                        <Setter Target="ToolbarPeriodColumn.Width" Value="*" />
                         <Setter Target="TrafficHeroCard.(Grid.ColumnSpan)" Value="2" />
                         <Setter Target="SearchTrendCard.(Grid.Row)" Value="1" />
                         <Setter Target="SearchTrendCard.(Grid.Column)" Value="0" />
@@ -45,6 +47,8 @@
                         <Setter Target="HeaderControls.HorizontalAlignment" Value="Right" />
                         <Setter Target="DomainCombo.HorizontalAlignment" Value="Left" />
                         <Setter Target="PeriodSelector.HorizontalAlignment" Value="Left" />
+                        <Setter Target="ToolbarActionRow.HorizontalAlignment" Value="Left" />
+                        <Setter Target="ToolbarPeriodColumn.Width" Value="Auto" />
                         <Setter Target="TrafficHeroCard.(Grid.ColumnSpan)" Value="1" />
                         <Setter Target="SearchTrendCard.(Grid.Row)" Value="0" />
                         <Setter Target="SearchTrendCard.(Grid.Column)" Value="1" />
@@ -86,21 +90,29 @@
                         <ComboBox x:Name="DomainCombo"
                                   MinWidth="176"
                                   Height="{StaticResource ToolbarControlHeight}"
+                                  Style="{StaticResource DomainComboBoxStyle}"
                                   AutomationProperties.Name="Domain"
                                   SelectionChanged="DomainCombo_SelectionChanged" />
-                        <controls:PeriodSelector x:Name="PeriodSelector"
-                                                 SelectedPeriod="{x:Bind Shell.SelectedPeriod, Mode=OneWay}"
-                                                 AutomationProperties.Name="Period"
-                                                 SelectionChanged="PeriodSelector_SelectionChanged" />
-                        <Button x:Name="RefreshButton"
-                                Width="{StaticResource RefreshButtonSize}"
-                                Height="{StaticResource RefreshButtonSize}"
-                                Click="RefreshButton_Click"
-                                IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
-                                AutomationProperties.Name="Refresh current report"
-                                ToolTipService.ToolTip="Refresh">
-                            <FontIcon Glyph="&#xE72C;" />
-                        </Button>
+                        <Grid x:Name="ToolbarActionRow"
+                              ColumnSpacing="8"
+                              HorizontalAlignment="Left">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="ToolbarPeriodColumn" Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <controls:PeriodSelector x:Name="PeriodSelector"
+                                                     Grid.Column="0"
+                                                     SelectedPeriod="{x:Bind Shell.SelectedPeriod, Mode=OneWay}"
+                                                     AutomationProperties.Name="Period"
+                                                     SelectionChanged="PeriodSelector_SelectionChanged" />
+                            <Button x:Name="RefreshButton"
+                                    Grid.Column="1"
+                                    Style="{StaticResource ToolbarRefreshButtonStyle}"
+                                    Click="RefreshButton_Click"
+                                    IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
+                                    AutomationProperties.Name="Refresh current report"
+                                    ToolTipService.ToolTip="Refresh" />
+                        </Grid>
                     </StackPanel>
                 </Grid>
             </Border>

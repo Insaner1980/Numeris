@@ -17,30 +17,51 @@
     <Thickness x:Key="PageScrollContentPadding">32,0,32,32</Thickness>
     <Thickness x:Key="CardPadding">22,18,22,18</Thickness>
     <Thickness x:Key="PageHeaderPadding">0,20,0,18</Thickness>
-    <Thickness x:Key="ChartCardPadding">22,18,22,18</Thickness>
+    <Thickness x:Key="ChartCardPadding">28,22,28,22</Thickness>
     <Thickness x:Key="StatusStripPadding">18,14,18,14</Thickness>
+    <Thickness x:Key="DeltaBadgePadding">8,3,8,3</Thickness>
+    <Thickness x:Key="PeriodSelectorPadding">3</Thickness>
+    <Thickness x:Key="PeriodSelectorSegmentPadding">12,0,12,0</Thickness>
     <Thickness x:Key="ScrollContentGutter">0,0,18,0</Thickness>
     <Thickness x:Key="AppTitleBarPadding">24,0,148,0</Thickness>
 
-    <x:Double x:Key="AppBackdropOpacity">0.72</x:Double>
     <x:Double x:Key="AppTitleBarHeight">48</x:Double>
-    <Color x:Key="AppBackdropScrimColor">#B3000000</Color>
-    <SolidColorBrush x:Key="AppBackdropScrimBrush" Color="{StaticResource AppBackdropScrimColor}" />
 
     <x:Double x:Key="ToolbarControlHeight">40</x:Double>
     <x:Double x:Key="RefreshButtonSize">44</x:Double>
     <x:Double x:Key="TableRowHeight">42</x:Double>
     <x:Double x:Key="HorizontalBarLabelWidth">140</x:Double>
     <x:Double x:Key="HorizontalBarValueWidth">80</x:Double>
+    <x:Double x:Key="HorizontalBarHeight">7</x:Double>
+    <x:Double x:Key="HorizontalBarCompactHeight">5</x:Double>
+    <x:Double x:Key="HorizontalBarCornerRadius">3.5</x:Double>
+    <x:Double x:Key="HorizontalBarCompactCornerRadius">2.5</x:Double>
+    <x:Double x:Key="HorizontalBarRowSpacing">12</x:Double>
+    <x:Double x:Key="HorizontalBarCompactRowSpacing">8</x:Double>
+    <x:Double x:Key="ReportHeroMinHeight">420</x:Double>
+    <x:Double x:Key="ReportHeroChartHeight">360</x:Double>
+    <x:Double x:Key="ReportSecondaryChartHeight">300</x:Double>
+    <x:Double x:Key="ReportCompactChartHeight">240</x:Double>
+    <x:Double x:Key="PeriodSelectorMinWidth">206</x:Double>
     <x:Double x:Key="NarrowBreakpoint">760</x:Double>
     <x:Double x:Key="WideBreakpoint">1180</x:Double>
 
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
-    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="DeltaBadgeCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="PeriodSelectorCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="PeriodSelectorSegmentCornerRadius">6</CornerRadius>
 
     <FontFamily x:Key="NumerisFontFamily">Segoe UI Variable</FontFamily>
 
-    <Color x:Key="AppBackgroundColor">#444444</Color>
+    <Color x:Key="DarkVoidColor">#151419</Color>
+    <Color x:Key="GraphiteColor">#222526</Color>
+    <Color x:Key="DeepGraphiteColor">#17181D</Color>
+    <Color x:Key="LiquidLavaColor">#F56E0F</Color>
+    <Color x:Key="WarmCopperColor">#E09145</Color>
+    <Color x:Key="WarmPlatinumColor">#FCD9B8</Color>
+
+    <Color x:Key="AppBackgroundColor">#151419</Color>
     <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource AppBackgroundColor}" />
 
     <Color x:Key="TransparentLayerColor">#00000000</Color>
@@ -56,64 +77,127 @@
     <StaticResource x:Key="NavigationViewContentGridBorderBrush" ResourceKey="TransparentLayerBrush" />
     <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
     <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+    <Color x:Key="NavigationViewItemBackgroundPointerOverColor">#00000000</Color>
+    <Color x:Key="NavigationViewItemBackgroundSelectedColor">#FF222526</Color>
+    <Color x:Key="NavigationViewItemBackgroundSelectedPointerOverColor">#FF222526</Color>
+    <Color x:Key="NavigationViewItemBackgroundSelectedPressedColor">#FF222526</Color>
+    <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOverBrush" Color="{StaticResource NavigationViewItemBackgroundPointerOverColor}" />
+    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedBrush" Color="{StaticResource NavigationViewItemBackgroundSelectedColor}" />
+    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOverBrush" Color="{StaticResource NavigationViewItemBackgroundSelectedPointerOverColor}" />
+    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPressedBrush" Color="{StaticResource NavigationViewItemBackgroundSelectedPressedColor}" />
+    <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="NavigationViewItemBackgroundPointerOverBrush" />
+    <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="NavigationViewItemBackgroundSelectedBrush" />
+    <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="NavigationViewItemBackgroundSelectedPointerOverBrush" />
+    <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="NavigationViewItemBackgroundSelectedPressedBrush" />
 
-    <Color x:Key="CardSurfaceColor">#52000000</Color>
-    <Color x:Key="CardSurfaceHoverColor">#60000000</Color>
-    <Color x:Key="NumerisCardBorderColor">#48FFFFFF</Color>
+    <Color x:Key="CardSurfaceColor">#F017181D</Color>
+    <Color x:Key="CardSurfaceHoverColor">#FA1B1B1E</Color>
+    <Color x:Key="NumerisCardBorderColor">#5CBFBFBF</Color>
     <SolidColorBrush x:Key="CardSurfaceBrush" Color="{StaticResource CardSurfaceColor}" />
     <SolidColorBrush x:Key="CardSurfaceHoverBrush" Color="{StaticResource CardSurfaceHoverColor}" />
     <SolidColorBrush x:Key="NumerisCardBorderBrush" Color="{StaticResource NumerisCardBorderColor}" />
 
-    <Color x:Key="ControlSurfaceColor">#38000000</Color>
-    <Color x:Key="ControlSurfaceHoverColor">#48000000</Color>
-    <Color x:Key="ControlSurfacePressedColor">#2C000000</Color>
+    <Color x:Key="ControlSurfaceColor">#F0222526</Color>
+    <Color x:Key="ControlSurfaceHoverColor">#FF292C35</Color>
+    <Color x:Key="ControlSurfacePressedColor">#FF17181D</Color>
     <SolidColorBrush x:Key="ControlSurfaceBrush" Color="{StaticResource ControlSurfaceColor}" />
     <SolidColorBrush x:Key="ControlSurfaceHoverBrush" Color="{StaticResource ControlSurfaceHoverColor}" />
     <SolidColorBrush x:Key="ControlSurfacePressedBrush" Color="{StaticResource ControlSurfacePressedColor}" />
+    <Color x:Key="MatteButtonSurfaceColor">#FF222526</Color>
+    <Color x:Key="MatteButtonSurfaceHoverColor">#FF292C35</Color>
+    <Color x:Key="MatteButtonSurfacePressedColor">#FF17181D</Color>
+    <SolidColorBrush x:Key="MatteButtonSurfaceBrush" Color="{StaticResource MatteButtonSurfaceColor}" />
+    <SolidColorBrush x:Key="MatteButtonHoverBrush" Color="{StaticResource MatteButtonSurfaceHoverColor}" />
+    <SolidColorBrush x:Key="MatteButtonPressedBrush" Color="{StaticResource MatteButtonSurfacePressedColor}" />
+    <StaticResource x:Key="ComboBoxBackground" ResourceKey="MatteButtonSurfaceBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="MatteButtonHoverBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="MatteButtonPressedBrush" />
+    <StaticResource x:Key="ComboBoxBackgroundDisabled" ResourceKey="ControlSurfacePressedBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="TransparentLayerBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="TransparentLayerBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="TransparentLayerBrush" />
+    <StaticResource x:Key="ComboBoxBorderBrushDisabled" ResourceKey="TransparentLayerBrush" />
+    <StaticResource x:Key="ComboBoxForeground" ResourceKey="NumerisTextPrimaryBrush" />
+    <StaticResource x:Key="ComboBoxForegroundPointerOver" ResourceKey="NumerisTextPrimaryBrush" />
+    <StaticResource x:Key="ComboBoxForegroundPressed" ResourceKey="NumerisTextPrimaryBrush" />
+    <StaticResource x:Key="ComboBoxForegroundDisabled" ResourceKey="NumerisTextDisabledBrush" />
+    <StaticResource x:Key="ComboBoxDropDownGlyphForeground" ResourceKey="NumerisTextSecondaryBrush" />
+    <StaticResource x:Key="ComboBoxDropDownGlyphForegroundPointerOver" ResourceKey="NumerisTextPrimaryBrush" />
+    <StaticResource x:Key="ComboBoxDropDownGlyphForegroundPressed" ResourceKey="NumerisTextPrimaryBrush" />
+    <StaticResource x:Key="ComboBoxDropDownGlyphForegroundDisabled" ResourceKey="NumerisTextDisabledBrush" />
 
-    <Color x:Key="ChartPanelColor">#54000000</Color>
-    <Color x:Key="ChartGridLineColor">#38FFFFFF</Color>
-    <x:Double x:Key="ChartMeshOpacity">0.16</x:Double>
-    <Color x:Key="ChartMeshLineColor">#30D9A052</Color>
-    <Color x:Key="ChartMeshPointColor">#50FFFFFF</Color>
-    <Color x:Key="ChartMutedColor">#B0ECEEF2</Color>
-    <Color x:Key="ChartSecondaryColor">#C97B6A</Color>
+    <Color x:Key="ChartPanelColor">#E8151419</Color>
+    <Color x:Key="ChartGridLineColor">#40BFBFBF</Color>
+    <x:Double x:Key="ChartMeshOpacity">0.05</x:Double>
+    <x:Double x:Key="ChartColumnMaxBarWidth">42</x:Double>
+    <x:Double x:Key="ChartColumnPadding">8</x:Double>
+    <x:Double x:Key="ChartColumnCornerRadius">5</x:Double>
+    <x:Double x:Key="ChartColumnDataPaddingX">0.38</x:Double>
+    <x:Double x:Key="ChartColumnDataPaddingY">0.12</x:Double>
+    <x:Double x:Key="ChartBarAnimationMilliseconds">420</x:Double>
+    <Color x:Key="ChartMeshLineColor">#1ABFBFBF</Color>
+    <Color x:Key="ChartMeshPointColor">#2CBFBFBF</Color>
+    <Color x:Key="ChartMutedColor">#BFBFBF</Color>
+    <Color x:Key="ChartSecondaryColor">#E09145</Color>
+    <Color x:Key="ChartBarNeutralTopColor">#FF878787</Color>
+    <Color x:Key="ChartBarNeutralMidColor">#FF353A3E</Color>
+    <Color x:Key="ChartBarNeutralBottomColor">#FF17181D</Color>
+    <Color x:Key="ChartBarHighlightTopColor">#FFFF7A1A</Color>
+    <Color x:Key="ChartBarHighlightMidColor">#FFF56E0F</Color>
+    <Color x:Key="ChartBarHighlightBottomColor">#FFA93A08</Color>
+    <Color x:Key="ChartBarCapColor">#FFFCD9B8</Color>
+    <Color x:Key="ChartReferenceLineColor">#52FCD9B8</Color>
     <SolidColorBrush x:Key="ChartPanelBrush" Color="{StaticResource ChartPanelColor}" />
     <SolidColorBrush x:Key="ChartGridLineBrush" Color="{StaticResource ChartGridLineColor}" />
     <SolidColorBrush x:Key="ChartMeshLineBrush" Color="{StaticResource ChartMeshLineColor}" />
     <SolidColorBrush x:Key="ChartMeshPointBrush" Color="{StaticResource ChartMeshPointColor}" />
+    <SolidColorBrush x:Key="ChartReferenceLineBrush" Color="{StaticResource ChartReferenceLineColor}" />
     <SolidColorBrush x:Key="HorizontalBarTrackBrush" Color="{StaticResource ControlSurfaceColor}" />
 
-    <Color x:Key="NumerisTextPrimaryColor">#F5F5F5</Color>
-    <Color x:Key="NumerisTextSecondaryColor">#D8D8D8</Color>
-    <Color x:Key="NumerisTextTertiaryColor">#B8B8B8</Color>
-    <Color x:Key="NumerisTextDisabledColor">#8F8F8F</Color>
+    <Color x:Key="NumerisTextPrimaryColor">#FBFBFB</Color>
+    <Color x:Key="NumerisTextSecondaryColor">#DAD4CC</Color>
+    <Color x:Key="NumerisTextTertiaryColor">#BFBFBF</Color>
+    <Color x:Key="NumerisTextDisabledColor">#878787</Color>
     <SolidColorBrush x:Key="NumerisTextPrimaryBrush" Color="{StaticResource NumerisTextPrimaryColor}" />
     <SolidColorBrush x:Key="NumerisTextSecondaryBrush" Color="{StaticResource NumerisTextSecondaryColor}" />
     <SolidColorBrush x:Key="NumerisTextTertiaryBrush" Color="{StaticResource NumerisTextTertiaryColor}" />
     <SolidColorBrush x:Key="NumerisTextDisabledBrush" Color="{StaticResource NumerisTextDisabledColor}" />
 
-    <Color x:Key="NumerisAccentColor">#D9A052</Color>
-    <Color x:Key="NumerisAccentHoverColor">#E3AD64</Color>
-    <Color x:Key="NumerisAccentPressedColor">#C78D3F</Color>
+    <Color x:Key="NumerisAccentColor">#F56E0F</Color>
+    <Color x:Key="NumerisAccentHoverColor">#FF7E1F</Color>
+    <Color x:Key="NumerisAccentPressedColor">#D95A0A</Color>
+    <Color x:Key="NumerisAccentForegroundColor">#151419</Color>
     <SolidColorBrush x:Key="NumerisAccentBrush" Color="{StaticResource NumerisAccentColor}" />
+    <SolidColorBrush x:Key="NumerisAccentHoverBrush" Color="{StaticResource NumerisAccentHoverColor}" />
+    <SolidColorBrush x:Key="NumerisAccentPressedBrush" Color="{StaticResource NumerisAccentPressedColor}" />
+    <SolidColorBrush x:Key="NumerisAccentForegroundBrush" Color="{StaticResource NumerisAccentForegroundColor}" />
+    <StaticResource x:Key="PeriodSelectorSelectedBrush" ResourceKey="NumerisAccentBrush" />
+    <StaticResource x:Key="PeriodSelectorSelectedForegroundBrush" ResourceKey="NumerisAccentForegroundBrush" />
+    <StaticResource x:Key="PeriodSelectorSelectedBorderBrush" ResourceKey="NumerisAccentBrush" />
+    <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="NumerisAccentBrush" />
 
     <Color x:Key="NumerisChartGridColor">#24FFFFFF</Color>
     <SolidColorBrush x:Key="NumerisChartGridBrush" Color="{StaticResource NumerisChartGridColor}" />
 
-    <Color x:Key="SuccessColor">#82C98F</Color>
-    <Color x:Key="WarningColor">#D9A052</Color>
-    <Color x:Key="DangerColor">#E07A7A</Color>
-    <Color x:Key="InfoColor">#8FB8E8</Color>
+    <Color x:Key="SuccessColor">#67D391</Color>
+    <Color x:Key="WarningColor">#E09145</Color>
+    <Color x:Key="DangerColor">#FF6B76</Color>
+    <Color x:Key="InfoColor">#83B8C0</Color>
+    <Color x:Key="PositiveDeltaColor">#67D391</Color>
+    <Color x:Key="NegativeDeltaColor">#FF6B76</Color>
+    <Color x:Key="NeutralDeltaColor">#AAB0BA</Color>
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" />
+    <SolidColorBrush x:Key="PositiveDeltaBrush" Color="{StaticResource PositiveDeltaColor}" />
+    <SolidColorBrush x:Key="NegativeDeltaBrush" Color="{StaticResource NegativeDeltaColor}" />
+    <SolidColorBrush x:Key="NeutralDeltaBrush" Color="{StaticResource NeutralDeltaColor}" />
 
-    <Color x:Key="ToneAColor">#D9A052</Color>
-    <Color x:Key="ToneBColor">#92EBD8</Color>
-    <Color x:Key="ToneCColor">#84A98C</Color>
-    <Color x:Key="ToneDColor">#C97B6A</Color>
+    <Color x:Key="ToneAColor">#F56E0F</Color>
+    <Color x:Key="ToneBColor">#83B8C0</Color>
+    <Color x:Key="ToneCColor">#67D391</Color>
+    <Color x:Key="ToneDColor">#E09145</Color>
 
     <Style x:Key="PageTitleTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource TitleTextBlockStyle}">
         <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
@@ -170,10 +254,10 @@
     </Style>
 
     <Style x:Key="StatusStripBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource CardSurfaceBrush}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="CornerRadius" Value="0" />
     </Style>
 
     <Style x:Key="ResponsiveKpiGridStyle" TargetType="Grid">
@@ -211,26 +295,162 @@
         <Setter Property="Margin" Value="0" />
     </Style>
 
+    <Style x:Key="DomainComboBoxStyle" TargetType="ComboBox">
+        <Setter Property="Background" Value="{StaticResource MatteButtonSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
+        <Setter Property="Height" Value="{StaticResource ToolbarControlHeight}" />
+        <Setter Property="Padding" Value="16,0,12,0" />
+    </Style>
+
+    <Style x:Key="ToolbarRefreshIconStyle" TargetType="PathIcon">
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="20" />
+    </Style>
+
+    <DataTemplate x:Key="ToolbarRefreshContentTemplate">
+        <PathIcon Data="M17.65,6.35 C16.2,4.9 14.21,4 12,4 C7.58,4 4,7.58 4,12 C4,16.42 7.58,20 12,20 C15.73,20 18.84,17.45 19.73,14 L17.65,14 C16.83,16.33 14.61,18 12,18 C8.69,18 6,15.31 6,12 C6,8.69 8.69,6 12,6 C13.66,6 15.14,6.69 16.22,7.78 L13,11 L20,11 L20,4 L17.65,6.35 Z"
+                  Style="{StaticResource ToolbarRefreshIconStyle}">
+            <PathIcon.RenderTransform>
+                <TranslateTransform X="-2" Y="-2" />
+            </PathIcon.RenderTransform>
+        </PathIcon>
+    </DataTemplate>
+
     <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource NumerisCardBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{StaticResource MatteButtonSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
         <Setter Property="Foreground" Value="{StaticResource NumerisTextPrimaryBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource NumerisFontFamily}" />
         <Setter Property="Height" Value="{StaticResource ToolbarControlHeight}" />
         <Setter Property="Padding" Value="16,0,16,0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Padding="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Chrome.Background" Value="{StaticResource MatteButtonHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Chrome.Background" Value="{StaticResource MatteButtonPressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.46" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}" />
+
+    <Style x:Key="ToolbarRefreshButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+        <Setter Property="Width" Value="{StaticResource RefreshButtonSize}" />
+        <Setter Property="Height" Value="{StaticResource RefreshButtonSize}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Content" Value="Refresh" />
+        <Setter Property="ContentTemplate" Value="{StaticResource ToolbarRefreshContentTemplate}" />
     </Style>
 
     <Style x:Key="SecondaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
-        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
         <Setter Property="Foreground" Value="{StaticResource NumerisTextSecondaryBrush}" />
     </Style>
 
     <Style x:Key="DangerActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
-        <Setter Property="Background" Value="{StaticResource ControlSurfaceBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
         <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+    </Style>
+
+    <Style x:Key="AccentActionButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+        <Setter Property="Background" Value="{StaticResource NumerisAccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisAccentForegroundBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Padding="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Chrome.Background" Value="{StaticResource NumerisAccentHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Chrome.Background" Value="{StaticResource NumerisAccentPressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.46" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="PeriodSelectorSegmentButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+        <Setter Property="MinWidth" Value="46" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Padding" Value="{StaticResource PeriodSelectorSegmentPadding}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource PeriodSelectorSegmentCornerRadius}" />
+        <Setter Property="Foreground" Value="{StaticResource NumerisTextTertiaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="DataTableHeaderBorderStyle" TargetType="Grid">

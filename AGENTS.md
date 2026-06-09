@@ -26,10 +26,11 @@
 - Overview Insights kayttaa vain nykyisia SQLiteen tallennettuja repository-metriikoita `InsightMetricsRepository`n kautta ja deterministic `InsightEngine` -saantoja. Insights-polku ei kayta AI-mallia, promptteja, uutta mock-dataa tai uusia ulkoisia API-kutsuja.
 - Insights-saantojen matematiikka kayttaa sisaisesti ratio-arvoja (`0.34`), ja UI-copy muotoilee ne prosentteina (`34%`). Nollasta alkava aktiivisuus on `TrendState.NewActivity`, ei keinotekoinen `+100%`.
 - Numeris on WinUI 3 / Windows App SDK -sovellus. Nykyisen UI:n lähde ei ole vanha `C:\Dev\Numeris` Svelte/Tauri -käyttöliittymä; Numeris/Tauri on vain legacy-datan lähde importissa.
-- WinUI-visuaalinen jarjestelma keskitetaan `Numeris/Themes/Tokens.xaml`-resursseihin. `MainWindow` kayttaa `MicaBackdrop`ia rauhallisena shell-materiaalina ja fallbackina, mutta nakyva sovellustausta on shell-tason oma WebP-bitmap-asset `Numeris/Assets/AppBackdrop.webp`, joka ladataan unpackaged-ajossa ensin `AppContext.BaseDirectory`-output-polusta ja vasta fallbackina `ms-appx`-URIsta `BitmapDecoder.WebpDecoderId` + `SoftwareBitmapSource` -polulla. Jos koristeellisen taustan lataus epaonnistuu, `AppBackdropImage` piilotetaan eika sovellusta kaadeta. Taustan paalla on `AppBackdropScrimBrush`-himmennyskerros. Sovelluksen tausta on rakeinen musta mattapinta, jossa graphite/satiinimateriaalin highlight saa nakya hillitysti; sita ei saa peittaa takaisin tasaiseksi mustaksi liian vahvalla scrimilla tai korttipinnalla. Tausta ei ole sivukohtainen Dashboard-hero, gradienttiorbi tai Numeris/Tauri-UI:sta johdettu näkymä. NavigationView kayttaa lapinakyvaa shell-taustaa ja `NavigationLayerBrush`-resurssia, kortti-, chart-, status-, period-, palkki- ja tekstipinnat kayttavat yhteisia tokeneita, custom-titlebar on `MainWindow`in lapinakyva `AppTitleBar`-rivi ja sivut eivat saa kovakoodata chart-vareja tai luoda sivukohtaisia chart-pintoja.
-- Kortti-, chart- ja kontrollipinnat kayttavat tummaa black-glass-tokenisopimusta eivatka vaaleaa harmaata white-overlayta: `CardSurfaceColor`, `ControlSurfaceColor`, `ChartPanelColor` ja `ContentLayerColor` ovat mustapohjaisia lapikuultavia pintoja, jotta ne sopivat `AppBackdrop.webp`-taustaan. Mattamustan baseline on `AppBackdropOpacity 0.94`, `AppBackdropScrimColor #66000000`, `CardSurfaceColor #A0101216`, `ControlSurfaceColor #8F0D0F13` ja `ChartPanelColor #9A090B0E`; jos luettavuutta saadetaan, taustan materiaalirakenne pitaa edelleen nakya. Sivujen yla-header ei ole kortti: `PageHeaderBorderStyle` on lapinakyva ja reunaton layout-pinta.
-- NavigationView-paneeli ei saa omaa erivarista vignette-/taustakerrosta. `NavigationLayerColor` on lapinakyva (`#00000000`), jotta vasen nav-alue nayttaa samaa `AppBackdrop.webp`-taustaa kuin muu sovellus; vain valittu/hoverattu nav-item saa oman overlaynsa.
-- Myos content-alueen yleista taustakerrosta ei saa tummentaa erikseen navista: `ContentLayerColor` on lapinakyva (`#00000000`), jotta shellin vasen ja oikea puoli jakavat saman `AppBackdrop.webp`-taustakuvan ilman varirajaa. Luettavuus hoidetaan korteilla/header-pinnoilla, ei koko content-alueen scrimilla.
+- WinUI-visuaalinen jarjestelma keskitetaan `Numeris/Themes/Tokens.xaml`-resursseihin. `MainWindow` kayttaa `MicaBackdrop`ia rauhallisena shell-materiaalina ja fallbackina, mutta nakyva sovellustausta on yksi matta `AppBackgroundBrush`-vari. Shell ei lataa `AppBackdrop`-bitmapia, scrimia, sivukohtaista Dashboard-hero-kuvaa, gradienttiorbeja tai Numeris/Tauri-UI:sta johdettua nakymaa. NavigationView kayttaa `NavigationLayerBrush`-resurssia, kortti-, chart-, status-, period-, palkki- ja tekstipinnat kayttavat yhteisia tokeneita, custom-titlebar on `MainWindow`in lapinakyva `AppTitleBar`-rivi ja sivut eivat saa kovakoodata chart-vareja tai luoda sivukohtaisia chart-pintoja.
+- Kortti-, chart- ja kontrollipinnat kayttavat tummaa Dark Void / Graphite / Liquid Lava -tokenisopimusta eivatka vaaleaa harmaata white-overlayta: `CardSurfaceColor`, `ControlSurfaceColor`, `ChartPanelColor`, `NavigationLayerColor` ja `ContentLayerColor` maarittavat pinnat keskitetysti. Nykyinen baseline on `AppBackgroundColor #151419`, `NavigationLayerColor #00000000`, `ContentLayerColor #00000000`, `CardSurfaceColor #F017181D`, `ControlSurfaceColor #F0222526`, `ChartPanelColor #E8151419`, tekstipaletti `#FBFBFB` / `#DAD4CC` / `#BFBFBF`, ja aksentti `NumerisAccentColor #F56E0F` tummalla `NumerisAccentForegroundColor #151419` -tekstilla. Chartien toissijainen copper on `#E09145`, ja vaalea warm platinum -koroste on `#FCD9B8`. Sivujen yla-header ei ole kortti: `PageHeaderBorderStyle` on lapinakyva ja reunaton layout-pinta.
+- NavigationView-paneeli ei piirra omaa eri savyista taustaa. `NavigationLayerColor` on lapinakyva (`#00000000`), jotta vasen valikko ja content-alue ovat saman mattataustan paalla. Vain valittu nav-item kayttaa graphite-pintaa (`#FF222526`) ja valintaindikaattori kayttaa `NumerisAccentBrush`ia.
+- Toolbar- ja action-napeissa ei kayteta keinotekoista syvyysvarjoa, erillista alareunaa tai press-translatea. `PrimaryActionButtonStyle` ja `AccentActionButtonStyle` ovat tasaisia pintoja; hover/pressed vaihtavat vain taustavaria. PeriodSelectorin segmentit ovat lapinakyvia paitsi valittu segmentti, joka kayttaa lava-tayttoa.
+- Content-alueen yleista taustakerrosta ei tummenneta erikseen: `ContentLayerColor` on lapinakyva (`#00000000`), jotta WebP-materiaalin rakenne sailyy sisaltoalueella. Luettavuus hoidetaan korteilla, chart-paneeleilla, kontrollipinnoilla ja period-segmentin valitulla lava-taytolla, ei koko content-alueen scrimilla.
 - Overview-, Cloudflare-, Google Search-, Analytics-, Bing-, Performance- ja Health-sivujen ylaosa kayttaa yhteista `PageHeaderBorderStyle`-layoutia: otsikko, domain-valinta kun soveltuu, period-valinta, refresh ja sivukohtaiset valitsimet kuuluvat samaan rauhalliseen header-alueeseen, mutta header ei piirra taustaa, reunaa tai korttimaista kehysta. Period-valinnan yksi totuus on `PeriodSelector` + `PeriodOptions.All` / `Period.DisplayLabel()`; raporttisivuille ei palauteta `PeriodCombo`-comboja tai raakaa enum-arvoa kuten `Last7Days`.
 - Raporttisivujen sisainen nakymavalinta kayttaa `SelectorBar`-kontrollia ja `TopTabSelectorBarStyle`-tyylia. Sisaisia raporttitabeja ei toteuteta nested `NavigationView` -kontrolleina; `NavigationView` kuuluu vain paashalliin.
 - Raporttisivujen refresh-painikkeet sidotaan ViewModelien `CanRefresh`-propertyyn ja niilla seka domain/period/filter/sort-kontrolleilla on `AutomationProperties.Name`. Refresh ajaa ensin lahteen `SyncConfiguredAsync`-polun tallennetulla konfiguraatiolla ja lataa sen jalkeen raporttidatan repositorysta. Search Console Indexing -tabilla sama refresh ajaa lisaksi URL Inspection -polun, mutta busy-tila estaa rinnakkaisajon.
@@ -46,7 +47,7 @@
 <claude-mem-context>
 # Memory Context
 
-# [Numeris] recent context, 2026-05-12 3:47pm GMT+3
+# [Numeris] recent context, 2026-06-09 7:42pm GMT+3
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
@@ -56,7 +57,7 @@ Stats: 47 obs (21,977t read) | 2,895,052t work | 99% savings
 
 ### May 6, 2026
 5184 6:43p 🔵 CredentialVault handles secrets via Windows PasswordVault with replacement support
-5185 " 🔵 Legacy Numeris migration is safe, idempotent, and cautious with plain text fallbacks
+5185 " 🔵 Legacy migration is safe, idempotent, and cautious with plain text fallbacks
 5186 " 🚨 Raw JSON storage does not redact secrets from API error responses
 5192 " 🔴 Legacy migration now preserves existing Numeris secrets
 5193 " 🔴 Credential vault delete methods now remove secrets instead of storing empty strings
@@ -75,7 +76,7 @@ Stats: 47 obs (21,977t read) | 2,895,052t work | 99% savings
 5234 " ✅ Documentation Updated with WinUI Visual System Architecture
 5207 7:27p 🔵 Numeris core migration implementation status verified
 5208 " 🔵 Numeris.Tests project has self-contained reference mismatch
-5209 " 🔵 migration-plan.md references obsolete NumerisDataMigrationService class name
+5209 " 🔵 migration-plan.md references obsolete legacy migration service class name
 5213 " 🔴 Fixed NETSDK1151 build error by making both projects framework-dependent
 5214 " 🟣 Added Bearer token redaction to API error message sanitization
 5215 " ✅ Created CORE-COMPLETION-PLAN.md with verification and commit strategy

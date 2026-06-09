@@ -10,7 +10,7 @@ Use **Mica** as the native window backdrop/fallback, then draw Numeris' own bran
 
 ## Non-negotiable background decision
 
-The visible app background is `Numeris/Assets/AppBackdrop.png`, drawn once in `MainWindow` behind navigation and page content.
+The visible app background is `Numeris/Assets/AppBackdrop.webp`, decoded once in `MainWindow` behind navigation and page content.
 
 The bitmap must be:
 
@@ -49,7 +49,7 @@ Preferred direction:
 
 ```text
 Base layer: Mica with #444444 fallback
-Art layer: AppBackdrop.png with AppBackdropScrimBrush readability overlay
+Art layer: AppBackdrop.webp with AppBackdropScrimBrush readability overlay
 Navigation layer: transparent or subtly separated from backdrop
 Content layer: cards and panels with subtle contour/elevation
 ```
@@ -500,7 +500,7 @@ Work in this order:
 
 Do not create a generic dark dashboard.
 
-Build a Windows 11 WinUI 3 app using Mica as the native window backdrop/fallback, `#444444` as the base fallback gray, and `AppBackdrop.png` as the single visible branded app background.
+Build a Windows 11 WinUI 3 app using Mica as the native window backdrop/fallback, `#444444` as the base fallback gray, and `AppBackdrop.webp` as the single visible branded app background.
 
 Use Fluent-style layering:
 

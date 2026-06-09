@@ -1,11 +1,9 @@
 using System;
 using System.ComponentModel;
-using System.Linq;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -34,17 +32,16 @@ public sealed partial class CloudflarePage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        BuildChart(ref _trafficChart, TrafficChartHost);
+        BuildBarChart(ref _trafficChart, TrafficChartHost);
         BuildChart(ref _cacheChart, CacheChartHost);
-        BuildChart(ref _securityChart, SecurityChartHost);
-        BuildChart(ref _statusChart, StatusChartHost);
-        BuildChart(ref _waChart, WaChartHost);
+        BuildBarChart(ref _securityChart, SecurityChartHost);
+        BuildBarChart(ref _statusChart, StatusChartHost);
+        BuildBarChart(ref _waChart, WaChartHost);
 
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         TabBar.SelectedItem = TabBar.Items[0];
         _wiringUi = false;
 
@@ -97,6 +94,13 @@ public sealed partial class CloudflarePage : Page
         host.Child = ChartTheme.CreateChartSurface(chart);
     }
 
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
+    {
+        if (chart is not null) return;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
+    }
+
     private static void ApplyChartData(
         CartesianChart? chart,
         System.Collections.Generic.IEnumerable<LiveChartsCore.ISeries>? series,
@@ -141,17 +145,14 @@ public sealed partial class CloudflarePage : Page
         }
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option)
-        {
-            Shell.SelectedPeriod = option.Value;
-        }
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 }

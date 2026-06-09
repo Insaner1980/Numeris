@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Linq;
+using System;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -30,14 +29,13 @@ public sealed partial class DashboardPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        BuildChart(ref _trafficChart, TrafficChartHost);
+        BuildBarChart(ref _trafficChart, TrafficChartHost);
         BuildChart(ref _searchChart, SearchChartHost);
 
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         _wiringUi = false;
 
         ViewModel.PropertyChanged += OnViewModelChanged;
@@ -72,6 +70,13 @@ public sealed partial class DashboardPage : Page
         host.Child = ChartTheme.CreateChartSurface(chart);
     }
 
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
+    {
+        if (chart is not null) return;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
+    }
+
     private void ApplyChartData()
     {
         if (_trafficChart is not null)
@@ -97,13 +102,10 @@ public sealed partial class DashboardPage : Page
         }
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option)
-        {
-            Shell.SelectedPeriod = option.Value;
-        }
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)

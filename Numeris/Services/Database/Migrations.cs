@@ -5,7 +5,7 @@ namespace Numeris.Services.Database;
 
 internal static class Migrations
 {
-    private const int CurrentSchemaVersion = 4;
+    private const int CurrentSchemaVersion = 7;
 
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS cloudflare_traffic (
@@ -33,6 +33,21 @@ internal static class Migrations
             visitors INTEGER NOT NULL DEFAULT 0,
             UNIQUE(domain, date, country)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_cf_countries_domain_date
+            ON cloudflare_countries(domain, date);
+
+        CREATE TABLE IF NOT EXISTS cloudflare_pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT NOT NULL,
+            date TEXT NOT NULL,
+            path TEXT NOT NULL,
+            requests INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(domain, date, path)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cf_pages_domain_date
+            ON cloudflare_pages(domain, date);
 
         CREATE TABLE IF NOT EXISTS cloudflare_status_codes (
             domain TEXT NOT NULL,
@@ -343,112 +358,81 @@ internal static class Migrations
         CREATE INDEX IF NOT EXISTS idx_bing_raw_method
             ON bing_raw_items(method, site_url);
 
-        CREATE TABLE IF NOT EXISTS youtube_channels (
-            channel_id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            uploads_playlist_id TEXT NOT NULL,
-            view_count INTEGER NOT NULL DEFAULT 0,
-            subscriber_count INTEGER NOT NULL DEFAULT 0,
-            video_count INTEGER NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS youtube_videos (
-            video_id TEXT PRIMARY KEY,
-            channel_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            published_at TEXT NOT NULL,
-            duration TEXT,
-            thumbnail_url TEXT,
-            view_count INTEGER NOT NULL DEFAULT 0,
-            like_count INTEGER NOT NULL DEFAULT 0,
-            comment_count INTEGER NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_youtube_videos_channel_published
-            ON youtube_videos(channel_id, published_at);
-
-        CREATE TABLE IF NOT EXISTS youtube_daily (
-            channel_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS google_analytics_daily (
+            domain TEXT NOT NULL,
+            property_id TEXT NOT NULL,
             date TEXT NOT NULL,
-            views INTEGER NOT NULL DEFAULT 0,
-            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
-            average_view_duration REAL NOT NULL DEFAULT 0,
-            subscribers_gained INTEGER NOT NULL DEFAULT 0,
-            subscribers_lost INTEGER NOT NULL DEFAULT 0,
-            likes INTEGER NOT NULL DEFAULT 0,
-            comments INTEGER NOT NULL DEFAULT 0,
-            shares INTEGER NOT NULL DEFAULT 0,
+            active_users INTEGER NOT NULL DEFAULT 0,
+            sessions INTEGER NOT NULL DEFAULT 0,
+            page_views INTEGER NOT NULL DEFAULT 0,
+            engaged_sessions INTEGER NOT NULL DEFAULT 0,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            engagement_rate REAL NOT NULL DEFAULT 0,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, date)
+            PRIMARY KEY (domain, property_id, date)
         );
 
-        CREATE TABLE IF NOT EXISTS youtube_video_stats (
-            channel_id TEXT NOT NULL,
-            video_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS google_analytics_pages (
+            domain TEXT NOT NULL,
+            property_id TEXT NOT NULL,
             period_start TEXT NOT NULL,
             period_end TEXT NOT NULL,
-            views INTEGER NOT NULL DEFAULT 0,
-            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
-            average_view_duration REAL NOT NULL DEFAULT 0,
-            average_view_percentage REAL NOT NULL DEFAULT 0,
-            likes INTEGER NOT NULL DEFAULT 0,
-            comments INTEGER NOT NULL DEFAULT 0,
-            shares INTEGER NOT NULL DEFAULT 0,
-            subscribers_gained INTEGER NOT NULL DEFAULT 0,
-            subscribers_lost INTEGER NOT NULL DEFAULT 0,
+            page_path TEXT NOT NULL,
+            active_users INTEGER NOT NULL DEFAULT 0,
+            sessions INTEGER NOT NULL DEFAULT 0,
+            page_views INTEGER NOT NULL DEFAULT 0,
+            engaged_sessions INTEGER NOT NULL DEFAULT 0,
+            engagement_rate REAL NOT NULL DEFAULT 0,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, video_id, period_start, period_end)
+            PRIMARY KEY (domain, property_id, period_start, period_end, page_path)
         );
 
-        CREATE TABLE IF NOT EXISTS youtube_countries (
-            channel_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS google_analytics_sources (
+            domain TEXT NOT NULL,
+            property_id TEXT NOT NULL,
             period_start TEXT NOT NULL,
             period_end TEXT NOT NULL,
-            country TEXT NOT NULL,
-            views INTEGER NOT NULL DEFAULT 0,
-            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
-            average_view_duration REAL NOT NULL DEFAULT 0,
+            source_medium TEXT NOT NULL,
+            sessions INTEGER NOT NULL DEFAULT 0,
+            active_users INTEGER NOT NULL DEFAULT 0,
+            key_events INTEGER NOT NULL DEFAULT 0,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, period_start, period_end, country)
+            PRIMARY KEY (domain, property_id, period_start, period_end, source_medium)
         );
 
-        CREATE TABLE IF NOT EXISTS youtube_traffic_sources (
-            channel_id TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS google_analytics_events (
+            domain TEXT NOT NULL,
+            property_id TEXT NOT NULL,
             period_start TEXT NOT NULL,
             period_end TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            views INTEGER NOT NULL DEFAULT 0,
-            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
-            average_view_duration REAL NOT NULL DEFAULT 0,
+            event_name TEXT NOT NULL,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            key_events INTEGER NOT NULL DEFAULT 0,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, period_start, period_end, source_type)
+            PRIMARY KEY (domain, property_id, period_start, period_end, event_name)
         );
 
-        CREATE TABLE IF NOT EXISTS youtube_devices (
-            channel_id TEXT NOT NULL,
-            period_start TEXT NOT NULL,
-            period_end TEXT NOT NULL,
-            device_type TEXT NOT NULL,
-            views INTEGER NOT NULL DEFAULT 0,
-            estimated_minutes_watched REAL NOT NULL DEFAULT 0,
-            average_view_duration REAL NOT NULL DEFAULT 0,
+        CREATE TABLE IF NOT EXISTS google_analytics_devices (
+            domain TEXT NOT NULL,
+            property_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            device_category TEXT NOT NULL,
+            sessions INTEGER NOT NULL DEFAULT 0,
+            active_users INTEGER NOT NULL DEFAULT 0,
             fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, period_start, period_end, device_type)
+            PRIMARY KEY (domain, property_id, date, device_category)
         );
 
-        CREATE TABLE IF NOT EXISTS youtube_retention_points (
-            channel_id TEXT NOT NULL,
-            video_id TEXT NOT NULL,
-            period_start TEXT NOT NULL,
-            period_end TEXT NOT NULL,
-            elapsed_ratio REAL NOT NULL DEFAULT 0,
-            audience_watch_ratio REAL NOT NULL DEFAULT 0,
-            relative_retention_performance REAL NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (channel_id, video_id, period_start, period_end, elapsed_ratio)
-        );
+        CREATE INDEX IF NOT EXISTS idx_ga_daily_domain_date
+            ON google_analytics_daily(domain, date);
+        CREATE INDEX IF NOT EXISTS idx_ga_pages_domain_period
+            ON google_analytics_pages(domain, period_start, period_end);
+        CREATE INDEX IF NOT EXISTS idx_ga_sources_domain_period
+            ON google_analytics_sources(domain, period_start, period_end);
+        CREATE INDEX IF NOT EXISTS idx_ga_events_domain_period
+            ON google_analytics_events(domain, period_start, period_end);
+        CREATE INDEX IF NOT EXISTS idx_ga_devices_domain_date
+            ON google_analytics_devices(domain, date);
 
         CREATE TABLE IF NOT EXISTS uptime_checks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -479,7 +463,7 @@ internal static class Migrations
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('crux', 'crux', 'disconnected');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('pagespeed', 'pagespeed', 'disconnected');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'disconnected');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('youtube', 'youtube', 'disconnected');
+        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ga4', 'google_analytics', 'disconnected');
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
             VALUES ('https://finnvek.com/', 'https://finnvek.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
@@ -488,7 +472,7 @@ internal static class Migrations
             VALUES ('https://finnvek.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
             VALUES ('https://knittoolsapp.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
-        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '4');
+        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '7');
         """;
 
     public static void RunAll(SqliteConnection connection)
@@ -520,6 +504,21 @@ internal static class Migrations
         if (version < 4)
         {
             RunV4Migration(connection);
+        }
+
+        if (version < 5)
+        {
+            RunV5Migration(connection);
+        }
+
+        if (version < 6)
+        {
+            RunV6Migration(connection);
+        }
+
+        if (version < 7)
+        {
+            RunV7Migration(connection);
         }
 
         SetSchemaVersion(connection, CurrentSchemaVersion);
@@ -627,6 +626,9 @@ internal static class Migrations
     }
 
     private static void RunV4Migration(SqliteConnection connection)
+        => SetSchemaVersion(connection, CurrentSchemaVersion);
+
+    private static void RunV5Migration(SqliteConnection connection)
     {
         using var transaction = connection.BeginTransaction();
         try
@@ -634,10 +636,164 @@ internal static class Migrations
             ExecuteBatch(
                 connection,
                 """
-                INSERT OR IGNORE INTO connections (id, source, status)
-                VALUES ('youtube', 'youtube', 'disconnected');
+                CREATE TABLE IF NOT EXISTS cloudflare_pages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    domain TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(domain, date, path)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_cf_countries_domain_date
+                    ON cloudflare_countries(domain, date);
+
+                CREATE INDEX IF NOT EXISTS idx_cf_pages_domain_date
+                    ON cloudflare_pages(domain, date);
                 """,
                 transaction);
+
+            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static void RunV6Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            ExecuteBatch(
+                connection,
+                """
+                CREATE TABLE IF NOT EXISTS google_analytics_daily (
+                    domain TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    active_users INTEGER NOT NULL DEFAULT 0,
+                    sessions INTEGER NOT NULL DEFAULT 0,
+                    page_views INTEGER NOT NULL DEFAULT 0,
+                    engaged_sessions INTEGER NOT NULL DEFAULT 0,
+                    event_count INTEGER NOT NULL DEFAULT 0,
+                    engagement_rate REAL NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (domain, property_id, date)
+                );
+
+                CREATE TABLE IF NOT EXISTS google_analytics_pages (
+                    domain TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    page_path TEXT NOT NULL,
+                    active_users INTEGER NOT NULL DEFAULT 0,
+                    sessions INTEGER NOT NULL DEFAULT 0,
+                    page_views INTEGER NOT NULL DEFAULT 0,
+                    engaged_sessions INTEGER NOT NULL DEFAULT 0,
+                    engagement_rate REAL NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (domain, property_id, period_start, period_end, page_path)
+                );
+
+                CREATE TABLE IF NOT EXISTS google_analytics_sources (
+                    domain TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    source_medium TEXT NOT NULL,
+                    sessions INTEGER NOT NULL DEFAULT 0,
+                    active_users INTEGER NOT NULL DEFAULT 0,
+                    key_events INTEGER NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (domain, property_id, period_start, period_end, source_medium)
+                );
+
+                CREATE TABLE IF NOT EXISTS google_analytics_events (
+                    domain TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    event_name TEXT NOT NULL,
+                    event_count INTEGER NOT NULL DEFAULT 0,
+                    key_events INTEGER NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (domain, property_id, period_start, period_end, event_name)
+                );
+
+                CREATE TABLE IF NOT EXISTS google_analytics_devices (
+                    domain TEXT NOT NULL,
+                    property_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    device_category TEXT NOT NULL,
+                    sessions INTEGER NOT NULL DEFAULT 0,
+                    active_users INTEGER NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY (domain, property_id, date, device_category)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_ga_daily_domain_date
+                    ON google_analytics_daily(domain, date);
+                CREATE INDEX IF NOT EXISTS idx_ga_pages_domain_period
+                    ON google_analytics_pages(domain, period_start, period_end);
+                CREATE INDEX IF NOT EXISTS idx_ga_sources_domain_period
+                    ON google_analytics_sources(domain, period_start, period_end);
+                CREATE INDEX IF NOT EXISTS idx_ga_events_domain_period
+                    ON google_analytics_events(domain, period_start, period_end);
+                CREATE INDEX IF NOT EXISTS idx_ga_devices_domain_date
+                    ON google_analytics_devices(domain, date);
+
+                INSERT OR IGNORE INTO connections (id, source, status)
+                    VALUES ('ga4', 'google_analytics', 'disconnected');
+
+                DELETE FROM connections WHERE id = 'youtube' OR source = 'youtube';
+                DROP TABLE IF EXISTS youtube_retention_points;
+                DROP TABLE IF EXISTS youtube_devices;
+                DROP TABLE IF EXISTS youtube_traffic_sources;
+                DROP TABLE IF EXISTS youtube_countries;
+                DROP TABLE IF EXISTS youtube_video_stats;
+                DROP TABLE IF EXISTS youtube_daily;
+                DROP TABLE IF EXISTS youtube_videos;
+                DROP TABLE IF EXISTS youtube_channels;
+                """,
+                transaction);
+
+            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private static void RunV7Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            if (TableExists(connection, transaction, "google_analytics_pages")
+                && !ColumnExists(connection, transaction, "google_analytics_pages", "engaged_sessions"))
+            {
+                ExecuteBatch(
+                    connection,
+                    """
+                    ALTER TABLE google_analytics_pages
+                        ADD COLUMN engaged_sessions INTEGER NOT NULL DEFAULT 0;
+
+                    UPDATE google_analytics_pages
+                    SET engaged_sessions = CAST(ROUND(sessions * engagement_rate) AS INTEGER)
+                    WHERE sessions > 0
+                      AND engagement_rate > 0
+                      AND engaged_sessions = 0;
+                    """,
+                    transaction);
+            }
 
             SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
             transaction.Commit();

@@ -48,5 +48,5 @@ public partial class ShellViewModel : ObservableObject
     }
 
     private static bool IsKnownPage(string page)
-        => page is "dashboard" or "cloudflare" or "search" or "bing" or "performance" or "youtube" or "health" or "sources";
+        => page is "dashboard" or "cloudflare" or "search" or "bing" or "performance" or "analytics" or "health" or "sources";
 }

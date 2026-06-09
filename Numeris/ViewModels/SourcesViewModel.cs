@@ -10,23 +10,23 @@ public partial class SourcesViewModel : ObservableObject
     public CloudflareSourceViewModel Cloudflare { get; }
     public WebAnalyticsSourceViewModel WebAnalytics { get; }
     public SearchConsoleSourceViewModel SearchConsole { get; }
+    public GoogleAnalyticsSourceViewModel GoogleAnalytics { get; }
     public PerformanceSourceViewModel Performance { get; }
-    public YouTubeSourceViewModel YouTube { get; }
     public BingSourceViewModel Bing { get; }
 
     public SourcesViewModel(
         CloudflareSourceViewModel cloudflare,
         WebAnalyticsSourceViewModel webAnalytics,
         SearchConsoleSourceViewModel searchConsole,
+        GoogleAnalyticsSourceViewModel googleAnalytics,
         PerformanceSourceViewModel performance,
-        YouTubeSourceViewModel YouTube,
         BingSourceViewModel bing)
     {
         Cloudflare = cloudflare;
         WebAnalytics = webAnalytics;
         SearchConsole = searchConsole;
+        GoogleAnalytics = googleAnalytics;
         Performance = performance;
-        this.YouTube = YouTube;
         Bing = bing;
     }
 
@@ -36,7 +36,7 @@ public partial class SourcesViewModel : ObservableObject
             Cloudflare.LoadAsync(),
             WebAnalytics.LoadAsync(),
             SearchConsole.LoadAsync(),
+            GoogleAnalytics.LoadAsync(),
             Performance.LoadAsync(),
-            YouTube.LoadAsync(),
             Bing.LoadAsync());
 }

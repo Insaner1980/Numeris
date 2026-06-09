@@ -12,7 +12,9 @@ using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
 using Numeris.Themes;
 using SkiaSharp;
 
@@ -23,6 +25,8 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     private readonly ShellViewModel _shell;
     private readonly CloudflareRepository _cfRepo;
     private readonly WebAnalyticsRepository _waRepo;
+    private readonly CloudflareSyncService _cloudflareSync;
+    private readonly WebAnalyticsSyncService _webAnalyticsSync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
     public bool CanRefresh => !IsLoading;
@@ -60,11 +64,18 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial List<BarRow> WaReferrers { get; set; } = new();
     [ObservableProperty] public partial List<BarRow> WaPages { get; set; } = new();
     [ObservableProperty] public partial List<BarRow> WaCountries { get; set; } = new();
-    public CloudflareViewModel(ShellViewModel shell, CloudflareRepository cfRepo, WebAnalyticsRepository waRepo)
+    public CloudflareViewModel(
+        ShellViewModel shell,
+        CloudflareRepository cfRepo,
+        WebAnalyticsRepository waRepo,
+        CloudflareSyncService cloudflareSync,
+        WebAnalyticsSyncService webAnalyticsSync)
     {
         _shell = shell;
         _cfRepo = cfRepo;
         _waRepo = waRepo;
+        _cloudflareSync = cloudflareSync;
+        _webAnalyticsSync = webAnalyticsSync;
         _shell.PropertyChanged += OnShellChanged;
     }
 
@@ -120,13 +131,42 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        if (IsLoading)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            var days = _shell.SelectedPeriod.Days();
+            await _cloudflareSync.SyncConfiguredAsync(_shell.SelectedDomain, days);
+            await _webAnalyticsSync.SyncConfiguredAsync(days);
+        }
+        catch (Exception ex)
+        {
+            _ = ApiErrorMessage.Sanitize(ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        await LoadAsync();
+    }
+
     private void BuildTrafficTab(IReadOnlyList<TrafficDay> rows, IReadOnlyList<CountryData> countries, IReadOnlyList<PageData> pages)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var visitors = rows.Select(r => r.UniqueVisitors).ToArray();
+        var pageviews = rows.Select(r => r.Pageviews).ToArray();
         TrafficSeries = new ISeries[]
         {
-            CreateLine("Visitors", rows.Select(r => r.UniqueVisitors).ToArray(), ChartPalette.Accent, fill: true),
-            CreateLine("Pageviews", rows.Select(r => r.Pageviews).ToArray(), ChartPalette.Muted, fill: false),
+            ChartTheme.CreateMatteColumnSeries("Visitors", visitors, HighlightIndex(visitors)),
+            ChartTheme.CreateMutedColumnSeries("Pageviews", pageviews),
         };
         TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         TrafficYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -158,9 +198,10 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     private void BuildSecurityTab(IReadOnlyList<SecurityDay> rows)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var threats = rows.Select(r => r.Threats).ToArray();
         SecuritySeries = new ISeries[]
         {
-            CreateLine("Threats", rows.Select(r => r.Threats).ToArray(), ChartPalette.Secondary, fill: true),
+            ChartTheme.CreateMatteColumnSeries("Threats", threats, LargestValueIndex(threats)),
         };
         SecurityXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         SecurityYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -171,13 +212,14 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     {
         var insight = BuildStatusCodeInsight(rows);
 
-        StatusCodesSeries = insight.Groups.Select(group => new StackedColumnSeries<long>
-        {
-            Name = group.Label,
-            Values = group.Values,
-            Fill = new SolidColorPaint(StatusCodeGroupColor(group.Group)),
-            Stroke = null,
-        }).ToArray();
+        StatusCodesSeries = insight.Groups
+            .Select(group => ChartTheme.StyleStackedColumnSeries(new StackedColumnSeries<long>
+            {
+                Name = group.Label,
+                Values = group.Values,
+                Fill = new SolidColorPaint(StatusCodeGroupColor(group.Group)),
+            }))
+            .ToArray();
         StatusCodesXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = insight.Labels }) };
         StatusCodesYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
         StatusSuccessRateText = insight.SuccessRateText;
@@ -277,11 +319,11 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
 
     private static SKColor StatusCodeGroupColor(StatusCodeGroup group) => group switch
     {
-        StatusCodeGroup.Success => ChartPalette.Success,
-        StatusCodeGroup.Redirect => ChartPalette.Info,
-        StatusCodeGroup.ClientError => ChartPalette.Warning,
-        StatusCodeGroup.ServerError => ChartPalette.Danger,
-        _ => ChartPalette.Muted,
+        StatusCodeGroup.Success => ChartPalette.Success.WithAlpha(178),
+        StatusCodeGroup.Redirect => ChartPalette.Muted.WithAlpha(128),
+        StatusCodeGroup.ClientError => ChartPalette.Warning.WithAlpha(196),
+        StatusCodeGroup.ServerError => ChartPalette.Danger.WithAlpha(206),
+        _ => ChartPalette.Muted.WithAlpha(112),
     };
 
     private static string StatusCodeDescription(int statusCode) => statusCode switch
@@ -335,10 +377,12 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         IReadOnlyList<CountryData> countries)
     {
         var labels = daily.Select(r => ShortDate(r.Date)).ToArray();
+        var visits = daily.Select(r => r.Visits).ToArray();
+        var pageViews = daily.Select(r => r.PageViews).ToArray();
         WaSeries = new ISeries[]
         {
-            CreateLine("Visits", daily.Select(r => r.Visits).ToArray(), ChartPalette.Accent, fill: true),
-            CreateLine("Page views", daily.Select(r => r.PageViews).ToArray(), ChartPalette.Muted, fill: false),
+            ChartTheme.CreateMatteColumnSeries("Visits", visits, HighlightIndex(visits)),
+            ChartTheme.CreateMutedColumnSeries("Page views", pageViews),
         };
         WaXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         WaYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -346,6 +390,41 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         WaReferrers = referrers.Select(r => new BarRow { Label = r.Referrer, Value = r.Visits }).ToList();
         WaPages = pages.Select(p => new BarRow { Label = p.Path, Value = p.PageViews }).ToList();
         WaCountries = countries.Select(c => new BarRow { Label = c.Country, Value = c.Value }).ToList();
+    }
+
+    private static int? HighlightIndex(IReadOnlyList<long> values)
+    {
+        if (values.Count == 0 || values.All(value => value == 0))
+        {
+            return null;
+        }
+
+        var lastIndex = values.Count - 1;
+        if (values[lastIndex] > 0)
+        {
+            return lastIndex;
+        }
+
+        return LargestValueIndex(values);
+    }
+
+    private static int? LargestValueIndex(IReadOnlyList<long> values)
+    {
+        if (values.Count == 0 || values.All(value => value == 0))
+        {
+            return null;
+        }
+
+        var maxValue = values.Max();
+        for (var index = 0; index < values.Count; index++)
+        {
+            if (values[index] == maxValue)
+            {
+                return index;
+            }
+        }
+
+        return null;
     }
 
     private static LineSeries<long> CreateLine(string name, long[] values, SKColor color, bool fill)

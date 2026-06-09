@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -15,7 +16,7 @@ public sealed class CloudflareGraphqlClient
     private const string GraphqlEndpoint = "https://api.cloudflare.com/client/v4/graphql";
 
     private const string DailyTrafficQuery = """
-        query NumerisDailyTraffic($zoneTag: String!, $since: Date!, $until: Date!) {
+        query NumerisDailyTraffic($zoneTag: String!, $since: Date!, $until: Date!, $adaptiveSince: Time!, $adaptiveUntil: Time!) {
           viewer {
             zones(filter: { zoneTag: $zoneTag }) {
               httpRequests1dGroups(
@@ -37,6 +38,24 @@ public sealed class CloudflareGraphqlClient
                   }
                 }
                 uniq { uniques }
+              }
+              topCountries: httpRequestsAdaptiveGroups(
+                limit: 10
+                orderBy: [count_DESC]
+                filter: { datetime_geq: $adaptiveSince, datetime_lt: $adaptiveUntil, requestSource: "eyeball" }
+              ) {
+                count
+                sum { visits }
+                dimensions { clientCountryName }
+              }
+              topPages: httpRequestsAdaptiveGroups(
+                limit: 10
+                orderBy: [count_DESC]
+                filter: { datetime_geq: $adaptiveSince, datetime_lt: $adaptiveUntil, requestSource: "eyeball" }
+              ) {
+                count
+                sum { visits }
+                dimensions { clientRequestPath }
               }
             }
           }
@@ -79,7 +98,14 @@ public sealed class CloudflareGraphqlClient
         var requestBody = new
         {
             query = DailyTrafficQuery,
-            variables = new { zoneTag = zoneId, since, until },
+            variables = new
+            {
+                zoneTag = zoneId,
+                since,
+                until,
+                adaptiveSince = ToGraphqlStartTime(since),
+                adaptiveUntil = ToGraphqlExclusiveEndTime(until),
+            },
         };
 
         using var req = new HttpRequestMessage(HttpMethod.Post, GraphqlEndpoint)
@@ -107,6 +133,7 @@ public sealed class CloudflareGraphqlClient
         }
 
         var result = new CloudflareTrafficResult();
+        result.BreakdownDate = until;
         foreach (var group in zone.HttpRequests1dGroups ?? new())
         {
             var date = group.Dimensions?.Date ?? "";
@@ -130,6 +157,36 @@ public sealed class CloudflareGraphqlClient
                     Requests = s.Requests,
                 });
             }
+        }
+        foreach (var group in zone.TopCountries ?? new())
+        {
+            var country = group.Dimensions?.ClientCountryName ?? "";
+            if (string.IsNullOrWhiteSpace(country))
+            {
+                continue;
+            }
+
+            result.Countries.Add(new CloudflareCountryRow
+            {
+                Date = until,
+                Country = country,
+                Value = BreakdownValue(group),
+            });
+        }
+        foreach (var group in zone.TopPages ?? new())
+        {
+            var path = group.Dimensions?.ClientRequestPath ?? "";
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            result.Pages.Add(new CloudflarePageRow
+            {
+                Date = until,
+                Path = path,
+                Value = BreakdownValue(group),
+            });
         }
         return result;
     }
@@ -156,6 +213,8 @@ public sealed class CloudflareGraphqlClient
     private sealed class GraphqlZone
     {
         public List<HttpRequestsGroup>? HttpRequests1dGroups { get; set; }
+        public List<HttpRequestsAdaptiveGroup>? TopCountries { get; set; }
+        public List<HttpRequestsAdaptiveGroup>? TopPages { get; set; }
     }
     private sealed class HttpRequestsGroup
     {
@@ -181,6 +240,38 @@ public sealed class CloudflareGraphqlClient
     }
     private sealed class HttpUniques { public long Uniques { get; set; } }
 
+    private sealed class HttpRequestsAdaptiveGroup
+    {
+        public long Count { get; set; }
+        public HttpAdaptiveSums? Sum { get; set; }
+        public HttpAdaptiveDimensions? Dimensions { get; set; }
+    }
+    private sealed class HttpAdaptiveSums { public long Visits { get; set; } }
+    private sealed class HttpAdaptiveDimensions
+    {
+        public string ClientCountryName { get; set; } = "";
+        public string ClientRequestPath { get; set; } = "";
+    }
+
+    private static long BreakdownValue(HttpRequestsAdaptiveGroup group)
+        => group.Sum?.Visits > 0 ? group.Sum.Visits : group.Count;
+
+    private static string ToGraphqlStartTime(string date)
+        => ParseDate(date).ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    private static string ToGraphqlExclusiveEndTime(string date)
+        => ParseDate(date).AddDays(1).ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    private static DateOnly ParseDate(string date)
+    {
+        if (DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new ArgumentException($"Invalid Cloudflare analytics date: {date}", nameof(date));
+    }
+
     private static string NormalizeBearerToken(string token)
     {
         token = token.Trim();
@@ -195,6 +286,9 @@ public sealed class CloudflareTrafficResult
 {
     public List<CloudflareTrafficRow> Daily { get; set; } = new();
     public List<CloudflareStatusRow> StatusCodes { get; set; } = new();
+    public List<CloudflareCountryRow> Countries { get; set; } = new();
+    public List<CloudflarePageRow> Pages { get; set; } = new();
+    public string BreakdownDate { get; set; } = "";
 }
 
 public sealed class CloudflareTrafficRow
@@ -214,4 +308,18 @@ public sealed class CloudflareStatusRow
     public string Date { get; set; } = "";
     public int StatusCode { get; set; }
     public long Requests { get; set; }
+}
+
+public sealed class CloudflareCountryRow
+{
+    public string Date { get; set; } = "";
+    public string Country { get; set; } = "";
+    public long Value { get; set; }
+}
+
+public sealed class CloudflarePageRow
+{
+    public string Date { get; set; } = "";
+    public string Path { get; set; } = "";
+    public long Value { get; set; }
 }

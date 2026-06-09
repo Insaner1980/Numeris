@@ -186,6 +186,17 @@ public sealed class PerformanceSyncService
         return result;
     }
 
+    public async Task<PerformanceSyncResult?> SyncConfiguredAsync()
+    {
+        var connection = await _connectionsRepo.GetPerformanceAsync().ConfigureAwait(false);
+        if (connection is null || (!connection.HasCruxApiKey && !connection.HasPageSpeedApiKey))
+        {
+            return null;
+        }
+
+        return await SyncAsync().ConfigureAwait(false);
+    }
+
     private async Task<(long rows, long skipped)> SyncCruxTargetAsync(string apiKey, string targetType, string target, string fetchedAt)
     {
         long rows = 0;

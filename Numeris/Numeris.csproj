@@ -26,13 +26,12 @@
     <Content Include="Assets\StoreLogo*.png" />
     <Content Include="Assets\Wide310x150Logo*.png" />
     <Content Include="Assets\Numeris.ico" />
-    <Content Include="Assets\AppBackdrop.png" />
     <Content Include="Assets\Icons\overview-filled.png" />
     <Content Include="Assets\Icons\cloudflare-filled.png" />
     <Content Include="Assets\Icons\google-search-filled.png" />
     <Content Include="Assets\Icons\bing-filled.png" />
     <Content Include="Assets\Icons\performance-filled.png" />
-    <Content Include="Assets\Icons\youtube-filled.png" />
+    <Content Include="Assets\Icons\analytics-filled.png" />
     <Content Include="Assets\Icons\health-filled.png" />
     <Content Include="Assets\Icons\sources-filled.png" />
   </ItemGroup>

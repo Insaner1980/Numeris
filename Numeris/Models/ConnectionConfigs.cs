@@ -55,6 +55,26 @@ public sealed class SearchConsoleConnectionInfo
     public string? LastSync { get; set; }
 }
 
+public sealed class GoogleAnalyticsConnectionConfig
+{
+    public string Domain { get; set; } = "";
+    public string PropertyId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public string? LastValidatedAt { get; set; }
+}
+
+public sealed class GoogleAnalyticsConnectionInfo
+{
+    public string Id { get; set; } = "ga4";
+    public string Domain { get; set; } = "";
+    public string PropertyId { get; set; } = "";
+    public string ClientId { get; set; } = "";
+    public bool HasClientSecret { get; set; }
+    public bool HasRefreshToken { get; set; }
+    public string Status { get; set; } = "disconnected";
+    public string? LastSync { get; set; }
+}
+
 public sealed class PerformanceConnectionConfig
 {
     public string? LastValidatedAt { get; set; }
@@ -92,26 +112,6 @@ public sealed class BingConnectionInfo
     public string Id { get; set; } = "bing";
     public bool HasApiKey { get; set; }
     public List<string> Sites { get; set; } = new();
-    public string Status { get; set; } = "disconnected";
-    public string? LastSync { get; set; }
-}
-
-public sealed class YouTubeConnectionConfig
-{
-    public string ClientId { get; set; } = "";
-    public string ChannelId { get; set; } = "";
-    public string ChannelTitle { get; set; } = "";
-    public string? LastValidatedAt { get; set; }
-}
-
-public sealed class YouTubeConnectionInfo
-{
-    public string Id { get; set; } = "youtube";
-    public string ClientId { get; set; } = "";
-    public string ChannelId { get; set; } = "";
-    public string ChannelTitle { get; set; } = "";
-    public bool HasClientSecret { get; set; }
-    public bool HasRefreshToken { get; set; }
     public string Status { get; set; } = "disconnected";
     public string? LastSync { get; set; }
 }

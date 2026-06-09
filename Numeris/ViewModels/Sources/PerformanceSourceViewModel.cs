@@ -72,7 +72,7 @@ public partial class PerformanceSourceViewModel : ObservableObject
             NewCruxApiKey = "";
             NewPageSpeedApiKey = "";
             await LoadAsync();
-            StatusMessage = "Saved. Add URLs if needed, then press Sync.";
+            StatusMessage = "Saved. Add URLs if needed; use Performance page refresh to fetch live data.";
         }
         catch (Exception ex)
         {
@@ -152,27 +152,6 @@ public partial class PerformanceSourceViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public async Task SyncAsync()
-    {
-        IsBusy = true;
-        StatusMessage = "Syncing CrUX and PageSpeed...";
-        try
-        {
-            var result = await _sync.SyncAsync();
-            StatusMessage = FormatSyncStatus(result);
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
     public async Task DeleteAsync()
     {
         _vault.DeleteCruxApiKey();
@@ -189,16 +168,5 @@ public partial class PerformanceSourceViewModel : ObservableObject
         var urls = await _sync.ListUrlsAsync();
         Urls.Clear();
         foreach (var url in urls) Urls.Add(url);
-    }
-
-    public static string FormatSyncStatus(PerformanceSyncResult result)
-    {
-        var cruxStatus = result.CruxMetricPoints > 0
-            ? $"CrUX: {result.CruxMetricPoints} point(s)"
-            : result.CruxSkipped > 0
-                ? "CrUX: no field data for configured URLs"
-                : "CrUX: not configured";
-
-        return $"Synced {result.UrlsSynced} URL(s). {cruxStatus}. PageSpeed: {result.PageSpeedRuns} run(s), {result.PageSpeedAudits} audit row(s), {result.PageSpeedErrors} error(s).";
     }
 }

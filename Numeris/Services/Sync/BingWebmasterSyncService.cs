@@ -91,6 +91,17 @@ public sealed class BingWebmasterSyncService
         return result;
     }
 
+    public async Task<BingSyncResult?> SyncConfiguredAsync()
+    {
+        var connection = await _connectionsRepo.GetBingAsync().ConfigureAwait(false);
+        if (connection is null || !connection.HasApiKey)
+        {
+            return null;
+        }
+
+        return await SyncAsync().ConfigureAwait(false);
+    }
+
     private Task<long> StoreSiteMethodAsync(string apiKey, string method, string siteUrl, string fetchedAt)
         => StoreMethodAsync(apiKey, method, siteUrl, new Dictionary<string, string?> { ["siteUrl"] = siteUrl }, fetchedAt);
 

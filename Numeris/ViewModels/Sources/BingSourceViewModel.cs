@@ -65,7 +65,7 @@ public partial class BingSourceViewModel : ObservableObject
             await SaveConfigFromSitesAsync();
             NewApiKey = "";
             await LoadAsync();
-            StatusMessage = "Saved. Press Test or Sync.";
+            StatusMessage = "Saved. Press Test or use Bing page refresh.";
         }
         catch (Exception ex)
         {
@@ -123,27 +123,6 @@ public partial class BingSourceViewModel : ObservableObject
         {
             var result = await _sync.TestAsync();
             StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    public async Task SyncAsync()
-    {
-        IsBusy = true;
-        StatusMessage = "Syncing Bing Webmaster...";
-        try
-        {
-            var result = await _sync.SyncAsync();
-            StatusMessage = $"Synced {result.SitesSynced} site(s), {result.RawItems} raw item(s), {result.RankRows} rank rows, {result.QueryRows} query rows, {result.PageRows} page rows";
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {

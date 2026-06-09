@@ -112,6 +112,17 @@ public sealed class WebAnalyticsSyncService
         };
     }
 
+    public async Task<SyncResult?> SyncConfiguredAsync(int days)
+    {
+        var connection = await _connectionsRepo.GetWebAnalyticsAsync().ConfigureAwait(false);
+        if (connection is null || string.IsNullOrWhiteSpace(connection.AccountId) || !connection.HasToken)
+        {
+            return null;
+        }
+
+        return await SyncAccountAsync(connection.AccountId, days).ConfigureAwait(false);
+    }
+
     public async Task<ConnectionTestResult> TestAccountAsync(string accountId)
     {
         accountId = accountId.Trim();

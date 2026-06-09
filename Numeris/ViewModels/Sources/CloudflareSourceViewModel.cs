@@ -27,7 +27,6 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     public bool CanRun => !IsBusy;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
-    [ObservableProperty] public partial int SyncDays { get; set; } = 90;
 
     public CloudflareSourceViewModel(
         ConnectionsRepository connectionsRepo,
@@ -122,33 +121,11 @@ public partial class CloudflareSourceViewModel : ObservableObject
             await LoadAsync();
 
             NewToken = "";
-            StatusMessage = $"Saved {domain}. Press Sync to fetch live data.";
+            StatusMessage = $"Saved {domain}. Use Cloudflare page refresh to fetch live data.";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Save failed: {ApiErrorMessage.Sanitize(ex)}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    public async Task SyncAsync(CloudflareConnectionInfo? info)
-    {
-        if (info is null) return;
-        IsBusy = true;
-        StatusMessage = $"Syncing {info.Domain}...";
-        try
-        {
-            var result = await _sync.SyncDomainAsync(info.Domain, info.ZoneId, SyncDays);
-            StatusMessage = $"Synced {result.DaysSynced} days, {result.RecordsUpserted} rows";
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {

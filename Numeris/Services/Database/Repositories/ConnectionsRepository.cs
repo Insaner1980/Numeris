@@ -234,6 +234,72 @@ public sealed class ConnectionsRepository
         });
     }
 
+    public Task<GoogleAnalyticsConnectionInfo?> GetGoogleAnalyticsAsync()
+    {
+        return _db.ReadAsync(connection =>
+        {
+            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
+                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'ga4'");
+            GoogleAnalyticsConnectionConfig? cfg = null;
+            if (!string.IsNullOrEmpty(row.Config))
+            {
+                try { cfg = JsonSerializer.Deserialize<GoogleAnalyticsConnectionConfig>(row.Config, JsonOptions); }
+                catch { }
+            }
+
+            var clientId = cfg?.ClientId ?? "";
+            return (GoogleAnalyticsConnectionInfo?)new GoogleAnalyticsConnectionInfo
+            {
+                Id = "ga4",
+                Domain = cfg?.Domain ?? "",
+                PropertyId = cfg?.PropertyId ?? "",
+                ClientId = clientId,
+                HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetGoogleAnalyticsClientSecret(clientId)),
+                HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetGoogleAnalyticsRefreshToken(clientId)),
+                Status = row.Status ?? "disconnected",
+                LastSync = row.LastSync,
+            };
+        });
+    }
+
+    public Task UpsertGoogleAnalyticsAsync(GoogleAnalyticsConnectionConfig config, string status)
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                INSERT INTO connections (id, source, status, config, last_sync)
+                VALUES ('ga4', 'google_analytics', @status, @json, NULL)
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                """,
+                new { status, json });
+        });
+    }
+
+    public Task UpdateGoogleAnalyticsLastSyncAsync(GoogleAnalyticsConnectionConfig config, string lastSync, string status = "connected")
+    {
+        return _db.WriteAsync(connection =>
+        {
+            var json = JsonSerializer.Serialize(config, JsonOptions);
+            connection.Execute(
+                """
+                UPDATE connections
+                SET status = @status, config = @json, last_sync = @lastSync
+                WHERE id = 'ga4'
+                """,
+                new { status, json, lastSync });
+        });
+    }
+
+    public Task DeleteGoogleAnalyticsAsync()
+    {
+        return _db.WriteAsync(connection =>
+        {
+            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'ga4'");
+        });
+    }
+
     public Task<PerformanceConnectionInfo?> GetPerformanceAsync()
     {
         return _db.ReadAsync(connection =>
@@ -369,72 +435,6 @@ public sealed class ConnectionsRepository
         return _db.WriteAsync(connection =>
         {
             connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'bing'");
-        });
-    }
-
-    public Task<YouTubeConnectionInfo?> GetYouTubeAsync()
-    {
-        return _db.ReadAsync(connection =>
-        {
-            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
-                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'youtube'");
-            YouTubeConnectionConfig? cfg = null;
-            if (!string.IsNullOrEmpty(row.Config))
-            {
-                try { cfg = JsonSerializer.Deserialize<YouTubeConnectionConfig>(row.Config, JsonOptions); }
-                catch { }
-            }
-
-            var clientId = cfg?.ClientId ?? "";
-            return (YouTubeConnectionInfo?)new YouTubeConnectionInfo
-            {
-                Id = "youtube",
-                ClientId = clientId,
-                ChannelId = cfg?.ChannelId ?? "",
-                ChannelTitle = cfg?.ChannelTitle ?? "",
-                HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetYouTubeClientSecret(clientId)),
-                HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetYouTubeRefreshToken(clientId)),
-                Status = row.Status ?? "disconnected",
-                LastSync = row.LastSync,
-            };
-        });
-    }
-
-    public Task UpsertYouTubeAsync(YouTubeConnectionConfig config, string status)
-    {
-        return _db.WriteAsync(connection =>
-        {
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            connection.Execute(
-                """
-                INSERT INTO connections (id, source, status, config, last_sync)
-                VALUES ('youtube', 'youtube', @status, @json, NULL)
-                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
-                """,
-                new { status, json });
-        });
-    }
-
-    public Task UpdateYouTubeLastSyncAsync(YouTubeConnectionConfig config, string lastSync, string status = "connected")
-    {
-        return _db.WriteAsync(connection =>
-        {
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            connection.Execute(
-                """
-                UPDATE connections
-                SET status = @status, config = @json, last_sync = @lastSync
-                WHERE id = 'youtube'
-                """,
-                new { status, json, lastSync });
-        });
-    }
-
-    public Task DeleteYouTubeAsync()
-    {
-        return _db.WriteAsync(connection =>
-        {
-            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'youtube'");
         });
     }
 }

@@ -1,7 +1,6 @@
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace Numeris.Controls;
 
@@ -52,27 +51,15 @@ public sealed partial class KpiCard : UserControl
         set => SetValue(ChangePctProperty, value);
     }
 
-    public string ChangeText
+    public double ChangeValue => ChangePct ?? 0;
+
+    public string ChangeTooltip
     {
         get
         {
             if (ChangePct is not double pct) return "";
             var sign = pct > 0 ? "+" : "";
             return $"{sign}{pct.ToString("0.#", CultureInfo.InvariantCulture)}% vs previous period";
-        }
-    }
-
-    public Brush ChangeBrush
-    {
-        get
-        {
-            if (ChangePct is not double pct) return (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
-            return pct switch
-            {
-                > 0 => (Brush)Application.Current.Resources["SuccessBrush"],
-                < 0 => (Brush)Application.Current.Resources["DangerBrush"],
-                _ => (Brush)Application.Current.Resources["NumerisTextSecondaryBrush"],
-            };
         }
     }
 

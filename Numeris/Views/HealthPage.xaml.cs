@@ -1,11 +1,10 @@
 using System.ComponentModel;
-using System.Linq;
+using System;
 using LiveChartsCore.Measure;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -32,13 +31,12 @@ public sealed partial class HealthPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         BuildChart(ref _responseChart, ResponseChartHost);
-        BuildChart(ref _incidentsChart, IncidentsChartHost);
+        BuildBarChart(ref _incidentsChart, IncidentsChartHost);
 
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         TabBar.SelectedItem = TabBar.Items[0];
         _wiringUi = false;
 
@@ -87,6 +85,13 @@ public sealed partial class HealthPage : Page
         host.Child = ChartTheme.CreateChartSurface(chart);
     }
 
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
+    {
+        if (chart is not null) return;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
+    }
+
     private void ApplyAllChartData()
     {
         if (_responseChart is not null)
@@ -118,10 +123,10 @@ public sealed partial class HealthPage : Page
         if (DomainCombo.SelectedItem is string s) Shell.SelectedDomain = s;
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option) Shell.SelectedPeriod = option.Value;
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)

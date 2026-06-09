@@ -210,12 +210,7 @@ public partial class HealthViewModel : ObservableObject, IDisposable
 
         IncidentsSeries = new ISeries[]
         {
-            new ColumnSeries<long>
-            {
-                Name = "Incidents",
-                Values = incidentsValues,
-                Fill = new SolidColorPaint(ChartPalette.Secondary),
-            },
+            ChartTheme.CreateMatteColumnSeries("Incidents", incidentsValues),
         };
         IncidentsXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         IncidentsYAxes = new[]

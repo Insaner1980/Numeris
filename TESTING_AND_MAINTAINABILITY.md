@@ -10,7 +10,7 @@ The best candidates for unit tests are the integration parts that can run withou
 - Request construction: OAuth authorization URLs, Google token payloads, Bing query parameters, PageSpeed strategy URLs, and Cloudflare GraphQL operation names.
 - Sync orchestration with fakes: missing credentials, saved connection status updates, transient/rate-limited API failures, retry decisions, and repository calls.
 - Repository behavior against a temporary SQLite database: migrations, upserts, transaction boundaries, retention cleanup, and dated Bing history.
-- Legacy migration with a sample Pulse database and fake credential vault: idempotency, keyring preference, and preservation of existing Numeris secrets.
+- Legacy migration with a sample Numeris database and fake credential vault: idempotency, keyring preference, and preservation of existing Numeris secrets.
 - Source ViewModels with fake services: busy state, status messages, add/test/sync/delete flows, and vault deletion instead of blank secret writes.
 
 Live API tests should stay separate from unit tests. They should be opt-in, use developer-provided local credentials, and never run in default CI.
@@ -65,7 +65,7 @@ Run these before packaged/MSIX distribution:
 - Run PageSpeed/CrUX/Bing sync paths with fake or controlled responses to verify raw JSON trimming, redaction, and retention.
 - Verify Release trimming does not break JSON deserialization, source generators, XAML binding, or WinUI startup.
 - Verify packaged credential save/read/delete for Cloudflare, Web Analytics, Search Console, CrUX, PageSpeed, and Bing.
-- Verify app startup without a legacy Pulse database and with a sample legacy Pulse database.
+- Verify app startup without a legacy Numeris database and with a sample legacy Numeris database.
 - Verify package assets, display name, splash screen, and manifest capabilities.
 
 ## Near-Term Maintenance Work

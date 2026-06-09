@@ -9,12 +9,12 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
-using LiveChartsCore.SkiaSharpView.Painting;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
 using Numeris.Themes;
-using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
@@ -22,6 +22,7 @@ public partial class BingViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
     private readonly BingRepository _bingRepo;
+    private readonly BingWebmasterSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
     public bool CanRefresh => !IsLoading;
@@ -38,10 +39,11 @@ public partial class BingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial ObservableCollection<BingRawMethodSummary> CrawlSummaries { get; set; } = new();
     [ObservableProperty] public partial ObservableCollection<BingRawItem> CrawlIssues { get; set; } = new();
 
-    public BingViewModel(ShellViewModel shell, BingRepository bingRepo)
+    public BingViewModel(ShellViewModel shell, BingRepository bingRepo, BingWebmasterSyncService sync)
     {
         _shell = shell;
         _bingRepo = bingRepo;
+        _sync = sync;
         _shell.PropertyChanged += OnShellChanged;
     }
 
@@ -91,6 +93,31 @@ public partial class BingViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        if (IsLoading)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            await _sync.SyncConfiguredAsync();
+        }
+        catch (Exception ex)
+        {
+            _ = ApiErrorMessage.Sanitize(ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        await LoadAsync();
+    }
+
     private async Task ReloadQueriesAsync()
     {
         var range = _shell.SelectedPeriod.ToDateRange();
@@ -108,11 +135,11 @@ public partial class BingViewModel : ObservableObject, IDisposable
             ? $"{((double)rows.Sum(r => r.Clicks) / impressions * 100.0).ToString("0.0", CultureInfo.InvariantCulture)}%"
             : "—";
 
-        TrafficSeries = new ISeries[]
-        {
-            CreateLine("Clicks", rows.Select(r => r.Clicks).ToArray(), ChartPalette.Accent, true, 0),
-            CreateLine("Impressions", rows.Select(r => r.Impressions).ToArray(), ChartPalette.Secondary, false, 1),
-        };
+        var clicks = ChartTheme.CreateMatteColumnSeries("Clicks", rows.Select(r => r.Clicks).ToArray());
+        var impressionsSeries = ChartTheme.CreateMutedColumnSeries("Impressions", rows.Select(r => r.Impressions).ToArray());
+        impressionsSeries.ScalesYAt = 1;
+
+        TrafficSeries = new ISeries[] { clicks, impressionsSeries };
         TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = rows.Select(r => ShortDate(r.Date)).ToArray() }) };
         TrafficYAxes = new[]
         {
@@ -123,20 +150,6 @@ public partial class BingViewModel : ObservableObject, IDisposable
 
     private string SelectedBingSiteUrl()
         => _shell.SelectedDomain == "all" ? "all" : SiteIdentity.NormalizeHomePageUrl(_shell.SelectedDomain);
-
-    private static LineSeries<long> CreateLine(string name, long[] values, SKColor color, bool fill, int scalesYAt)
-        => new()
-        {
-            Name = name,
-            Values = values,
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryStroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryFill = new SolidColorPaint(color),
-            Fill = fill ? new SolidColorPaint(color.WithAlpha(40)) : null,
-            GeometrySize = 0,
-            LineSmoothness = 0.4,
-            ScalesYAt = scalesYAt,
-        };
 
     private static string ShortDate(string isoDate)
     {

@@ -39,14 +39,6 @@ public sealed partial class SourcesPage : Page
         CfTokenBox.Password = "";
     }
 
-    private async void SyncButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
-        {
-            await ViewModel.Cloudflare.SyncAsync(info);
-        }
-    }
-
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is CloudflareConnectionInfo info)
@@ -67,9 +59,6 @@ public sealed partial class SourcesPage : Page
 
     private async void TestWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.WebAnalytics.TestAsync();
-
-    private async void SyncWaButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.WebAnalytics.SyncAsync();
 
     private async void DeleteWaButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.WebAnalytics.DeleteAsync();
@@ -97,9 +86,6 @@ public sealed partial class SourcesPage : Page
 
     private async void TestScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SearchConsole.TestAsync();
-
-    private async void SyncScButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.SearchConsole.SyncAsync();
 
     private async void DeleteScButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.SearchConsole.DeleteAsync();
@@ -129,9 +115,6 @@ public sealed partial class SourcesPage : Page
     private async void TestPageSpeedButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.Performance.TestPageSpeedAsync();
 
-    private async void SyncPerformanceButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.Performance.SyncAsync();
-
     private async void DeletePerformanceButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.Performance.DeleteAsync();
@@ -139,26 +122,23 @@ public sealed partial class SourcesPage : Page
         PageSpeedApiKeyBox.Password = "";
     }
 
-    private async void SaveYouTubeButton_Click(object sender, RoutedEventArgs e)
+    private async void SaveGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
     {
         SyncPasswordBoxesToViewModel();
-        await ViewModel.YouTube.SaveAsync();
-        YouTubeClientSecretBox.Password = "";
+        await ViewModel.GoogleAnalytics.SaveAsync();
+        GoogleAnalyticsClientSecretBox.Password = "";
     }
 
-    private async void ConnectYouTubeButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.YouTube.ConnectAsync();
+    private async void ConnectGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.GoogleAnalytics.ConnectAsync();
 
-    private async void TestYouTubeButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.YouTube.TestAsync();
+    private async void TestGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
+        => await ViewModel.GoogleAnalytics.TestAsync();
 
-    private async void SyncYouTubeButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.YouTube.SyncAsync();
-
-    private async void DeleteYouTubeButton_Click(object sender, RoutedEventArgs e)
+    private async void DeleteGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.YouTube.DeleteAsync();
-        YouTubeClientSecretBox.Password = "";
+        await ViewModel.GoogleAnalytics.DeleteAsync();
+        GoogleAnalyticsClientSecretBox.Password = "";
     }
 
     private async void SaveBingButton_Click(object sender, RoutedEventArgs e)
@@ -182,9 +162,6 @@ public sealed partial class SourcesPage : Page
     private async void TestBingButton_Click(object sender, RoutedEventArgs e)
         => await ViewModel.Bing.TestAsync();
 
-    private async void SyncBingButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.Bing.SyncAsync();
-
     private async void DeleteBingButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.Bing.DeleteAsync();
@@ -198,7 +175,7 @@ public sealed partial class SourcesPage : Page
         ViewModel.SearchConsole.NewClientSecret = ScClientSecretBox.Password;
         ViewModel.Performance.NewCruxApiKey = CruxApiKeyBox.Password;
         ViewModel.Performance.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
-        ViewModel.YouTube.NewClientSecret = YouTubeClientSecretBox.Password;
+        ViewModel.GoogleAnalytics.NewClientSecret = GoogleAnalyticsClientSecretBox.Password;
         ViewModel.Bing.NewApiKey = BingApiKeyBox.Password;
     }
 }

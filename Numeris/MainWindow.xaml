@@ -20,17 +20,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Image x:Name="AppBackdropImage"
-               Grid.RowSpan="2"
-               Source="ms-appx:///Assets/AppBackdrop.png"
-               Stretch="UniformToFill"
-               IsHitTestVisible="False"
-               Opacity="{StaticResource AppBackdropOpacity}" />
-        <Rectangle x:Name="AppBackdropScrim"
-                   Grid.RowSpan="2"
-                   Fill="{StaticResource AppBackdropScrimBrush}"
-                   IsHitTestVisible="False" />
-
         <NavigationView x:Name="NavView"
                         Grid.Row="1"
                         Background="Transparent"
@@ -79,11 +68,11 @@
                                    Source="ms-appx:///Assets/Icons/performance-filled.png" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="youtube" Content="YouTube">
+                <NavigationViewItem Tag="analytics" Content="Analytics">
                     <NavigationViewItem.Icon>
                         <ImageIcon Width="20"
                                    Height="20"
-                                   Source="ms-appx:///Assets/Icons/youtube-filled.png" />
+                                   Source="ms-appx:///Assets/Icons/analytics-filled.png" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Tag="health" Content="Health">

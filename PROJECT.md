@@ -1,34 +1,36 @@
 # Numeris Project Description
 
-Last verified from code: 2026-05-15.
+Last verified from code: 2026-06-09.
 
-This document describes the current Numeris codebase as it exists in this repository. It is intended to be precise enough for code review questions, architecture checks, and regression review. When this document conflicts with the code, the code is the source of truth.
+This document describes the current Numeris checkout. The code, project files, migrations, and tests remain the source of truth when this document and implementation diverge.
 
 ## Executive Summary
 
-Numeris is a native Windows desktop analytics application built with WinUI 3 and the Windows App SDK. The app collects, stores, and visualizes website, search, performance, video, and health data for Finnvek-owned properties, currently centered on `knittoolsapp.com` and `finnvek.com`.
+Numeris is a native Windows desktop analytics application built with WinUI 3 and the Windows App SDK. It is the native successor/import target for the old Numeris Tauri application, not a web app and not a Tauri UI.
 
-The application is not a web app and not a Tauri app. It is the native successor/import target for the old Numeris Tauri application. At startup, Numeris initializes a local SQLite database, runs schema migrations, attempts a cautious legacy Numeris import, and opens a WinUI shell with report pages and a Sources configuration page.
+The app initializes a local SQLite database, runs schema migrations, imports legacy Numeris configuration when present, and opens a WinUI shell for reporting and source configuration. It does not seed demo or mock analytics data at startup.
 
-The core design is a layered desktop architecture:
+Current live reporting areas are:
 
-- WinUI pages render the user interface and wire UI events.
-- ViewModels own UI state, loading state, chart series, filtering, sorting, and report refresh behavior.
-- Sync services orchestrate credential lookup, remote API calls, date windows, and repository writes.
-- API clients call external provider endpoints and sanitize upstream failures.
-- Repositories are the only layer that performs SQLite reads and writes.
-- `SqliteDatabase` owns the single open SQLite connection, serialization gate, migrations, and transaction helper.
-- `CredentialVault` owns all API keys, access secrets, refresh tokens, and client secrets through Windows PasswordVault.
+- Overview dashboard with deterministic Insights.
+- Cloudflare Zone Analytics and Cloudflare Web Analytics.
+- Google Search Console.
+- Bing Webmaster Tools.
+- Web Performance through CrUX and PageSpeed.
+- Google Analytics 4 through the Google Analytics Data API.
+- Health through uptime checks and sitemap discovery.
+- Sources configuration for credentials, provider metadata, and URL/site targets.
+
+YouTube is not a live integration in this checkout. The active code removed YouTube navigation, pages, ViewModels, source cards, API clients, sync service, repository, models, asset references, and seeded connection rows. The v6 migration removes legacy YouTube connection and data tables from existing databases.
 
 ## Repository Layout
 
-- `Numeris.slnx` is the solution file. It contains the WinUI app project and the custom test harness project.
+- `Numeris.slnx` is the solution file.
 - `Numeris/` contains the production WinUI application.
-- `Numeris.Tests/` contains a console-based architectural and behavioral test harness in `Program.cs`.
-- `tools/lint-check.ps1` and `tools/security-check.ps1` write diagnostic reports under `reports/`.
-- `memory/MEMORY.md` and `AGENTS.md` contain project memory and agent instructions.
-- `migration-plan.md`, `BING-WEBMASTER-SYNC.md`, and the root implementation-plan documents capture planning history and constraints.
-- `reports/` is ignored and must not be committed.
+- `Numeris.Tests/` contains the console-based architectural and behavioral test harness.
+- `tools/lint-check.ps1` and `tools/security-check.ps1` write diagnostics under ignored `reports/`.
+- `AGENTS.md`, `memory/MEMORY.md`, and planning documents capture project memory and implementation constraints.
+- `migration-plan.md`, `BING-WEBMASTER-SYNC.md`, `CORE-COMPLETION-PLAN.md`, `TESTING_AND_MAINTAINABILITY.md`, and root implementation-plan files are supporting planning artifacts, not stronger truth than source.
 
 ## Technology Stack
 
@@ -39,95 +41,88 @@ The production app is `Numeris/Numeris.csproj`.
 - UI framework: WinUI 3 through Windows App SDK.
 - Windows App SDK package: `Microsoft.WindowsAppSDK` version `2.0.1`.
 - Windows SDK build tools: `Microsoft.Windows.SDK.BuildTools` version `10.0.28000.1839`.
-- MVVM helper package: `CommunityToolkit.Mvvm` version `8.4.0`.
-- WinUI settings controls package: `CommunityToolkit.WinUI.Controls.SettingsControls` version `8.2.251219`.
+- MVVM helper: `CommunityToolkit.Mvvm` version `8.4.0`.
+- WinUI settings controls: `CommunityToolkit.WinUI.Controls.SettingsControls` version `8.2.251219`.
 - Dependency injection: `Microsoft.Extensions.DependencyInjection` version `8.0.1`.
 - SQLite provider: `Microsoft.Data.Sqlite` version `8.0.10`.
-- SQL mapping/helper library: `Dapper` version `2.1.66`.
+- SQL helper library: `Dapper` version `2.1.66`.
 - Charts: `LiveChartsCore.SkiaSharpView.WinUI` version `2.0.2`.
 - Nullable reference types are enabled.
-- `LangVersion` is `preview`, used by the CommunityToolkit.Mvvm partial-property model.
+- `LangVersion` is `preview` for the CommunityToolkit.Mvvm partial-property model.
 
-The app supports x86, x64, and ARM64 runtime identifiers. The solution configuration currently maps the app to x64.
+The app declares x86, x64, and ARM64 runtime identifiers. `AnyCPU` is mapped to x64 in the project file.
 
 ## Packaging and Launch Model
 
-The project is configured as a WinUI desktop executable:
+The app is configured as a WinUI desktop executable:
 
 - `OutputType` is `WinExe`.
 - `UseWinUI` is `true`.
-- `WindowsPackageType` is `None`, which enables unpackaged project execution through Windows App SDK auto-initialization.
-- `EnableMsixTooling` is `true`, and `Package.appxmanifest` plus publish profiles are present for packaged publishing workflows.
-- `launchSettings.json` exposes both `Numeris (Package)` using `MsixPackage` and `Numeris (Unpackaged)` using `Project`.
+- `SelfContained` is `false`.
+- `WindowsPackageType` is `None`, so unpackaged project execution uses Windows App SDK auto-initialization.
+- `EnableMsixTooling` is `true`; `Package.appxmanifest` and publish profiles remain for packaged publishing workflows.
 - Publish settings enable ReadyToRun and trimming outside Debug builds.
 
-The code uses Windows APIs directly, including `Windows.Storage.ApplicationData`, `Windows.Security.Credentials.PasswordVault`, WinUI windowing APIs, and WinUI/XAML resources.
+The code uses Windows APIs directly, including `Windows.Storage.ApplicationData`, `Windows.Security.Credentials.PasswordVault`, WinUI windowing APIs, and XAML resources.
 
-## Application Startup
+## Startup and Dependency Injection
 
 Startup is defined in `Numeris/App.xaml.cs`.
 
-1. `App` constructs the dependency injection container in its constructor.
-2. `OnLaunched` resolves `SqliteDatabase`, which opens/creates the local SQLite database and runs migrations.
-3. `OnLaunched` resolves `LegacyDataMigrationService` and synchronously calls `ImportAllAsync()`.
-4. `OnLaunched` resolves `MainWindow` from DI and activates it.
+1. `App` builds the dependency injection container in its constructor.
+2. `OnLaunched` resolves `SqliteDatabase`, opening or creating the SQLite database and running migrations.
+3. `OnLaunched` resolves `LegacyDataMigrationService` and runs `ImportAllAsync()`.
+4. `OnLaunched` resolves `MainWindow` and activates it.
 
-There is no startup mock-data seeding path. The test harness explicitly checks that `MockSeeder`, `SeedAsync`, and a `Services/MockData` directory are not present.
+Singleton services include:
 
-## Dependency Injection Composition
+- `SqliteDatabase`, `LegacyDataMigrationService`, `SettingsStore`.
+- Repositories: `SummaryRepository`, `CloudflareRepository`, `SearchConsoleRepository`, `SitemapRepository`, `WebAnalyticsRepository`, `HealthRepository`, `ConnectionsRepository`, `PerformanceRepository`, `BingRepository`, `GoogleAnalyticsRepository`, `InsightMetricsRepository`.
+- `InsightEngine`.
+- API clients: `UptimeClient`, `SitemapClient`, `CloudflareGraphqlClient`, `CloudflareRumClient`, `SearchConsoleClient`, `CruxClient`, `PageSpeedClient`, `BingWebmasterClient`, `GoogleAnalyticsClient`.
+- Google OAuth services: `GoogleOAuthClient`, `GoogleOAuthFlow`.
+- `CredentialVault`.
+- Sync services: `CloudflareSyncService`, `WebAnalyticsSyncService`, `SearchConsoleSyncService`, `PerformanceSyncService`, `BingWebmasterSyncService`, `GoogleAnalyticsSyncService`.
+- `ShellViewModel` and `MainWindow`.
 
-`App.ConfigureServices()` registers the application graph.
-
-Singletons:
-
-- `SqliteDatabase`
-- `LegacyDataMigrationService`
-- `SettingsStore`
-- all repositories
-- all API clients
-- Google OAuth services
-- `CredentialVault`
-- all sync services
-- `ShellViewModel`
-- `MainWindow`
-
-Transient ViewModels:
+Transient ViewModels include:
 
 - `DashboardViewModel`
 - `CloudflareViewModel`
 - `SearchConsoleViewModel`
 - `BingViewModel`
 - `PerformanceViewModel`
-- `YouTubeViewModel`
+- `GoogleAnalyticsViewModel`
 - `HealthViewModel`
-- each source-specific ViewModel
+- source ViewModels: `CloudflareSourceViewModel`, `WebAnalyticsSourceViewModel`, `SearchConsoleSourceViewModel`, `PerformanceSourceViewModel`, `GoogleAnalyticsSourceViewModel`, `BingSourceViewModel`
 - `SourcesViewModel`
 
-Transient pages:
+Transient pages include:
 
 - `DashboardPage`
 - `CloudflarePage`
 - `SearchConsolePage`
 - `BingPage`
 - `PerformancePage`
-- `YouTubePage`
+- `GoogleAnalyticsPage`
 - `HealthPage`
 - `SourcesPage`
 
-The app uses the static `App.Services` provider to resolve ViewModels and shared shell state inside pages.
+The app uses static `App.Services` resolution inside pages for ViewModels and shared shell state.
 
 ## Shell and Navigation
 
-`MainWindow.xaml` defines the desktop shell.
+`MainWindow.xaml` defines the shell.
 
 - The window title is `Numeris`.
-- The shell uses `<MicaBackdrop />` as the Windows system backdrop.
-- A global WebP bitmap background is decoded from `Assets/AppBackdrop.webp`.
-- A scrim from `AppBackdropScrimBrush` darkens the bitmap for readability.
-- Navigation is a left `NavigationView` with an always-open pane.
-- The pane toggle and back button are disabled.
+- The shell uses `<MicaBackdrop />`.
+- The visible app background is a single matte `AppBackgroundBrush` color.
+- The root grid does not load an `AppBackdrop` bitmap, bitmap scrim, page-specific dashboard hero image, gradient orb, or Tauri-derived UI backdrop.
+- Navigation is an always-open left `NavigationView`.
+- Pane toggle and back button are disabled.
+- Navigation icons are 20 x 20 PNG `ImageIcon` assets from `Numeris/Assets/Icons`.
 - The title bar is custom: `ExtendsContentIntoTitleBar = true` and `SetTitleBar(AppTitleBar)`.
-- Title bar colors are read from design-token resources.
+- Native caption button colors are read from token resources.
 
 Navigation routes are centralized in `MainWindow.xaml.cs`:
 
@@ -136,62 +131,52 @@ Navigation routes are centralized in `MainWindow.xaml.cs`:
 - `search` -> `SearchConsolePage`
 - `bing` -> `BingPage`
 - `performance` -> `PerformancePage`
-- `youtube` -> `YouTubePage`
+- `analytics` -> `GoogleAnalyticsPage`
 - `health` -> `HealthPage`
 - `sources` -> `SourcesPage`
 
-`ShellViewModel` persists three shell-level settings:
+`ShellViewModel` persists:
 
 - selected period
 - selected domain
 - last selected page
 
-The known domain choices are exactly:
+Known domain choices:
 
 - `all`
 - `knittoolsapp.com`
 - `finnvek.com`
 
-The known period choices are:
+Known period choices:
 
-- Last 7 days
-- Last 30 days
-- Last 90 days
-- All time
+- `Last7Days` / `7d` / `Last 7 days`
+- `Last30Days` / `30d` / `Last 30 days`
+- `Last90Days` / `90d` / `Last 90 days`
+- `All` / `All` / `All time`
 
-`Period.All` is implemented as 365 days, not an unbounded all-time query.
+`Period.All` means 365 days, not an unbounded all-time query.
 
-## Persistent Local Files
+## Local Files
 
-`AppPaths` chooses storage paths depending on packaged state.
+`AppPaths` selects storage paths by package state.
 
-For packaged execution:
+Packaged execution:
 
-- data lives in `ApplicationData.Current.LocalFolder`.
+- base data directory: `ApplicationData.Current.LocalFolder.Path`
 
-For unpackaged execution:
+Unpackaged execution:
 
-- data lives in `%LocalAppData%\Numeris`.
+- base data directory: `%LocalAppData%\Numeris`
 
 Derived paths:
 
 - SQLite database: `numeris.db`
 - shell settings JSON: `settings.json`
 - logs directory: `logs`
+- legacy Numeris import directory: `legacy\numeris`
+- legacy Numeris database path: `legacy\numeris\numeris.db`
 
-The code creates the base data directory automatically.
-
-## Settings Persistence
-
-`SettingsStore` reads and writes a JSON file at `AppPaths.SettingsPath`.
-
-Stored shell settings:
-
-- `SelectedPeriod`
-- `SelectedDomain`
-- `LastPage`
-
-Invalid persisted domains fall back to `all`. Invalid persisted page tags fall back to `dashboard`.
+The base data directory and legacy import directory are created automatically when resolved.
 
 ## SQLite Architecture
 
@@ -203,16 +188,16 @@ Important behavior:
 - shared cache is enabled
 - foreign keys are enabled in the connection string
 - migrations run immediately after opening
-- a `SemaphoreSlim` serializes reads and writes through one gate
-- `ReadAsync`, `WriteAsync`, `WriteAsync<T>`, and `WriteTransactionAsync` are the supported access helpers
-- multi-row logical writes are expected to use `WriteTransactionAsync`
-- `ClearAllData()` deletes report data and resets connection statuses but leaves the schema in place
+- a `SemaphoreSlim` serializes reads and writes
+- supported access helpers are `ReadAsync`, `WriteAsync`, `WriteAsync<T>`, and `WriteTransactionAsync`
+- multi-row logical writes should use `WriteTransactionAsync`
+- `ClearAllData()` deletes report data and resets connection statuses but keeps the schema
 
-Sync services must not write SQLite directly. Tests enforce that sync services do not depend on `SqliteDatabase`.
+Sync services must not write SQLite directly. API clients fetch data, sync services orchestrate credentials and time windows, repositories perform persistence, and ViewModels own UI state.
 
 ## Schema Versioning
 
-`Migrations.CurrentSchemaVersion` is `5`.
+`Migrations.CurrentSchemaVersion` is `7`.
 
 Versioning is tracked in both:
 
@@ -222,16 +207,18 @@ Versioning is tracked in both:
 `Migrations.RunAll()` performs:
 
 1. WAL mode and foreign-key setup.
-2. creation of the current full schema through `CREATE TABLE IF NOT EXISTS`
-3. pending version migrations
-4. insertion of default connection rows and default URL/site rows
+2. full current schema creation through `CREATE TABLE IF NOT EXISTS`.
+3. pending version migrations.
+4. default connection, URL, site, and metadata insertion.
 
 Migration highlights:
 
-- v2 preserves dated Bing page stats by adding a `date` component to the `bing_page_stats` primary key.
-- v3 removes earlier mock/demo analytics data and converts `mock` connection status to `disconnected`.
-- v4 adds the YouTube connection row.
+- v2 preserves dated Bing page stats by adding `date` to the `bing_page_stats` primary key.
+- v3 removes earlier mock/demo analytics data and converts `mock` connection statuses to `disconnected`.
+- v4 now only advances schema metadata; it no longer seeds YouTube.
 - v5 adds Cloudflare page breakdown storage.
+- v6 adds Google Analytics tables, seeds `ga4`, deletes the old `youtube` connection, and drops old YouTube tables.
+- v7 adds `google_analytics_pages.engaged_sessions` when missing and backfills it from sessions and engagement rate.
 
 ## Database Tables
 
@@ -249,7 +236,7 @@ Google Search Console:
 - `search_page_queries`
 - `sitemap_urls`
 
-Legacy/unused Play Store analytics schema currently exists but has no active UI or sync service in the current app:
+Legacy/unused Play Store schema remains present without active Play Store client, sync service, page, or ViewModel:
 
 - `play_installs`
 - `play_ratings`
@@ -283,16 +270,13 @@ Bing Webmaster:
 - `bing_page_stats`
 - `bing_raw_items`
 
-YouTube:
+Google Analytics:
 
-- `youtube_channels`
-- `youtube_videos`
-- `youtube_daily`
-- `youtube_video_stats`
-- `youtube_countries`
-- `youtube_traffic_sources`
-- `youtube_devices`
-- `youtube_retention_points`
+- `google_analytics_daily`
+- `google_analytics_pages`
+- `google_analytics_sources`
+- `google_analytics_events`
+- `google_analytics_devices`
 
 Health:
 
@@ -302,7 +286,9 @@ Metadata:
 
 - `meta`
 
-## Default Seeded Registry Data
+There are no current YouTube tables in the full schema.
+
+## Default Registry Data
 
 The app inserts default disconnected registry rows:
 
@@ -314,19 +300,19 @@ The app inserts default disconnected registry rows:
 - `crux` / `crux`
 - `pagespeed` / `pagespeed`
 - `bing` / `bing_webmaster`
-- `youtube` / `youtube`
+- `ga4` / `google_analytics`
 
-The app also inserts default performance URLs:
-
-- `https://finnvek.com/`
-- `https://knittoolsapp.com/`
-
-The app also inserts default Bing sites:
+The app inserts default performance URLs:
 
 - `https://finnvek.com/`
 - `https://knittoolsapp.com/`
 
-These defaults are real configuration targets, not mock metrics.
+The app inserts default Bing sites:
+
+- `https://finnvek.com/`
+- `https://knittoolsapp.com/`
+
+These defaults are configuration targets, not mock metrics.
 
 ## Secrets and Credentials
 
@@ -343,42 +329,39 @@ Credential resources:
 - CrUX API key: `Numeris.Crux.ApiKey`
 - PageSpeed API key: `Numeris.PageSpeed.ApiKey`
 - Bing Webmaster API key: `Numeris.BingWebmaster.ApiKey`
-- YouTube client secret: `Numeris.YouTube.ClientSecret`
-- YouTube refresh token: `Numeris.YouTube.RefreshToken`
+- Google Analytics client secret: `Numeris.GoogleAnalytics.ClientSecret`
+- Google Analytics refresh token: `Numeris.GoogleAnalytics.RefreshToken`
 
-Cloudflare tokens are stored per normalized domain. Web Analytics tokens are stored per account ID. Google OAuth client secrets and refresh tokens are stored per client ID. CrUX, PageSpeed, and Bing keys use the `default` user key.
+Cloudflare tokens are stored per normalized domain. Web Analytics tokens are stored per account ID. Search Console and Google Analytics OAuth secrets are stored per client ID. CrUX, PageSpeed, and Bing keys use the `default` user key.
 
 Deleting a credential removes the PasswordVault entry. It does not write an empty password.
 
 ## Legacy Numeris Import
 
-`LegacyDataMigrationService` imports connection configuration from the old Numeris Tauri app.
+`LegacyDataMigrationService` imports configuration from the old Numeris Tauri app.
 
-Legacy source:
+Current legacy source path:
 
-- app data folder: `%AppData%\com.finnvek.numeris`
-- database file: `numeris.db`
-- legacy credential service suffix: `Numeris`
-- import tag written into config: `legacy-numeris-tauri`
+- `%LocalAppData%\Numeris\legacy\numeris\numeris.db` in unpackaged execution.
 
 Imported integrations:
 
-- Cloudflare Zone Analytics connections
-- Cloudflare Web Analytics account and site tags
-- Google Search Console OAuth configuration
+- Cloudflare Zone Analytics connections.
+- Cloudflare Web Analytics account and site tags.
+- Google Search Console OAuth configuration.
 
 The importer:
 
-- skips if the legacy database is missing
+- skips when the legacy database is missing
 - reads legacy SQLite in read-only mode
-- preserves existing Numeris secrets if they already exist
-- reads old keyring values from Windows Credential Manager when available
+- preserves existing Numeris secrets
+- reads old Credential Manager values using the Rust keyring target model `<username>.Numeris`
+- falls back to same-`<username>.` target discovery when exact legacy targets are absent
+- copies found legacy secrets into Numeris `CredentialVault` entries
 - falls back to legacy plain text config only when no Numeris secret exists
 - normalizes Cloudflare bearer tokens by removing a leading `Bearer `
 - converts missing or `mock` legacy status to `configured`
 - does not delete legacy credentials
-
-Legacy credential target names include values such as `cloudflare:example.com.Numeris`.
 
 ## Domain and URL Normalization
 
@@ -404,11 +387,11 @@ Normalized outputs:
 - `OriginUrl`: `https://{domain}`
 - `HomePageUrl`: `https://{domain}/`
 
-`PerformanceUrl` remains the PageSpeed-facing facade but delegates normalization to `SiteIdentity`.
+`PerformanceUrl` remains the PageSpeed-facing facade and delegates normalization to `SiteIdentity`.
 
-## Raw JSON Storage Policy
+## Raw JSON and API Error Policy
 
-`RawJsonStoragePolicy` centralizes storage rules for raw upstream payloads.
+`RawJsonStoragePolicy` centralizes raw upstream payload storage.
 
 Limits:
 
@@ -424,39 +407,11 @@ Before raw JSON is stored, the policy redacts:
 - passwords
 - credentials
 - authorization values
-- API keys and similar key names
+- API keys and similarly named fields
 - query-string secrets
 - bearer tokens
 
-If JSON exceeds the configured size, it is replaced by a bounded JSON object containing truncation metadata and a prefix.
-
-## API Error Handling
-
-External API failures should use `ApiRequestException` and `ApiErrorMessage`.
-
-`ApiRequestException` records:
-
-- provider
-- operation
-- HTTP status code
-- optional upstream message
-
-It exposes convenience flags:
-
-- `IsNotFound`
-- `IsRateLimited`
-- `IsTransient`
-
-`ApiErrorMessage`:
-
-- extracts concise messages from JSON error bodies
-- handles OAuth errors such as `invalid_grant`, `invalid_client`, and `deleted_client`
-- omits non-JSON upstream bodies
-- redacts query-string secrets and bearer tokens
-- collapses whitespace
-- limits user-facing messages to 300 characters
-
-API clients and ViewModels should not show raw response bodies, request URLs containing keys, or bearer values.
+External API failures should use `ApiRequestException` and `ApiErrorMessage`. API clients and ViewModels should not show raw response bodies, request URLs containing keys, or bearer values.
 
 ## External Integrations
 
@@ -471,32 +426,33 @@ Main files:
 - `CloudflarePage`
 - `CloudflareSourceViewModel`
 
-API base:
+API endpoints:
 
-- REST zone validation: `https://api.cloudflare.com/client/v4`
+- REST validation: `https://api.cloudflare.com/client/v4`
 - GraphQL analytics: `https://api.cloudflare.com/client/v4/graphql`
 
 Stored data:
 
-- daily pageviews, visitors, requests, cache, bandwidth, threats
+- daily pageviews, unique visitors, requests, cache, bandwidth, threats
 - daily status codes
 - daily country visitor breakdown
 - daily path/request breakdown
 
-Sync flow:
+Refresh flow:
 
-1. resolve Cloudflare connection metadata from `connections`
-2. load the token for the normalized domain from `CredentialVault`
-3. call Cloudflare GraphQL for the selected date window
-4. upsert daily traffic, countries, pages, and status codes in a single repository transaction
-5. update the matching Cloudflare connection `last_sync`
+1. `CloudflareViewModel.RefreshAsync()` calls `CloudflareSyncService.SyncConfiguredAsync(selectedDomain, days)`.
+2. Cloudflare sync loads connection metadata from `connections`.
+3. The token is loaded from `CredentialVault`.
+4. `CloudflareGraphqlClient` queries Cloudflare GraphQL.
+5. `CloudflareRepository.UpsertTrafficAsync()` writes the logical result in one repository transaction.
+6. The connection `last_sync` is updated and the ViewModel reloads local repository data.
 
 Cloudflare report tabs:
 
 - Traffic
 - Cache
 - Security
-- Status
+- Status codes
 - Web Analytics
 
 ### Cloudflare Web Analytics
@@ -510,20 +466,20 @@ Main files:
 - `CloudflarePage`
 - `WebAnalyticsSourceViewModel`
 
-API base:
+API endpoints:
 
 - `https://api.cloudflare.com/client/v4`
 - `https://api.cloudflare.com/client/v4/graphql`
 
 Stored data:
 
-- configured site tag mappings
+- configured domain/site-tag mappings
 - daily visits and page views
 - referrers
 - pages
 - countries
 
-The Sources page can discover Cloudflare Web Analytics sites for an account, but manual domain-to-site-tag mappings are also supported. Sync requires at least one saved site tag mapping.
+The Sources page can discover Cloudflare Web Analytics sites for an account, and manual domain-to-site-tag mappings are supported. Sync requires at least one saved site-tag mapping.
 
 ### Google Search Console
 
@@ -539,32 +495,11 @@ Main files:
 - `SearchConsolePage`
 - `SearchConsoleSourceViewModel`
 
-API endpoints:
+Search Analytics data is stored in `search_console`, `search_devices`, and `search_page_queries`.
 
-- OAuth authorize: `https://accounts.google.com/o/oauth2/v2/auth`
-- OAuth token: `https://oauth2.googleapis.com/token`
-- sites list: `https://www.googleapis.com/webmasters/v3/sites`
-- URL Inspection: `https://searchconsole.googleapis.com/v1/urlInspection/index:inspect`
+Indexing data comes from the URL Inspection API, not from Search Analytics rows or sitemap presence alone. On the Indexing tab, the page refresh path also runs `SearchConsoleSyncService.InspectSitemapUrlsAsync()` for active sitemap URLs. The separate indexing refresh button is not used for the main report refresh path.
 
-OAuth scope:
-
-- `https://www.googleapis.com/auth/webmasters.readonly`
-
-Search Console sync is currently hard-coded to sync these domains:
-
-- `knittoolsapp.com`
-- `finnvek.com`
-
-For each available Google property, the sync service pulls:
-
-- daily search metrics
-- query metrics
-- page metrics
-- country metrics
-- device metrics
-- page-query mappings for a 28-day window
-
-Search report tabs:
+Search Console report tabs:
 
 - Overview
 - Queries
@@ -572,9 +507,52 @@ Search report tabs:
 - Devices
 - Indexing
 
-The Indexing tab uses the URL Inspection API against active sitemap URLs. On the Indexing tab, refresh first runs the normal Search Console sync, reloads local report data, and then runs URL inspection.
+### Google Analytics 4
 
-### CrUX and PageSpeed
+Main files:
+
+- `GoogleAnalyticsClient`
+- `GoogleAnalyticsSyncService`
+- `GoogleAnalyticsRepository`
+- `GoogleAnalyticsViewModel`
+- `GoogleAnalyticsPage`
+- `GoogleAnalyticsSourceViewModel`
+
+API endpoint:
+
+- `https://analyticsdata.googleapis.com/v1beta/properties/{propertyId}:runReport`
+
+OAuth scope:
+
+- `https://www.googleapis.com/auth/analytics.readonly`
+
+Stored data:
+
+- `google_analytics_daily`: active users, sessions, page views, engaged sessions, event count, engagement rate by day.
+- `google_analytics_pages`: page rows for the selected period, including engaged sessions and engagement rate.
+- `google_analytics_sources`: acquisition rows by source/medium.
+- `google_analytics_events`: event rows and key-event counts.
+- `google_analytics_devices`: device category rows by day.
+
+Sync flow:
+
+1. `GoogleAnalyticsViewModel.RefreshAsync()` calls `GoogleAnalyticsSyncService.SyncConfiguredAsync(days)`.
+2. The sync service loads the `ga4` connection.
+3. Client secret and refresh token are loaded from `CredentialVault`.
+4. `GoogleOAuthClient` refreshes an access token.
+5. `GoogleAnalyticsClient.RunReportAsync()` calls Data API `properties.runReport`.
+6. `GoogleAnalyticsRepository.UpsertRollupAsync()` writes the rollup transactionally.
+7. `ConnectionsRepository.UpdateGoogleAnalyticsLastSyncAsync()` updates metadata and `last_sync`.
+
+Google Analytics report tabs:
+
+- Overview
+- Pages
+- Acquisition
+- Events
+- Devices
+
+### Web Performance
 
 Main files:
 
@@ -585,24 +563,16 @@ Main files:
 - `PerformanceViewModel`
 - `PerformancePage`
 - `PerformanceSourceViewModel`
+- `PerformanceUrl`
 
-API endpoints:
+Stored data:
 
-- CrUX history: `https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord`
-- PageSpeed: `https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed`
+- configured URLs in `performance_urls`
+- CrUX metric points in `crux_metric_points`
+- PageSpeed runs in `pagespeed_runs`
+- PageSpeed audits in `pagespeed_audits`
 
-CrUX sync targets:
-
-- each distinct origin from enabled `performance_urls`
-- each enabled URL
-- form factors `ALL`, `PHONE`, `DESKTOP`, and `TABLET`
-
-PageSpeed sync targets:
-
-- each enabled URL
-- strategies `MOBILE` and `DESKTOP`
-
-PageSpeed sync is serialized through a semaphore, spaces requests by one second, and retries transient/rate-limited/network/timeout failures up to three attempts with exponential backoff.
+Performance sync uses enabled URLs and runs both mobile and desktop PageSpeed strategies. PageSpeed sync is serialized, spaces requests, and retries transient or rate-limited failures. CrUX `404 NotFound` is treated as missing field data rather than API-key failure.
 
 Performance report tabs:
 
@@ -610,8 +580,6 @@ Performance report tabs:
 - CrUX
 - PageSpeed
 - URLs
-
-CrUX `404 NotFound` is treated as missing field data rather than API-key failure.
 
 ### Bing Webmaster
 
@@ -643,7 +611,7 @@ Stored data:
 - dated traffic rows
 - dated query rows
 - dated page rows
-- raw method items, including sanitized error records
+- sanitized raw method items and error records
 
 Bing report tabs:
 
@@ -652,55 +620,7 @@ Bing report tabs:
 - Pages
 - Crawl
 
-The project intentionally avoids mass-adding every Bing API detail method. New methods should be checked against `BING-WEBMASTER-SYNC.md`.
-
-### YouTube
-
-Main files:
-
-- `YouTubeDataClient`
-- `YouTubeAnalyticsClient`
-- `YouTubeSyncService`
-- `YouTubeRepository`
-- `YouTubeViewModel`
-- `YouTubePage`
-- `YouTubeSourceViewModel`
-
-API endpoints:
-
-- channels: `https://www.googleapis.com/youtube/v3/channels`
-- playlist items: `https://www.googleapis.com/youtube/v3/playlistItems`
-- videos: `https://www.googleapis.com/youtube/v3/videos`
-- analytics reports: `https://youtubeanalytics.googleapis.com/v2/reports`
-
-OAuth scopes:
-
-- `https://www.googleapis.com/auth/youtube.readonly`
-- `https://www.googleapis.com/auth/yt-analytics.readonly`
-
-YouTube sync:
-
-1. refreshes access using a YouTube refresh token and client secret
-2. falls back to the Search Console client secret for the same client ID when a YouTube-specific client secret is absent
-3. fetches the authenticated user's channel
-4. lists upload playlist video IDs
-5. fetches public video metadata and public counters
-6. fetches channel daily analytics
-7. fetches top video analytics
-8. fetches country, traffic source, and device breakdowns
-9. attempts retention data for up to 25 selected videos
-10. writes channel/video metadata and analytics through repository methods
-
-YouTube report tabs:
-
-- Overview
-- Videos
-- Geography
-- Traffic
-- Devices
-- Retention
-
-The app models one authenticated channel. It does not currently model multiple YouTube channels or app/domain separation for YouTube.
+New Bing methods should be checked against `BING-WEBMASTER-SYNC.md`; the project intentionally avoids mass-adding every Bing detail method.
 
 ### Health, Uptime, and Sitemaps
 
@@ -713,18 +633,16 @@ Main files:
 - `HealthViewModel`
 - `HealthPage`
 
-Uptime:
+Uptime checks:
 
-- probes `https://{normalized-domain}`
-- uses HTTP status and response time
-- stores rows in `uptime_checks`
+- probe `https://{normalized-domain}`
+- store status, status code, response time, and error text in `uptime_checks`
 
 Sitemaps:
 
-- discovers URLs from `https://{domain}/sitemap-index.xml`
-- parses sitemap index and URL-set XML using the sitemap namespace
-- stores sitemap URLs in `sitemap_urls`
-- inactive/removed URLs can be represented through `removed_at`
+- discover URLs from `https://{domain}/sitemap-index.xml`
+- parse sitemap index and URL-set XML using the sitemap namespace
+- store active and removed URLs in `sitemap_urls`
 
 Health report tabs:
 
@@ -735,20 +653,17 @@ Health report tabs:
 
 Google OAuth is centralized in `GoogleOAuthClient` and `GoogleOAuthFlow`.
 
-`GoogleOAuthClient` builds authorization URLs, exchanges authorization codes, and refreshes access tokens.
-
 `GoogleOAuthFlow`:
 
 - starts a loopback `TcpListener` on `127.0.0.1` with an ephemeral port
 - builds a redirect URI ending in `/oauth2callback`
-- generates a state value
+- generates and verifies state
 - opens the browser through a delegate supplied by the caller
 - waits up to two minutes by default
-- verifies returned OAuth state
 - returns `OAuthTokens`
 - sends a small local HTML completion response to the browser
 
-Search Console and YouTube both use this shared OAuth path.
+Search Console and Google Analytics both use this shared OAuth path with source-specific scopes.
 
 ## ViewModel Responsibilities
 
@@ -757,8 +672,8 @@ Report ViewModels:
 - subscribe to `ShellViewModel.PropertyChanged`
 - reload when selected domain or period changes
 - expose `CanRefresh` to disable refresh while busy
-- read reporting data only through repositories
-- call `SyncConfiguredAsync` on refresh before reloading repository data
+- read reporting data through repositories
+- call their saved-configuration sync path before reloading local data when refresh should fetch live provider data
 - build LiveCharts series and axes from repository rows
 - use `ChartPalette` and `ChartTheme` instead of hard-coded chart colors
 
@@ -772,39 +687,109 @@ Source ViewModels:
 - test saved connections through sync services or API clients
 - delete connection metadata and matching secrets
 
-`SourcesViewModel` is only a coordinator. It delegates actual provider behavior to:
+`SourcesViewModel` is only a coordinator. It delegates source-specific behavior to:
 
 - `CloudflareSourceViewModel`
 - `WebAnalyticsSourceViewModel`
 - `SearchConsoleSourceViewModel`
+- `GoogleAnalyticsSourceViewModel`
 - `PerformanceSourceViewModel`
-- `YouTubeSourceViewModel`
 - `BingSourceViewModel`
 
 Tests explicitly prevent `SourcesViewModel` from depending on low-level clients or the vault.
 
-## Report Pages
+## Refresh and Sync Behavior
 
-All report pages follow the same UI pattern:
+Overview:
 
-- a header using shared page-title styles
-- a domain selector where applicable
-- a period selector
-- a refresh button bound to `ViewModel.CanRefresh`
-- `AutomationProperties.Name` for domain, period, and refresh controls
-- local view switching through `SelectorBar`
-- responsive `VisualStateManager` states for narrow and wide layouts
-- charts created in code-behind through `ChartTheme.CreateCartesianChart()`
-- chart surfaces wrapped through `ChartTheme.CreateChartSurface(chart)`
+- refresh reloads local summary/report data
+- it does not call all provider sync services
+- Insights are generated from local SQLite metrics through `InsightMetricsRepository` and deterministic `InsightEngine`
+- Insights do not use AI models, prompts, new external API calls, new mock data, or new schema tables
 
-The report pages using `SelectorBar` are:
+Cloudflare:
+
+- refresh calls `CloudflareSyncService.SyncConfiguredAsync(selectedDomain, days)`
+- refresh also calls `WebAnalyticsSyncService.SyncConfiguredAsync(days)`
+- then it reloads local repository data
+
+Search Console:
+
+- refresh calls `SearchConsoleSyncService.SyncConfiguredAsync(days)`
+- if the active tab is `indexing`, refresh also inspects active sitemap URLs
+- then it reloads local repository data
+
+Google Analytics:
+
+- refresh calls `GoogleAnalyticsSyncService.SyncConfiguredAsync(days)`
+- then it reloads local repository data
+
+Bing:
+
+- refresh calls `BingWebmasterSyncService.SyncConfiguredAsync()`
+- then it reloads local repository data
+
+Performance:
+
+- refresh calls `PerformanceSyncService.SyncConfiguredAsync()`
+- then it reloads local repository data
+
+Health:
+
+- supports uptime checks and sitemap refresh through its own ViewModel methods
+
+Sources:
+
+- saves, tests, connects, discovers, adds, and deletes configuration
+- does not expose live sync buttons
+
+## Overview Insights
+
+Overview Insights are deterministic and local.
+
+Main files:
+
+- `Numeris/Models/InsightRows.cs`
+- `Numeris/Services/Insights/Trend.cs`
+- `Numeris/Services/Insights/InsightEngine.cs`
+- `Numeris/Services/Database/Repositories/InsightMetricsRepository.cs`
+- `Numeris/ViewModels/DashboardViewModel.cs`
+- `Numeris/Views/DashboardPage.xaml`
+
+The metrics repository reads from existing local tables:
+
+- Cloudflare visitors, cache ratio, threats, and status codes.
+- GA4 users, engagement rate, and key events.
+- Search Console impressions, clicks, mobile clicks/impressions, declining pages, and new queries.
+- PageSpeed mobile performance score.
+- Bing impressions and clicks.
+- Sitemap URL Inspection summary.
+- Source freshness from connected rows in `connections`.
+
+The rule engine emits at most four cards, sorted by severity and priority. It uses ratio math internally and formats ratios as user-facing percentages. Activity from zero is represented as `TrendState.NewActivity`, not artificial `+100%`.
+
+## Report Pages and UI Patterns
+
+Report pages use a shared pattern:
+
+- `PageHeaderBorderStyle` for the header layout.
+- domain selector where applicable.
+- `PeriodSelector` for period selection.
+- refresh button styled with `ToolbarRefreshButtonStyle`.
+- `AutomationProperties.Name` on domain, period, refresh, and filter controls.
+- local report tabs through `SelectorBar` and `TopTabSelectorBarStyle`.
+- responsive `VisualStateManager` states.
+- chart creation through `ChartTheme.CreateCartesianChart()`.
+- chart surfaces through `ChartTheme.CreateChartSurface(chart)`.
+
+Pages with `SelectorBar`:
 
 - Cloudflare
 - Google Search
+- Analytics
 - Bing
 - Performance
 - Health
-- YouTube
 
 Nested `NavigationView` controls are not used for report-local tabs.
 
@@ -812,20 +797,19 @@ Nested `NavigationView` controls are not used for report-local tabs.
 
 `SourcesPage` is a configuration page, not a reporting page and not a live-sync launcher.
 
-Provider groups shown on the page:
+Provider groups currently shown:
 
 - Cloudflare
 - Google
-- YouTube
 - Bing
 
-Provider sections include:
+Provider sections currently include:
 
 - Cloudflare Zone Analytics
 - Cloudflare Web Analytics
 - Google Search Console
+- Google Analytics
 - Google Web Performance API keys
-- YouTube Analytics
 - Bing Webmaster
 
 The page uses:
@@ -843,72 +827,47 @@ The page intentionally does not expose per-integration `Sync` buttons. Live refr
 
 The central design-token file is `Numeris/Themes/Tokens.xaml`.
 
-Token groups include:
+Current visual baseline:
 
-- spacing
-- page padding
-- card padding
-- title bar dimensions
-- toolbar dimensions
-- chart sizes and mesh colors
-- text colors
-- surface colors
-- status colors
-- shared styles for headers, KPI cards, chart cards, content cards, status strips, buttons, data tables, InfoBars, and ListViews
+- `AppBackgroundColor`: `#151419`
+- `NavigationLayerColor`: `#00000000`
+- `ContentLayerColor`: `#00000000`
+- `CardSurfaceColor`: `#F017181D`
+- `ControlSurfaceColor`: `#F0222526`
+- `ChartPanelColor`: `#E8151419`
+- primary text: `#FBFBFB`
+- secondary text: `#DAD4CC`
+- tertiary text: `#BFBFBF`
+- accent: `NumerisAccentColor #F56E0F`
+- accent foreground: `#151419`
+- chart secondary copper: `#E09145`
+- warm platinum highlight: `#FCD9B8`
 
-The visible shell background is:
+Design-system ownership:
 
-- `AppBackgroundBrush` fallback color
-- global `AppBackdrop.webp` bitmap
-- `AppBackdropScrimBrush` overlay
-- transparent NavigationView pane/content layers
-
-Cards and charts use dark translucent black-glass surfaces:
-
-- `CardSurfaceColor`
-- `ControlSurfaceColor`
-- `ChartPanelColor`
-- `ContentLayerColor`
-
-Navigation and content layer colors are transparent so the global shell backdrop remains continuous.
+- Page, card, chart, status, action-button, data-table, InfoBar, ListView, navigation, and period-selector resources live in `Tokens.xaml`.
+- Page headers are transparent and borderless layout surfaces, not cards.
+- Navigation and content layers are transparent so the shell reads as one continuous matte background.
+- Toolbar/action buttons are flat tokenized surfaces; hover and pressed states change color only.
+- `PeriodSelector` segments are transparent except for the selected lava/accent fill.
+- Table-like headers use `DataTableHeaderBorderStyle`.
+- Horizontal bar visualizations use `HorizontalBars`.
 
 ## Charting
 
-Chart construction is centralized in `ChartTheme`.
+LiveCharts construction is centralized in `Numeris.Themes.ChartTheme` and color access in `Numeris.Themes.ChartPalette`.
 
-`ChartTheme.CreateCartesianChart()` sets:
+`ChartTheme` owns:
 
-- transparent chart background
-- bottom legend
-- tooltip position
-- legend/tooltip paints from `ChartPalette`
-- default text sizes
+- `CreateCartesianChart()`
+- `CreateChartSurface()`
+- `StyleXAxis()`
+- `StyleYAxis()`
+- `CreateMatteColumnSeries()`
+- `CreateMutedColumnSeries()`
+- `StyleStackedColumnSeries()`
 
-`ChartTheme.CreateChartSurface()` wraps a chart with a subtle mesh backdrop.
-
-`ChartTheme.StyleXAxis()` and `ChartTheme.StyleYAxis()` centralize axis label and separator styling.
-
-ViewModels build the data series, but chart surfaces and axes should use the central helpers.
-
-## Repositories
-
-Repositories are the persistence boundary.
-
-Important repositories:
-
-- `SummaryRepository` builds overview aggregates.
-- `InsightMetricsRepository` builds deterministic Overview Insights metric windows from existing local SQLite rows.
-- `CloudflareRepository` reads/writes Cloudflare traffic, cache, security, status, countries, and pages.
-- `SearchConsoleRepository` reads/writes Search Console daily, query, page, country, device, and page-query rows.
-- `SitemapRepository` reads sitemap URLs and writes URL Inspection results.
-- `WebAnalyticsRepository` reads/writes Cloudflare Web Analytics daily and breakdown rows.
-- `PerformanceRepository` reads/writes CrUX and PageSpeed data, URLs, audit issues, trends, and retention.
-- `BingRepository` reads/writes Bing sites, traffic, query/page stats, raw items, crawl summaries, and raw retention.
-- `YouTubeRepository` reads/writes channel, video, daily, video-level, breakdown, and retention data.
-- `HealthRepository` reads/writes uptime and sitemap health data.
-- `ConnectionsRepository` reads/writes provider connection metadata and status while checking secret presence through `CredentialVault`.
-
-Where a logical result spans multiple rows, repositories should use `SqliteDatabase.WriteTransactionAsync`.
+ViewModels may build series from repository rows, but chart controls, chart surfaces, axes, legend/tooltip paints, and shared palette colors should go through the central helpers.
 
 ## Connection Registry Semantics
 
@@ -922,7 +881,7 @@ Rows contain:
 - `config`
 - `last_sync`
 
-`config` is JSON metadata. It should not contain new secret values.
+`config` is JSON metadata. It must not contain new secret values.
 
 Status values observed in code:
 
@@ -930,9 +889,9 @@ Status values observed in code:
 - `configured`
 - `connected`
 
-Cloudflare Zone Analytics uses one row per domain with IDs like `cloudflare:{domain}`.
+Cloudflare Zone Analytics uses per-domain IDs such as `cloudflare:{domain}`.
 
-Singleton-style integrations use stable IDs:
+Singleton-style IDs:
 
 - `wa`
 - `sc`
@@ -940,112 +899,65 @@ Singleton-style integrations use stable IDs:
 - `crux`
 - `pagespeed`
 - `bing`
-- `youtube`
+- `ga4`
 
 `ConnectionsRepository.GetPerformanceAsync()` combines `perf`, `crux`, and `pagespeed` into one UI-facing performance connection status.
-
-## Refresh and Sync Behavior
-
-Dashboard:
-
-- loads local summary/report data only
-- does not call sync services from its refresh button
-- loads deterministic Insights through `InsightMetricsRepository` and `InsightEngine`
-- does not use AI models, prompts, new API calls, new mock data, or schema changes for Insights
-
-Cloudflare:
-
-- refresh calls `CloudflareSyncService.SyncConfiguredAsync(selectedDomain, days)`
-- then reloads local data
-
-Search Console:
-
-- refresh calls `SearchConsoleSyncService.SyncConfiguredAsync(days)`
-- then reloads local data
-- if active tab is `indexing`, it also calls URL Inspection for active sitemap URLs
-
-Bing:
-
-- refresh calls `BingWebmasterSyncService.SyncConfiguredAsync()`
-- then reloads local data
-
-Performance:
-
-- refresh calls `PerformanceSyncService.SyncConfiguredAsync()`
-- then reloads local data
-
-YouTube:
-
-- refresh calls `YouTubeSyncService.SyncConfiguredAsync(days)`
-- then reloads local data
-
-Health:
-
-- supports uptime checks and sitemap refreshes through its own ViewModel paths
-
-Sources:
-
-- saves, tests, connects, discovers, adds, and deletes configuration
-- does not expose sync actions
 
 ## Tests
 
 `Numeris.Tests` is a console executable, not an xUnit/NUnit/MSTest project.
 
-`Numeris.Tests/Program.cs` defines a lightweight `Run(name, Action)` test harness and exits non-zero on failure.
+`Numeris.Tests/Program.cs` defines the custom test harness and exits non-zero on failure. The harness verifies architecture and regression rules including:
 
-The test harness checks many architecture and regression rules, including:
-
-- domain normalization through `SiteIdentity`
-- PageSpeed URL normalization through `PerformanceUrl`
+- domain and URL normalization
+- PageSpeed URL normalization
 - no old private-field CommunityToolkit `[ObservableProperty]` style in ViewModels
 - `SourcesViewModel` remains a coordinator
 - sync services do not write through `SqliteDatabase`
-- CrUX and PageSpeed have separate registry rows
+- CrUX and PageSpeed separate registry rows
 - explicit migration versioning
 - no startup mock data seeding
 - repository transaction support
 - bounded and redacted raw payload storage
+- sanitized API error handling
 - CrUX 404 handling
 - dated Bing page/raw stats
-- first-class Bing, Performance, and YouTube navigation
-- packaged filled navigation icons
-- report pages read through repositories
-- YouTube schema, sync, reporting, and Sources availability
+- active Bing, Performance, Analytics, Health, Sources, and Overview navigation
+- no active YouTube navigation, source card, asset, schema seed, or project asset reference
+- Google Analytics schema, sync, repository, source ViewModel, reporting page, OAuth scope, and icon packaging
 - centralized Google OAuth token handling
 - visual-system usage across report pages
 - Sources page provider grouping, hidden credential editors, guarded actions, status bars, and no sync buttons
-- SelectorBar usage for local report tabs
+- `SelectorBar` usage for local report tabs
+- `PeriodSelector` usage for report periods
 - automation names and loading guards on report toolbars
 - report refresh buttons call sync before reload where expected
-- responsive visual states
+- deterministic Overview Insights behavior and formatting
 
-Because this is a custom executable harness, reviewers should check the project file and actual command behavior rather than assuming a standard test framework.
+Because this is a custom executable harness, reviewers should check `Numeris.Tests/Program.cs` and the project file instead of assuming a standard .NET test framework.
 
 ## Lint and Security Scripts
 
-The repository contains PowerShell helper scripts:
+The repository contains helper scripts:
 
 - `tools/lint-check.ps1`
 - `tools/security-check.ps1`
 
-Project instructions say the user runs these through shell aliases/functions:
+Project instructions say the user runs these through PowerShell profile functions:
 
 - `lc`
 - `sc`
 
-The assistant should not run those scripts itself. The scripts write reports under `reports/`, which is ignored.
+The assistant should not run those scripts itself. The scripts write reports under ignored `reports/`.
 
-When there is no Gradle project, `lint-check.ps1` falls back to `.NET` or other available project checks. For this repository, it can use `dotnet format` against the solution.
-
-When OWASP dependency-check is unavailable, `security-check.ps1` falls back to supported dependency audit commands such as `dotnet list package --vulnerable --include-transitive`.
+For this repository, lint fallback can use `.NET` checks such as `dotnet format` against the solution. Security fallback can use supported dependency audit commands such as `dotnet list package --vulnerable --include-transitive` when OWASP dependency-check is unavailable.
 
 ## Security-Critical Invariants
 
 - New secrets must not be serialized into `connections.config`.
 - API keys, OAuth client secrets, and refresh tokens belong in `CredentialVault`.
 - API error messages shown to UI or stored as raw error items must be sanitized.
-- Raw provider payloads must pass through `RawJsonStoragePolicy` before SQLite storage.
+- Raw provider payloads must pass through `RawJsonStoragePolicy`.
 - Sync services must not directly mutate SQLite.
 - Multi-row logical repository writes should be transactional.
 - Legacy import must preserve existing Numeris secrets.
@@ -1053,20 +965,18 @@ When OWASP dependency-check is unavailable, `security-check.ps1` falls back to s
 - `mock` status must not survive as an active connection state except as an import/migration cleanup input.
 - Sources page must not become a sync launcher.
 - Report refresh operations must guard against concurrent refresh through `CanRefresh` and busy flags.
+- YouTube must not be reintroduced as a live integration without a new explicit design and migration plan.
 
 ## Current Non-Goals and Gaps Visible in Code
 
-- The current code has Play Store tables and a default `play_store` registry row, but no active Play Store API client, sync service, page, or ViewModel.
-- YouTube supports one authenticated channel, not multiple channel profiles.
+- Play Store tables and a default `play_store` registry row still exist, but there is no active Play Store API client, sync service, page, or ViewModel.
 - `Period.All` means 365 days, not full database history.
-- Dashboard refresh reloads local summary data only; it does not trigger all provider syncs.
-- Search Console sync currently targets the fixed `Domains.All` pair through explicit code, not arbitrary user-managed sites.
-- Sources page can save and test credentials, but report pages are where live sync is triggered.
-- The app stores some bounded raw JSON for diagnostics and reporting; raw storage is intentionally limited and redacted, not eliminated.
+- Dashboard/Overview refresh reloads local summary data only; it does not trigger all provider syncs.
+- Search Console sync still works through the current fixed site/domain logic rather than a fully user-managed arbitrary site list.
+- Sources page can save, connect, and test credentials, but report pages are where live sync is triggered.
+- The app stores bounded raw JSON for diagnostics and reporting; raw storage is limited and redacted, not eliminated.
 
 ## Code Review Checklist
-
-Use this checklist for high-signal review questions:
 
 - Does this change keep the UI -> ViewModel -> SyncService -> API client/Repository layering intact?
 - Does any new persistence path bypass a repository?
@@ -1083,13 +993,18 @@ Use this checklist for high-signal review questions:
 - Does any new UI hard-code design tokens already present in `Tokens.xaml`?
 - Does any navigation or report-local tab use the expected route or `SelectorBar` pattern?
 - Does any change reintroduce mock/demo analytics data at startup?
+- Does any change reintroduce active YouTube code or seeded registry rows without an explicit new architecture decision?
 
 ## External Documentation Checked
 
-These official Microsoft references were checked on 2026-05-15 to align terminology around WinUI 3 and Windows App SDK behavior:
+Official references checked on 2026-06-09:
 
-- WinUI 3 overview: https://learn.microsoft.com/windows/apps/winui/
-- NavigationView: https://learn.microsoft.com/windows/apps/develop/ui/controls/navigationview
-- System backdrops: https://learn.microsoft.com/windows/apps/windows-app-sdk/system-backdrop-controller
+- WinUI 3: https://learn.microsoft.com/windows/apps/winui/
+- Windows App SDK: https://learn.microsoft.com/windows/apps/windows-app-sdk/
 - Unpackaged WinUI apps: https://learn.microsoft.com/windows/apps/package-and-deploy/unpackage-winui-app
 - Windows App SDK runtime for unpackaged apps: https://learn.microsoft.com/windows/apps/windows-app-sdk/use-windows-app-sdk-run-time
+- System backdrops: https://learn.microsoft.com/windows/apps/develop/ui/system-backdrops
+- Google Analytics Data API `properties.runReport`: https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport
+- Cloudflare GraphQL Analytics API: https://developers.cloudflare.com/analytics/graphql-api/
+- Bing Webmaster API: https://learn.microsoft.com/bingwebmaster/
+- Bing Webmaster supported API protocols: https://learn.microsoft.com/bingwebmaster/api-protocols

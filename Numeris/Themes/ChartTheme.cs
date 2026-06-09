@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using LiveChartsCore;
+using LiveChartsCore.Drawing;
 using LiveChartsCore.Measure;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
@@ -8,6 +11,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using SkiaSharp;
 using Windows.Foundation;
 
 namespace Numeris.Themes;
@@ -18,7 +22,9 @@ public static class ChartTheme
     {
         return new CartesianChart
         {
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0)),
+            Background = GetBrush("TransparentLayerBrush"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
             LegendPosition = LegendPosition.Bottom,
             LegendTextPaint = new SolidColorPaint(ChartPalette.AxisText),
             LegendTextSize = 13,
@@ -29,6 +35,121 @@ public static class ChartTheme
         };
     }
 
+    public static ColumnSeries<T> CreateMatteColumnSeries<T>(string name, IReadOnlyList<T> values, int? highlightIndex = null)
+    {
+        var matteFill = CreateMatteBarFill();
+        var series = new ColumnSeries<T>
+        {
+            Name = name,
+            Values = values,
+            Fill = matteFill,
+        };
+
+        if (highlightIndex.HasValue)
+        {
+            var highlightFill = CreateHighlightBarFill();
+            series.PointMeasured += point =>
+            {
+                if (point.Visual is null)
+                {
+                    return;
+                }
+
+                point.Visual.Fill = point.Index == highlightIndex.Value ? highlightFill : matteFill;
+                point.Visual.Stroke = null;
+            };
+        }
+
+        return StyleColumnSeries(series);
+    }
+
+    public static ColumnSeries<T> CreateMutedColumnSeries<T>(string name, IReadOnlyList<T> values)
+    {
+        var series = new ColumnSeries<T>
+        {
+            Name = name,
+            Values = values,
+            Fill = CreateMutedBarFill(),
+        };
+
+        return StyleColumnSeries(series);
+    }
+
+    public static ColumnSeries<T> CreateHighlightColumnSeries<T>(string name, IReadOnlyList<T> values)
+    {
+        var series = new ColumnSeries<T>
+        {
+            Name = name,
+            Values = values,
+            Fill = CreateHighlightBarFill(),
+        };
+
+        return StyleColumnSeries(series);
+    }
+
+    public static LinearGradientPaint CreateMatteBarFill()
+    {
+        return CreateVerticalGradient(
+            ChartPalette.BarNeutralTop,
+            ChartPalette.BarNeutralMid,
+            ChartPalette.BarNeutralBottom);
+    }
+
+    public static LinearGradientPaint CreateHighlightBarFill()
+    {
+        return CreateVerticalGradient(
+            ChartPalette.BarHighlightTop,
+            ChartPalette.BarHighlightMid,
+            ChartPalette.BarHighlightBottom);
+    }
+
+    public static ColumnSeries<T> StyleColumnSeries<T>(ColumnSeries<T> series)
+    {
+        series.Stroke = null;
+        series.MaxBarWidth = GetDouble("ChartColumnMaxBarWidth", 42);
+        series.Padding = GetDouble("ChartColumnPadding", 8);
+
+        var cornerRadius = GetDouble("ChartColumnCornerRadius", 5);
+        series.Rx = cornerRadius;
+        series.Ry = cornerRadius;
+        series.DataPadding = new LvcPoint(
+            (float)GetDouble("ChartColumnDataPaddingX", 0.38),
+            (float)GetDouble("ChartColumnDataPaddingY", 0.12));
+
+        return series;
+    }
+
+    public static StackedColumnSeries<T> StyleStackedColumnSeries<T>(StackedColumnSeries<T> series)
+    {
+        series.Stroke = null;
+        series.MaxBarWidth = GetDouble("ChartColumnMaxBarWidth", 42);
+        series.Padding = GetDouble("ChartColumnPadding", 8);
+
+        var cornerRadius = GetDouble("ChartColumnCornerRadius", 5);
+        series.Rx = cornerRadius;
+        series.Ry = cornerRadius;
+        series.DataPadding = new LvcPoint(
+            (float)GetDouble("ChartColumnDataPaddingX", 0.38),
+            (float)GetDouble("ChartColumnDataPaddingY", 0.12));
+
+        return series;
+    }
+
+    public static CartesianChart StyleChartForBars(CartesianChart chart)
+    {
+        chart.Background = GetBrush("TransparentLayerBrush");
+        chart.LegendPosition = LegendPosition.Hidden;
+        chart.LegendTextPaint = new SolidColorPaint(ChartPalette.AxisText);
+        chart.LegendTextSize = 13;
+        chart.TooltipPosition = TooltipPosition.Top;
+        chart.TooltipTextPaint = new SolidColorPaint(ChartPalette.AxisText);
+        chart.TooltipBackgroundPaint = new SolidColorPaint(ChartPalette.TooltipBackground);
+        chart.TooltipTextSize = 13;
+        chart.AnimationsSpeed = TimeSpan.FromMilliseconds(GetDouble("ChartBarAnimationMilliseconds", 420));
+        chart.EasingFunction = EasingFunctions.CubicOut;
+        return chart;
+    }
+
     public static Grid CreateChartSurface(CartesianChart chart)
     {
         return new Grid
@@ -36,6 +157,19 @@ public static class ChartTheme
             Children =
             {
                 CreateMeshBackdrop(),
+                chart,
+            },
+        };
+    }
+
+    public static Grid CreateBarChartSurface(CartesianChart chart)
+    {
+        StyleChartForBars(chart);
+
+        return new Grid
+        {
+            Children =
+            {
                 chart,
             },
         };
@@ -59,6 +193,22 @@ public static class ChartTheme
             ? new SolidColorPaint(ChartPalette.GridLine) { StrokeThickness = 1 }
             : null;
         return axis;
+    }
+
+    private static LinearGradientPaint CreateMutedBarFill()
+    {
+        return CreateVerticalGradient(
+            ChartPalette.BarNeutralTop.WithAlpha(150),
+            ChartPalette.BarNeutralMid.WithAlpha(118),
+            ChartPalette.BarNeutralBottom.WithAlpha(94));
+    }
+
+    private static LinearGradientPaint CreateVerticalGradient(params SKColor[] colors)
+    {
+        return new LinearGradientPaint(
+            colors,
+            new SKPoint(0.5f, 0f),
+            new SKPoint(0.5f, 1f));
     }
 
     private static Viewbox CreateMeshBackdrop()
@@ -149,16 +299,17 @@ public static class ChartTheme
 
     private static Brush GetBrush(string key)
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush)
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Brush brush)
         {
             return brush;
         }
-        return new SolidColorBrush(Windows.UI.Color.FromArgb(48, 217, 160, 82));
+
+        throw new InvalidOperationException($"Missing brush resource '{key}'.");
     }
 
     private static double GetDouble(string key, double fallback)
     {
-        return Application.Current.Resources.TryGetValue(key, out var value) && value is double number
+        return Application.Current?.Resources.TryGetValue(key, out var value) == true && value is double number
             ? number
             : fallback;
     }

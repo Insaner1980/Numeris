@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Database;
 using Numeris.Services.Database.Repositories;
@@ -17,10 +18,8 @@ public sealed class LegacyDataMigrationService
 {
     private static readonly LegacyAppSource ImportSource = new()
     {
-        ConfigTag = "legacy-pulse-tauri",
-        AppDataFolder = "com.finnvek.pulse",
-        DatabaseFile = "pulse.db",
-        CredentialService = "Pulse",
+        ConfigTag = "legacy-numeris-tauri",
+        CredentialService = "Numeris",
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -345,10 +344,7 @@ public sealed class LegacyDataMigrationService
     }
 
     private static string GetSourceDatabasePath()
-    {
-        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(roaming, ImportSource.AppDataFolder, ImportSource.DatabaseFile);
-    }
+        => AppPaths.LegacyNumerisDatabasePath;
 
     private static string NormalizeCloudflareToken(string token)
     {
@@ -377,8 +373,6 @@ public sealed class LegacyDataMigrationService
     private sealed class LegacyAppSource
     {
         public string ConfigTag { get; init; } = "";
-        public string AppDataFolder { get; init; } = "";
-        public string DatabaseFile { get; init; } = "";
         public string CredentialService { get; init; } = "";
     }
 

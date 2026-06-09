@@ -164,6 +164,36 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        if (IsLoading || IsInspectingIndexing)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            await _sync.SyncConfiguredAsync(_shell.SelectedPeriod.Days());
+        }
+        catch (Exception ex)
+        {
+            _ = ApiErrorMessage.Sanitize(ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        await LoadAsync();
+
+        if (ActiveTab == "indexing")
+        {
+            await InspectIndexingAsync();
+        }
+    }
+
     private async Task ReloadQueriesAsync()
     {
         var range = _shell.SelectedPeriod.ToDateRange();
@@ -208,17 +238,18 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         var dates = rows.Select(r => r.Date).Distinct().OrderBy(d => d).ToArray();
         var labels = dates.Select(ShortDate).ToArray();
         var devices = rows.Select(r => r.Device).Distinct().OrderBy(d => d).ToArray();
-        var palette = new[] { ChartPalette.Accent, ChartPalette.Secondary, ChartPalette.Muted };
 
         var series = new List<ISeries>();
         for (var i = 0; i < devices.Length; i++)
         {
-            var dev = devices[i];
-            var dict = rows.Where(r => r.Device == dev)
+            var device = devices[i];
+            var dict = rows.Where(r => r.Device == device)
                             .GroupBy(r => r.Date)
                             .ToDictionary(g => g.Key, g => g.Sum(r => r.Clicks));
             var values = dates.Select(d => dict.TryGetValue(d, out var v) ? v : 0L).ToArray();
-            series.Add(CreateLine(dev, values, palette[i % palette.Length], fill: false));
+            series.Add(i == 0
+                ? ChartTheme.CreateMatteColumnSeries(device, values)
+                : ChartTheme.CreateMutedColumnSeries(device, values));
         }
         DevicesSeries = series.ToArray();
         DevicesXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };

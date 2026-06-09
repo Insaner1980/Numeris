@@ -954,7 +954,8 @@ Run("WinUI visual system uses Mica shell and centralized surface tokens", () =>
     Contains(mainWindow, "Background=\"Transparent\"");
     Contains(mainWindow, "PaneDisplayMode=\"Left\"");
     Contains(mainWindow, "IsPaneToggleButtonVisible=\"False\"");
-    Contains(tokens, "AppBackgroundColor\">#070808");
+    Contains(tokens, "DarkVoidColor\">#151419");
+    Contains(tokens, "AppBackgroundColor\">#151419");
     Contains(tokens, "NavigationLayerBrush");
     Contains(tokens, "NavigationViewDefaultPaneBackground");
     Contains(tokens, "ContentLayerBrush");
@@ -967,7 +968,7 @@ Run("WinUI visual system uses Mica shell and centralized surface tokens", () =>
     Contains(kpiCard, "Style=\"{StaticResource KpiCardSurfaceStyle}\"");
 });
 
-Run("Shell uses a global branded bitmap backdrop", () =>
+Run("Shell uses one matte background color without a bitmap backdrop", () =>
 {
     var root = FindRepositoryRoot();
     var mainWindow = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml"));
@@ -975,42 +976,18 @@ Run("Shell uses a global branded bitmap backdrop", () =>
     var dashboard = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "DashboardPage.xaml"));
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
     var project = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
-    var backdropAssetPath = Path.Combine(root, "Numeris", "Assets", "AppBackdrop.webp");
-    var oldBackdropAssetPath = Path.Combine(root, "Numeris", "Assets", "AppBackdrop.png");
 
-    if (!File.Exists(backdropAssetPath))
-    {
-        throw new InvalidOperationException("AppBackdrop.webp is missing");
-    }
-    if (File.Exists(oldBackdropAssetPath))
-    {
-        throw new InvalidOperationException("Old AppBackdrop.png asset should not remain next to the WebP backdrop");
-    }
-
-    var header = File.ReadAllBytes(backdropAssetPath).Take(12).ToArray();
-    if (header.Length < 12 ||
-        !header.Take(4).SequenceEqual("RIFF"u8.ToArray()) ||
-        !header.Skip(8).Take(4).SequenceEqual("WEBP"u8.ToArray()))
-    {
-        throw new InvalidOperationException("AppBackdrop.webp must be a WebP image");
-    }
-
-    Contains(project, "Assets\\AppBackdrop.webp");
+    Contains(mainWindow, "<Grid Background=\"{StaticResource AppBackgroundBrush}\"");
+    Contains(tokens, "AppBackgroundColor\">#151419");
+    NotContains(project, "Assets\\AppBackdrop.webp");
     NotContains(project, "Assets\\AppBackdrop.png");
-    Contains(mainWindow, "x:Name=\"AppBackdropImage\"");
-    NotContains(mainWindow, "Source=\"ms-appx:///Assets/AppBackdrop.png\"");
-    NotContains(mainWindow, "Source=\"ms-appx:///Assets/AppBackdrop.webp\"");
-    Contains(mainWindow, "Loaded=\"AppBackdropImage_Loaded\"");
-    Contains(mainWindow, "Stretch=\"UniformToFill\"");
-    Contains(mainWindow, "Opacity=\"{StaticResource AppBackdropOpacity}\"");
-    Contains(mainWindowCode, "ms-appx:///Assets/AppBackdrop.webp");
-    Contains(mainWindowCode, "BitmapDecoder.WebpDecoderId");
-    Contains(mainWindowCode, "SoftwareBitmapSource");
-    Contains(mainWindowCode, "BitmapPixelFormat.Bgra8");
-    Contains(mainWindowCode, "BitmapAlphaMode.Premultiplied");
-    Contains(mainWindow, "x:Name=\"AppBackdropScrim\"");
-    Contains(tokens, "AppBackdropOpacity");
-    Contains(tokens, "AppBackdropScrimBrush");
+    NotContains(mainWindow, "AppBackdropImage");
+    NotContains(mainWindow, "AppBackdropScrim");
+    NotContains(mainWindow, "AppBackdropImage_Loaded");
+    NotContains(mainWindowCode, "AppBackdrop");
+    NotContains(mainWindowCode, "BitmapDecoder");
+    NotContains(mainWindowCode, "SoftwareBitmapSource");
+    NotContains(tokens, "AppBackdrop");
     NotContains(project, "Assets\\OverviewHeroBackdrop.png");
     NotContains(tokens, "OverviewHeroBackdrop");
     NotContains(tokens, "OverviewHeroFade");
@@ -1018,29 +995,21 @@ Run("Shell uses a global branded bitmap backdrop", () =>
     NotContains(dashboard, "HeroBackdropImage");
 });
 
-Run("App backdrop loader uses local output path before ms-appx fallback", () =>
+Run("Unpackaged shell no longer loads decorative backdrop assets", () =>
 {
     var root = FindRepositoryRoot();
     var project = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
     var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
 
     Contains(project, "<WindowsPackageType>None</WindowsPackageType>");
-    Contains(mainWindowCode, "AppContext.BaseDirectory");
-    Contains(mainWindowCode, "Path.Combine(\"Assets\", \"AppBackdrop.webp\")");
-    Contains(mainWindowCode, "StorageFile.GetFileFromPathAsync");
-    Contains(mainWindowCode, "StorageFile.GetFileFromApplicationUriAsync");
-    if (mainWindowCode.IndexOf("StorageFile.GetFileFromPathAsync", StringComparison.Ordinal)
-        > mainWindowCode.IndexOf("StorageFile.GetFileFromApplicationUriAsync", StringComparison.Ordinal))
-    {
-        throw new InvalidOperationException("Unpackaged backdrop loading should try the local output path before ms-appx fallback");
-    }
-
-    NotContains(mainWindowCode, "var file = await StorageFile.GetFileFromApplicationUriAsync(new Uri(AppBackdropUri));");
-    Contains(mainWindowCode, "catch (Exception ex)");
-    Contains(mainWindowCode, "AppBackdropImage.Visibility = Visibility.Collapsed");
+    NotContains(project, "Assets\\AppBackdrop.webp");
+    NotContains(mainWindowCode, "AppContext.BaseDirectory");
+    NotContains(mainWindowCode, "StorageFile.GetFileFromPathAsync");
+    NotContains(mainWindowCode, "StorageFile.GetFileFromApplicationUriAsync");
+    NotContains(mainWindowCode, "catch (Exception ex)");
 });
 
-Run("Global backdrop is subdued behind readable Fluent surfaces", () =>
+Run("Global backdrop uses a bold dark void shell behind readable surfaces", () =>
 {
     var root = FindRepositoryRoot();
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
@@ -1048,18 +1017,19 @@ Run("Global backdrop is subdued behind readable Fluent surfaces", () =>
     var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
     var chartPalette = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "ChartPalette.cs"));
 
-    Contains(tokens, "AppBackdropOpacity\">0.94");
-    Contains(tokens, "AppBackdropScrimColor\">#66000000");
+    Contains(tokens, "AppBackgroundColor\">#151419");
     Contains(tokens, "ContentLayerColor\">#00000000");
     Contains(tokens, "NavigationLayerColor\">#00000000");
-    Contains(tokens, "CardSurfaceColor\">#A0101216");
-    Contains(tokens, "ControlSurfaceColor\">#8F0D0F13");
-    Contains(tokens, "ChartPanelColor\">#9A090B0E");
-    Contains(tokens, "NumerisCardBorderColor\">#38FFFFFF");
-    Contains(tokens, "ChartGridLineColor\">#30FFFFFF");
+    Contains(tokens, "CardSurfaceColor\">#F017181D");
+    Contains(tokens, "ControlSurfaceColor\">#F0222526");
+    Contains(tokens, "ChartPanelColor\">#E8151419");
+    Contains(tokens, "NumerisCardBorderColor\">#5CBFBFBF");
+    Contains(tokens, "ChartGridLineColor\">#40BFBFBF");
     Contains(tokens, "ChartMutedColor");
     Contains(chartPalette, "ChartMutedColor");
     Contains(tokens, "NavigationViewContentBackground");
+    Contains(tokens, "NavigationViewDefaultPaneBackground\" ResourceKey=\"NavigationLayerBrush");
+    Contains(tokens, "NavigationViewExpandedPaneBackground\" ResourceKey=\"NavigationLayerBrush");
     Contains(tokens, "NavigationViewContentGridBorderBrush");
     Contains(tokens, "NavigationViewContentGridBorderThickness\">0");
     Contains(mainWindowCode, "ConfigureTitleBarColors");
@@ -1072,7 +1042,22 @@ Run("Matte chart and delta resources are centralized in Tokens.xaml", () =>
     var root = FindRepositoryRoot();
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
 
-    Contains(tokens, "NumerisAccentColor\">#4F73FF");
+    Contains(tokens, "NumerisAccentColor\">#F56E0F");
+    Contains(tokens, "NumerisAccentHoverColor\">#FF7E1F");
+    Contains(tokens, "NumerisAccentPressedColor\">#D95A0A");
+    NotContains(tokens, "NumerisAccentColor\">#4F73FF");
+    Contains(tokens, "ChartSecondaryColor\">#E09145");
+    Contains(tokens, "ChartMutedColor\">#BFBFBF");
+    Contains(tokens, "ChartBarNeutralTopColor\">#FF878787");
+    Contains(tokens, "ChartBarNeutralMidColor\">#FF353A3E");
+    Contains(tokens, "ChartBarNeutralBottomColor\">#FF17181D");
+    Contains(tokens, "ChartBarHighlightTopColor\">#FFFF7A1A");
+    Contains(tokens, "ChartBarHighlightMidColor\">#FFF56E0F");
+    Contains(tokens, "ChartBarHighlightBottomColor\">#FFA93A08");
+    Contains(tokens, "SuccessColor\">#67D391");
+    Contains(tokens, "WarningColor\">#E09145");
+    Contains(tokens, "DangerColor\">#FF6B76");
+    Contains(tokens, "InfoColor\">#83B8C0");
     Contains(tokens, "ChartBarNeutralTopColor");
     Contains(tokens, "ChartBarNeutralMidColor");
     Contains(tokens, "ChartBarNeutralBottomColor");
@@ -1087,6 +1072,39 @@ Run("Matte chart and delta resources are centralized in Tokens.xaml", () =>
     Contains(tokens, "PositiveDeltaBrush");
     Contains(tokens, "NegativeDeltaBrush");
     Contains(tokens, "NeutralDeltaBrush");
+});
+
+Run("Dark void liquid lava palette exposes text accent and navigation selection resources", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+    var agents = File.ReadAllText(Path.Combine(root, "AGENTS.md"));
+
+    Contains(tokens, "DarkVoidColor\">#151419");
+    Contains(tokens, "GraphiteColor\">#222526");
+    Contains(tokens, "DeepGraphiteColor\">#17181D");
+    Contains(tokens, "LiquidLavaColor\">#F56E0F");
+    Contains(tokens, "WarmCopperColor\">#E09145");
+    Contains(tokens, "WarmPlatinumColor\">#FCD9B8");
+    Contains(tokens, "NumerisTextPrimaryColor\">#FBFBFB");
+    Contains(tokens, "NumerisTextSecondaryColor\">#DAD4CC");
+    Contains(tokens, "NumerisTextTertiaryColor\">#BFBFBF");
+    Contains(tokens, "NumerisTextDisabledColor\">#878787");
+    Contains(tokens, "NumerisAccentForegroundColor\">#151419");
+    Contains(tokens, "NumerisAccentForegroundBrush");
+    Contains(tokens, "NumerisAccentHoverBrush");
+    Contains(tokens, "NumerisAccentPressedBrush");
+    Contains(tokens, "PeriodSelectorSelectedBrush");
+    Contains(tokens, "PeriodSelectorSelectedForegroundBrush");
+    Contains(tokens, "NavigationViewItemBackgroundSelected\" ResourceKey=\"NavigationViewItemBackgroundSelectedBrush");
+    Contains(tokens, "NavigationViewItemBackgroundSelectedPointerOver\" ResourceKey=\"NavigationViewItemBackgroundSelectedPointerOverBrush");
+    Contains(tokens, "NavigationViewItemBackgroundPointerOver\" ResourceKey=\"NavigationViewItemBackgroundPointerOverBrush");
+    Contains(tokens, "NavigationViewSelectionIndicatorForeground\" ResourceKey=\"NumerisAccentBrush");
+    Contains(tokens, "NavigationViewItemBackgroundSelectedColor\">#FF222526");
+    Contains(tokens, "NavigationViewItemBackgroundPointerOverColor\">#00000000");
+    Contains(agents, "Dark Void / Graphite / Liquid Lava");
+    Contains(agents, "AppBackgroundColor #151419");
+    Contains(agents, "NavigationLayerColor #00000000");
 });
 
 Run("main window uses a custom transparent title bar integrated into the shell", () =>
@@ -1355,6 +1373,9 @@ Run("Overview controls use user-facing period labels and polished health states"
     Contains(periodSelectorCode, "SelectionChanged");
     Contains(periodSelectorCode, "PeriodOptions.All");
     Contains(periodSelectorCode, "option.Value.ShortLabel()");
+    Contains(periodSelectorCode, "PeriodSelectorSelectedBrush");
+    Contains(periodSelectorCode, "PeriodSelectorSelectedForegroundBrush");
+    Contains(periodSelectorCode, "PeriodSelectorSelectedBorderBrush");
     Contains(dashboardCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
     Contains(cloudflareCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
     Contains(searchCode, "PeriodSelector.SelectedPeriod = Shell.SelectedPeriod");
@@ -1752,6 +1773,60 @@ Run("Health page uses shared visual surfaces and chart palette", () =>
     NotContains(healthViewModel, "SKColor.Parse(\"#C97B6A\")");
 });
 
+Run("matte action button styling is centralized for all regular buttons", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+    var xamlFiles = Directory.EnumerateFiles(Path.Combine(root, "Numeris"), "*.xaml", SearchOption.AllDirectories)
+        .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            && !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    var allXaml = string.Join(Environment.NewLine, xamlFiles.Select(File.ReadAllText));
+
+    Contains(tokens, "PrimaryActionButtonStyle");
+    Contains(tokens, "TargetType=\"Button\" BasedOn=\"{StaticResource PrimaryActionButtonStyle}\"");
+    Contains(tokens, "MatteButtonSurfaceColor");
+    Contains(tokens, "#FF222526");
+    Contains(tokens, "AccentActionButtonStyle");
+    Contains(tokens, "NumerisAccentForegroundBrush");
+    Contains(tokens, "<ControlTemplate TargetType=\"Button\">");
+    Contains(tokens, "<VisualState x:Name=\"PointerOver\">");
+    Contains(tokens, "<VisualState x:Name=\"Pressed\">");
+    Contains(tokens, "<Setter Property=\"BorderThickness\" Value=\"0\" />");
+    Contains(tokens, "BorderThickness=\"0\"");
+    NotContains(tokens, "MatteButtonDepthBrush");
+    NotContains(tokens, "MatteButtonInnerShadeBrush");
+    NotContains(tokens, "DepthEdge");
+    NotContains(tokens, "PressTransform");
+    NotContains(tokens, "Target=\"PressTransform.Y\"");
+    NotContains(tokens, "TopHighlight");
+    NotContains(tokens, "MatteButtonTopHighlightBrush");
+    NotContains(tokens, "MatteButtonBorderBrush");
+    NotContains(tokens, "MatteRaisedPreviewButtonStyle");
+    NotContains(allXaml, "MatteRaisedPreviewButtonStyle");
+    NotContains(allXaml, "AccentButtonStyle");
+    Contains(allXaml, "Style=\"{StaticResource PrimaryActionButtonStyle}\"");
+    Contains(allXaml, "Style=\"{StaticResource SecondaryActionButtonStyle}\"");
+    Contains(allXaml, "Style=\"{StaticResource DangerActionButtonStyle}\"");
+});
+
+Run("Sources page uses accent actions only for committed source changes", () =>
+{
+    var root = FindRepositoryRoot();
+    var sourcesPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml"));
+
+    Equal("11", CountOccurrences(sourcesPage, "Style=\"{StaticResource AccentActionButtonStyle}\"").ToString());
+    NotContains(sourcesPage, "Style=\"{StaticResource PrimaryActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Connect Google account\" Click=\"ConnectScButton_Click\" IsEnabled=\"{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Connect Google Analytics\" Click=\"ConnectGoogleAnalyticsButton_Click\" IsEnabled=\"{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Save\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Add\" VerticalAlignment=\"Bottom\" IsEnabled=\"{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}\" Click=\"AddWaSiteButton_Click\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Add\" VerticalAlignment=\"Bottom\" IsEnabled=\"{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}\" Click=\"AddPerformanceUrlButton_Click\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Add\" VerticalAlignment=\"Bottom\" IsEnabled=\"{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}\" Click=\"AddBingSiteButton_Click\" Style=\"{StaticResource AccentActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Test\" Click=\"TestCfButton_Click\" IsEnabled=\"{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}\" Style=\"{StaticResource SecondaryActionButtonStyle}\"");
+    Contains(sourcesPage, "Content=\"Delete\" Click=\"DeleteBingButton_Click\" IsEnabled=\"{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}\" Style=\"{StaticResource DangerActionButtonStyle}\"");
+});
+
 Run("Report volume charts use matte bars without forcing continuous metrics", () =>
 {
     var root = FindRepositoryRoot();
@@ -1957,6 +2032,43 @@ Run("Report toolbars expose automation names and loading guards", () =>
     }
 });
 
+Run("Report toolbar controls use matte surfaces and complete refresh icons", () =>
+{
+    var root = FindRepositoryRoot();
+    var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
+    var pages = new[]
+    {
+        "DashboardPage.xaml",
+        "CloudflarePage.xaml",
+        "SearchConsolePage.xaml",
+        "BingPage.xaml",
+        "PerformancePage.xaml",
+        "GoogleAnalyticsPage.xaml",
+        "HealthPage.xaml",
+    };
+
+    Contains(tokens, "DomainComboBoxStyle");
+    Contains(tokens, "ToolbarRefreshIconStyle");
+    Contains(tokens, "ToolbarRefreshContentTemplate");
+    Contains(tokens, "ToolbarRefreshButtonStyle");
+    Contains(tokens, "ComboBoxDropDownGlyphForeground");
+    Contains(tokens, "ComboBoxBackground");
+    Contains(tokens, "MatteButtonSurfaceBrush");
+    Contains(tokens, "<TranslateTransform X=\"-2\" Y=\"-2\" />");
+    NotContains(tokens, "<Geometry x:Key=\"RefreshIconData\"");
+    NotContains(tokens, "<Setter Property=\"Data\"");
+
+    foreach (var page in pages)
+    {
+        var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
+        Contains(xaml, "x:Name=\"DomainCombo\"");
+        Contains(xaml, "Style=\"{StaticResource DomainComboBoxStyle}\"");
+        Contains(xaml, "Style=\"{StaticResource ToolbarRefreshButtonStyle}\"");
+        NotContains(xaml, "<PathIcon");
+        NotContains(xaml, "FontIcon Glyph=\"&#xE72C;\"");
+    }
+});
+
 Run("Report refresh buttons run service sync before reloading local data", () =>
 {
     var root = FindRepositoryRoot();
@@ -2037,7 +2149,10 @@ Run("Report layouts use responsive headers, hero spacing, and narrow KPI grids",
         var xaml = File.ReadAllText(Path.Combine(root, "Numeris", "Views", page));
         Contains(xaml, "x:Name=\"HeaderGrid\"");
         Contains(xaml, "x:Name=\"HeaderControls\"");
-        Contains(xaml, "Target=\"HeaderControls.Orientation\" Value=\"Vertical\"");
+        Contains(xaml, "x:Name=\"ToolbarActionRow\"");
+        Contains(xaml, "x:Name=\"ToolbarPeriodColumn\"");
+        Contains(xaml, "Target=\"ToolbarActionRow.HorizontalAlignment\" Value=\"Stretch\"");
+        Contains(xaml, "Target=\"ToolbarPeriodColumn.Width\" Value=\"*\"");
         Contains(xaml, "Target=\"HeaderControls.Orientation\" Value=\"Horizontal\"");
         Contains(xaml, "Target=\"HeaderControls.(Grid.Row)\" Value=\"1\"");
         Contains(xaml, "Target=\"HeaderControls.(Grid.Row)\" Value=\"0\"");

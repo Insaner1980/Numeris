@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
+using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
@@ -47,6 +50,32 @@ public sealed class CloudflareSyncService
             DaysSynced = traffic.Daily.Count,
             RecordsUpserted = records,
         };
+    }
+
+    public async Task<IReadOnlyList<SyncResult>> SyncConfiguredAsync(string selectedDomain, int days)
+    {
+        var normalizedDomain = string.Equals(selectedDomain, "all", StringComparison.OrdinalIgnoreCase)
+            ? "all"
+            : SiteIdentity.NormalizeDomain(selectedDomain);
+        var connections = await _connectionsRepo.ListCloudflareConnectionsAsync().ConfigureAwait(false);
+        var targets = normalizedDomain == "all"
+            ? connections
+            : connections
+                .Where(connection => string.Equals(connection.Domain, normalizedDomain, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+        var results = new List<SyncResult>();
+        foreach (var target in targets)
+        {
+            if (!target.HasToken || string.IsNullOrWhiteSpace(target.ZoneId))
+            {
+                continue;
+            }
+
+            results.Add(await SyncDomainAsync(target.Domain, target.ZoneId, days).ConfigureAwait(false));
+        }
+
+        return results;
     }
 
     public async Task<ConnectionTestResult> TestDomainAsync(string domain, string zoneId)

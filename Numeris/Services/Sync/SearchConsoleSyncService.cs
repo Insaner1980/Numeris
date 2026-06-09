@@ -82,6 +82,17 @@ public sealed class SearchConsoleSyncService
         return new SyncResult { Domain = "search_console", DaysSynced = days, RecordsUpserted = records };
     }
 
+    public async Task<SyncResult?> SyncConfiguredAsync(int days)
+    {
+        var connection = await _connectionsRepo.GetSearchConsoleAsync().ConfigureAwait(false);
+        if (connection is null || string.IsNullOrWhiteSpace(connection.ClientId) || !connection.HasRefreshToken)
+        {
+            return null;
+        }
+
+        return await SyncAsync(connection.ClientId, days).ConfigureAwait(false);
+    }
+
     public async Task<IndexingInspectionResult> InspectSitemapUrlsAsync(
         string domain,
         IProgress<IndexingInspectionResult>? progress = null)

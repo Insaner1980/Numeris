@@ -27,7 +27,6 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     public bool CanRun => !IsBusy;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
-    [ObservableProperty] public partial int SyncDays { get; set; } = 30;
 
     public WebAnalyticsSourceViewModel(
         ConnectionsRepository connectionsRepo,
@@ -80,7 +79,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
                 "configured");
             await LoadAsync();
             NewToken = "";
-            StatusMessage = "Saved. Add a site tag mapping, then press Sync. Discover sites is optional.";
+            StatusMessage = "Saved. Add a site tag mapping; Discover sites is optional. Use Cloudflare page refresh to fetch live data.";
         }
         catch (Exception ex)
         {
@@ -177,40 +176,6 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public async Task SyncAsync()
-    {
-        if (Connection is null || !Connection.HasToken)
-        {
-            StatusMessage = "Save credentials first";
-            return;
-        }
-        IsBusy = true;
-        StatusMessage = "Syncing...";
-        try
-        {
-            if (Sites.Count == 0 && HasPendingSite())
-            {
-                var sites = await _sync.AddManualSiteAsync(NewDomain, NewSiteTag);
-                ReplaceSites(sites);
-                NewDomain = "";
-                NewSiteTag = "";
-            }
-
-            var result = await _sync.SyncAccountAsync(Connection.AccountId, SyncDays);
-            StatusMessage = $"Synced {result.Domain}, {result.RecordsUpserted} rows";
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
     public async Task DeleteAsync()
     {
         if (Connection is null) return;
@@ -233,7 +198,4 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
         Sites.Clear();
         foreach (var site in sites) Sites.Add(site);
     }
-
-    private bool HasPendingSite()
-        => !string.IsNullOrWhiteSpace(NewDomain) && !string.IsNullOrWhiteSpace(NewSiteTag);
 }

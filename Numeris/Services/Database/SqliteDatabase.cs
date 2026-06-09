@@ -98,6 +98,7 @@ public sealed class SqliteDatabase : IDisposable
             cmd.CommandText = """
                 DELETE FROM cloudflare_traffic;
                 DELETE FROM cloudflare_countries;
+                DELETE FROM cloudflare_pages;
                 DELETE FROM cloudflare_status_codes;
                 DELETE FROM search_console;
                 DELETE FROM search_devices;
@@ -120,14 +121,11 @@ public sealed class SqliteDatabase : IDisposable
                 DELETE FROM bing_query_stats;
                 DELETE FROM bing_page_stats;
                 DELETE FROM bing_raw_items;
-                DELETE FROM youtube_channels;
-                DELETE FROM youtube_videos;
-                DELETE FROM youtube_daily;
-                DELETE FROM youtube_video_stats;
-                DELETE FROM youtube_countries;
-                DELETE FROM youtube_traffic_sources;
-                DELETE FROM youtube_devices;
-                DELETE FROM youtube_retention_points;
+                DELETE FROM google_analytics_daily;
+                DELETE FROM google_analytics_pages;
+                DELETE FROM google_analytics_sources;
+                DELETE FROM google_analytics_events;
+                DELETE FROM google_analytics_devices;
                 UPDATE connections SET status = 'disconnected', last_sync = NULL;
                 """;
             cmd.ExecuteNonQuery();

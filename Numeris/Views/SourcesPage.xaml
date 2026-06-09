@@ -23,7 +23,7 @@
 
             <StackPanel Spacing="6">
                 <TextBlock Text="Sources" Style="{StaticResource PageTitleTextBlockStyle}" />
-                <TextBlock Text="Manage live integrations, credentials, site mappings, and sync actions."
+                <TextBlock Text="Manage live integrations, credentials, and site mappings."
                            Foreground="{StaticResource NumerisTextSecondaryBrush}" />
             </StackPanel>
 
@@ -79,7 +79,6 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock Text="{x:Bind Domain}" Style="{StaticResource DataTableCellTextBlockStyle}" FontWeight="SemiBold" />
@@ -89,8 +88,7 @@
                                                 </TextBlock>
                                             </StackPanel>
                                             <Button Grid.Column="1" Content="Test" Click="TestSavedCfButton_Click" Tag="{x:Bind}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                            <Button Grid.Column="2" Content="Sync" Click="SyncButton_Click" Tag="{x:Bind}" Style="{StaticResource PrimaryActionButtonStyle}" />
-                                            <Button Grid.Column="3" Content="Delete" Click="DeleteButton_Click" Tag="{x:Bind}" Style="{StaticResource DangerActionButtonStyle}" />
+                                            <Button Grid.Column="2" Content="Delete" Click="DeleteButton_Click" Tag="{x:Bind}" Style="{StaticResource DangerActionButtonStyle}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
@@ -123,7 +121,7 @@
                                                      Password="{x:Bind ViewModel.Cloudflare.NewToken, Mode=TwoWay}" />
                                         <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
                                             <Button Content="Test" Click="TestCfButton_Click" IsEnabled="{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                            <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}" Click="SaveCfButton_Click" />
+                                            <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}" Click="SaveCfButton_Click" />
                                             <ProgressRing IsActive="{x:Bind ViewModel.Cloudflare.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                                         </StackPanel>
                                     </Grid>
@@ -148,7 +146,6 @@
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Test" Click="TestWaButton_Click" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
                                 <Button Content="Discover sites" Click="DiscoverWaButton_Click" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                <Button Content="Sync" Click="SyncWaButton_Click" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
                                 <Button Content="Delete" Click="DeleteWaButton_Click" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
                                 <ProgressRing IsActive="{x:Bind ViewModel.WebAnalytics.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                             </StackPanel>
@@ -177,7 +174,7 @@
                                                      PlaceholderText="Token for GraphQL sync"
                                                      Password="{x:Bind ViewModel.WebAnalytics.NewToken, Mode=TwoWay}" />
                                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
-                                            <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Click="SaveWaButton_Click" />
+                                            <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Click="SaveWaButton_Click" />
                                             <ProgressRing IsActive="{x:Bind ViewModel.WebAnalytics.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                                         </StackPanel>
                                     </Grid>
@@ -194,7 +191,7 @@
                                          Text="{x:Bind ViewModel.WebAnalytics.NewDomain, Mode=TwoWay}" />
                                 <TextBox Grid.Column="1" Header="Site tag" PlaceholderText="Cloudflare Web Analytics site_tag"
                                          Text="{x:Bind ViewModel.WebAnalytics.NewSiteTag, Mode=TwoWay}" />
-                                <Button Grid.Column="2" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Click="AddWaSiteButton_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+                                <Button Grid.Column="2" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}" Click="AddWaSiteButton_Click" Style="{StaticResource AccentActionButtonStyle}" />
                             </Grid>
 
                             <ItemsControl ItemsSource="{x:Bind ViewModel.WebAnalytics.Sites, Mode=OneWay}">
@@ -238,17 +235,17 @@
                                        Source="ms-appx:///Assets/Icons/google-search-filled.png" />
                             <StackPanel Grid.Column="1" Spacing="2">
                                 <TextBlock Text="Google" FontWeight="SemiBold" Foreground="{StaticResource NumerisTextPrimaryBrush}" />
-                                <TextBlock Text="Search Console, Core Web Vitals, and PageSpeed" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="13" />
+                                <TextBlock Text="Search Console, Analytics, and Performance" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="13" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Spacing="2" HorizontalAlignment="Right">
                                 <TextBlock Text="{x:Bind ViewModel.SearchConsole.StatusMessage, Mode=OneWay, FallbackValue='Configure'}"
                                            Foreground="{StaticResource NumerisTextSecondaryBrush}"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind ViewModel.Performance.StatusMessage, Mode=OneWay, FallbackValue='Configure'}"
+                                <TextBlock Text="{x:Bind ViewModel.GoogleAnalytics.StatusMessage, Mode=OneWay, FallbackValue='Configure'}"
                                            Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                            FontSize="12"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{x:Bind ViewModel.YouTube.StatusMessage, Mode=OneWay, FallbackValue='Configure'}"
+                                <TextBlock Text="{x:Bind ViewModel.Performance.StatusMessage, Mode=OneWay, FallbackValue='Configure'}"
                                            Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                            FontSize="12"
                                            TextTrimming="CharacterEllipsis" />
@@ -270,9 +267,8 @@
                                      AutomationProperties.Name="Google Search Console status" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Connect Google account" Click="ConnectScButton_Click" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
+                                <Button Content="Connect Google account" Click="ConnectScButton_Click" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Style="{StaticResource AccentActionButtonStyle}" />
                                 <Button Content="Test" Click="TestScButton_Click" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                <Button Content="Sync" Click="SyncScButton_Click" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
                                 <Button Content="Delete" Click="DeleteScButton_Click" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
                                 <ProgressRing IsActive="{x:Bind ViewModel.SearchConsole.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                             </StackPanel>
@@ -300,8 +296,67 @@
                                                      Header="Client secret"
                                                      Password="{x:Bind ViewModel.SearchConsole.NewClientSecret, Mode=TwoWay}" />
                                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
-                                            <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Click="SaveScButton_Click" />
+                                            <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}" Click="SaveScButton_Click" />
                                             <ProgressRing IsActive="{x:Bind ViewModel.SearchConsole.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+
+                        <Rectangle Height="1" Fill="{StaticResource NumerisCardBorderBrush}" />
+
+                        <StackPanel Spacing="16">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Google Analytics" Style="{StaticResource SectionTitleTextBlockStyle}" />
+                                <TextBlock Text="GA4 traffic, pages, acquisition, and events" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="13" />
+                            </StackPanel>
+                            <InfoBar IsOpen="{x:Bind ViewModel.GoogleAnalytics.HasStatusMessage, Mode=OneWay}"
+                                     Message="{x:Bind ViewModel.GoogleAnalytics.StatusMessage, Mode=OneWay}"
+                                     Severity="Informational"
+                                     IsClosable="False"
+                                     Style="{StaticResource StatusInfoBarStyle}"
+                                     AutomationProperties.Name="Google Analytics status" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Connect Google Analytics" Click="ConnectGoogleAnalyticsButton_Click" IsEnabled="{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource AccentActionButtonStyle}" />
+                                <Button Content="Test" Click="TestGoogleAnalyticsButton_Click" IsEnabled="{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
+                                <Button Content="Delete" Click="DeleteGoogleAnalyticsButton_Click" IsEnabled="{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
+                                <ProgressRing IsActive="{x:Bind ViewModel.GoogleAnalytics.IsBusy, Mode=OneWay}" Width="20" Height="20" />
+                            </StackPanel>
+
+                            <Expander Header="Edit Google Analytics credentials" IsExpanded="False">
+                                <StackPanel Spacing="12" Padding="0,12,0,0">
+                                    <TextBlock Text="OAuth credentials saved in CredentialVault after Save; client secret values are not shown again."
+                                               Foreground="{StaticResource NumerisTextTertiaryBrush}"
+                                               FontSize="13" />
+                                    <Grid ColumnSpacing="12" RowSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBox Grid.Row="0" Grid.Column="0" Header="Domain"
+                                                 PlaceholderText="example.com"
+                                                 Text="{x:Bind ViewModel.GoogleAnalytics.NewDomain, Mode=TwoWay}" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" Header="GA4 property ID"
+                                                 PlaceholderText="123456789"
+                                                 Text="{x:Bind ViewModel.GoogleAnalytics.NewPropertyId, Mode=TwoWay}" />
+                                        <TextBox Grid.Row="1" Grid.Column="0" Header="Client ID"
+                                                 PlaceholderText="xxxxx.apps.googleusercontent.com"
+                                                 Text="{x:Bind ViewModel.GoogleAnalytics.NewClientId, Mode=TwoWay}" />
+                                        <PasswordBox x:Name="GoogleAnalyticsClientSecretBox"
+                                                     Grid.Row="1"
+                                                     Grid.Column="1"
+                                                     Header="Client secret"
+                                                     Password="{x:Bind ViewModel.GoogleAnalytics.NewClientSecret, Mode=TwoWay}" />
+                                        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}" Click="SaveGoogleAnalyticsButton_Click" />
+                                            <ProgressRing IsActive="{x:Bind ViewModel.GoogleAnalytics.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
@@ -325,7 +380,6 @@
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Test CrUX" Click="TestCruxButton_Click" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
                                 <Button Content="Test PageSpeed" Click="TestPageSpeedButton_Click" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                <Button Content="Sync" Click="SyncPerformanceButton_Click" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
                                 <Button Content="Delete" Click="DeletePerformanceButton_Click" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
                                 <ProgressRing IsActive="{x:Bind ViewModel.Performance.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                             </StackPanel>
@@ -355,7 +409,7 @@
                                                      Header="PageSpeed API key"
                                                      Password="{x:Bind ViewModel.Performance.NewPageSpeedApiKey, Mode=TwoWay}" />
                                         <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
-                                            <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Click="SavePerformanceButton_Click" />
+                                            <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Click="SavePerformanceButton_Click" />
                                             <ProgressRing IsActive="{x:Bind ViewModel.Performance.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                                         </StackPanel>
                                     </Grid>
@@ -369,7 +423,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBox Grid.Column="0" Header="URL" PlaceholderText="https://example.com/"
                                          Text="{x:Bind ViewModel.Performance.NewUrl, Mode=TwoWay}" />
-                                <Button Grid.Column="1" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Click="AddPerformanceUrlButton_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+                                <Button Grid.Column="1" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}" Click="AddPerformanceUrlButton_Click" Style="{StaticResource AccentActionButtonStyle}" />
                             </Grid>
 
                             <ItemsControl ItemsSource="{x:Bind ViewModel.Performance.Urls, Mode=OneWay}">
@@ -395,61 +449,6 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <Rectangle Height="1" Fill="{StaticResource NumerisCardBorderBrush}" />
-
-                        <StackPanel Spacing="16">
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="YouTube Analytics" Style="{StaticResource SectionTitleTextBlockStyle}" />
-                                <TextBlock Text="Channel trends, videos, traffic sources, devices, and retention" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="13" />
-                                <TextBlock Text="Uses the existing Google OAuth client when Search Console is configured."
-                                           Foreground="{StaticResource NumerisTextTertiaryBrush}"
-                                           FontSize="13" />
-                            </StackPanel>
-                            <InfoBar IsOpen="{x:Bind ViewModel.YouTube.HasStatusMessage, Mode=OneWay}"
-                                     Message="{x:Bind ViewModel.YouTube.StatusMessage, Mode=OneWay}"
-                                     Severity="Informational"
-                                     IsClosable="False"
-                                     Style="{StaticResource StatusInfoBarStyle}"
-                                     AutomationProperties.Name="YouTube status" />
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Connect YouTube" Click="ConnectYouTubeButton_Click" IsEnabled="{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
-                                <Button Content="Test" Click="TestYouTubeButton_Click" IsEnabled="{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                                <Button Content="Sync" Click="SyncYouTubeButton_Click" IsEnabled="{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
-                                <Button Content="Delete" Click="DeleteYouTubeButton_Click" IsEnabled="{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
-                                <ProgressRing IsActive="{x:Bind ViewModel.YouTube.IsBusy, Mode=OneWay}" Width="20" Height="20" />
-                            </StackPanel>
-
-                            <Expander Header="Advanced: override YouTube OAuth credentials" IsExpanded="False">
-                                <StackPanel Spacing="12" Padding="0,12,0,0">
-                                    <TextBlock Text="OAuth credentials saved in CredentialVault after Save; client secret values are not shown again."
-                                               Foreground="{StaticResource NumerisTextTertiaryBrush}"
-                                               FontSize="13" />
-                                    <Grid ColumnSpacing="12" RowSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <TextBox Grid.Row="0" Grid.Column="0" Header="Client ID"
-                                                 PlaceholderText="xxxxx.apps.googleusercontent.com"
-                                                 Text="{x:Bind ViewModel.YouTube.NewClientId, Mode=TwoWay}" />
-                                        <PasswordBox x:Name="YouTubeClientSecretBox"
-                                                     Grid.Row="0"
-                                                     Grid.Column="1"
-                                                     Header="Client secret"
-                                                     Password="{x:Bind ViewModel.YouTube.NewClientSecret, Mode=TwoWay}" />
-                                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8">
-                                            <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.YouTube.CanRun, Mode=OneWay}" Click="SaveYouTubeButton_Click" />
-                                            <ProgressRing IsActive="{x:Bind ViewModel.YouTube.IsBusy, Mode=OneWay}" Width="20" Height="20" />
-                                        </StackPanel>
-                                    </Grid>
-                                </StackPanel>
-                            </Expander>
-                        </StackPanel>
                     </StackPanel>
                 </Expander>
             </Border>
@@ -492,7 +491,6 @@
 
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Test" Click="TestBingButton_Click" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Style="{StaticResource SecondaryActionButtonStyle}" />
-                            <Button Content="Sync" Click="SyncBingButton_Click" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Style="{StaticResource PrimaryActionButtonStyle}" />
                             <Button Content="Delete" Click="DeleteBingButton_Click" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Style="{StaticResource DangerActionButtonStyle}" />
                             <ProgressRing IsActive="{x:Bind ViewModel.Bing.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                         </StackPanel>
@@ -512,7 +510,7 @@
                                                  Header="Bing Webmaster API key"
                                                  Password="{x:Bind ViewModel.Bing.NewApiKey, Mode=TwoWay}" />
                                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-                                        <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Click="SaveBingButton_Click" />
+                                        <Button Content="Save" Style="{StaticResource AccentActionButtonStyle}" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Click="SaveBingButton_Click" />
                                         <ProgressRing IsActive="{x:Bind ViewModel.Bing.IsBusy, Mode=OneWay}" Width="20" Height="20" />
                                     </StackPanel>
                                 </Grid>
@@ -526,7 +524,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0" Header="Site URL" PlaceholderText="https://example.com/"
                                      Text="{x:Bind ViewModel.Bing.NewSiteUrl, Mode=TwoWay}" />
-                            <Button Grid.Column="1" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Click="AddBingSiteButton_Click" Style="{StaticResource PrimaryActionButtonStyle}" />
+                            <Button Grid.Column="1" Content="Add" VerticalAlignment="Bottom" IsEnabled="{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}" Click="AddBingSiteButton_Click" Style="{StaticResource AccentActionButtonStyle}" />
                         </Grid>
 
                         <ItemsControl ItemsSource="{x:Bind ViewModel.Bing.Sites, Mode=OneWay}">
