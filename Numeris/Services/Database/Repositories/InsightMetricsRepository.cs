@@ -10,6 +10,9 @@ namespace Numeris.Services.Database.Repositories;
 
 public sealed class InsightMetricsRepository
 {
+    private const string DomainColumn = "domain";
+    private const string SiteUrlColumn = "site_url";
+
     private readonly SqliteDatabase _db;
 
     public InsightMetricsRepository(SqliteDatabase db) => _db = db;
@@ -19,27 +22,23 @@ public sealed class InsightMetricsRepository
         return _db.ReadAsync(connection =>
         {
             var range = DateWindow(days);
-            var cloudflareFilter = DomainFilter(domainOrAll, "domain");
+            var cloudflareFilter = DomainFilter(domainOrAll, DomainColumn);
             var searchFilter = SearchConsoleFilter(domainOrAll);
-            var ga4Filter = DomainFilter(domainOrAll, "domain");
             var pageSpeedFilter = PageSpeedFilter(domainOrAll);
             var bingFilter = BingFilter(domainOrAll);
-            var sitemapFilter = DomainFilter(domainOrAll, "domain");
+            var sitemapFilter = DomainFilter(domainOrAll, DomainColumn);
 
             return new InsightMetrics(
-                CloudflareVisitors: SumWindow(connection, "cloudflare_traffic", "unique_visitors", "date", range, cloudflareFilter),
-                Ga4Users: SumWindow(connection, "google_analytics_daily", "active_users", "date", range, ga4Filter),
+                CloudflareVisitors: SumWindow(connection, "cloudflare_traffic", "unique_visitors", "date", DomainColumn, range, cloudflareFilter),
                 GoogleImpressions: SearchConsoleWindow(connection, "impressions", range, searchFilter),
                 GoogleClicks: SearchConsoleWindow(connection, "clicks", range, searchFilter),
                 GoogleMobileClicks: SearchDeviceWindow(connection, "clicks", range, searchFilter),
                 GoogleMobileImpressions: SearchDeviceWindow(connection, "impressions", range, searchFilter),
                 PageSpeedMobileScore: PageSpeedMobileScoreWindow(connection, range, pageSpeedFilter),
-                BingImpressions: SumWindow(connection, "bing_rank_traffic", "impressions", "date", range, bingFilter),
-                BingClicks: SumWindow(connection, "bing_rank_traffic", "clicks", "date", range, bingFilter),
-                Ga4EngagementRate: Ga4EngagementRateWindow(connection, range, ga4Filter),
-                Ga4KeyEvents: SumWindow(connection, "google_analytics_events", "key_events", "period_start", range, ga4Filter),
+                BingImpressions: SumWindow(connection, "bing_rank_traffic", "impressions", "date", SiteUrlColumn, range, bingFilter),
+                BingClicks: SumWindow(connection, "bing_rank_traffic", "clicks", "date", SiteUrlColumn, range, bingFilter),
                 CloudflareCacheHitRatio: CacheHitRatioWindow(connection, range, cloudflareFilter),
-                CloudflareThreats: SumWindow(connection, "cloudflare_traffic", "threats", "date", range, cloudflareFilter),
+                CloudflareThreats: SumWindow(connection, "cloudflare_traffic", "threats", "date", DomainColumn, range, cloudflareFilter),
                 HttpStatus: StatusCodeSummary(connection, range, cloudflareFilter),
                 Indexing: IndexingSummary(connection, sitemapFilter),
                 Freshness: SourceFreshness(connection),
@@ -54,35 +53,39 @@ public sealed class InsightMetricsRepository
         string table,
         string column,
         string dateColumn,
+        string identityColumn,
         DateWindowRange range,
         Filter filter)
     {
         var sql = $"""
             SELECT
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT CASE WHEN COUNT(*) = COUNT({column}) THEN SUM({column}) END
                  FROM {table}
                  WHERE {dateColumn} >= @start AND {dateColumn} <= @end
                    {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT CASE WHEN COUNT(*) = COUNT({column}) THEN SUM({column}) END
                  FROM {table}
                  WHERE {dateColumn} >= @prevStart AND {dateColumn} < @start
                    {filter.WhereClause}) AS Previous
             """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
+        return QueryWindow(connection, sql, filter.WithRange(range)) with
+        {
+            HasComparison = HasPairedHistory(connection, table, identityColumn, dateColumn, $"{column} IS NOT NULL", range, filter),
+        };
     }
 
     private static MetricWindow SearchConsoleWindow(SqliteConnection connection, string column, DateWindowRange range, Filter filter)
     {
         var sql = $"""
             SELECT
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT SUM({column})
                  FROM search_console
                  WHERE (kind = 'daily' OR NOT EXISTS (
                     SELECT 1 FROM search_console WHERE kind = 'daily' {filter.WhereClause}
                  ))
                    AND date >= @start AND date <= @end
                    {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT SUM({column})
                  FROM search_console
                  WHERE (kind = 'daily' OR NOT EXISTS (
                     SELECT 1 FROM search_console WHERE kind = 'daily' {filter.WhereClause}
@@ -90,75 +93,73 @@ public sealed class InsightMetricsRepository
                    AND date >= @prevStart AND date < @start
                    {filter.WhereClause}) AS Previous
             """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
+        return QueryWindow(connection, sql, filter.WithRange(range)) with
+        {
+            HasComparison = HasPairedHistory(connection, "search_console", SiteUrlColumn, "date",
+                "(kind = 'daily' OR NOT EXISTS (SELECT 1 FROM search_console WHERE kind = 'daily' " + filter.WhereClause + "))", range, filter),
+        };
     }
 
     private static MetricWindow SearchDeviceWindow(SqliteConnection connection, string column, DateWindowRange range, Filter filter)
     {
         var sql = $"""
             SELECT
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT SUM({column})
                  FROM search_devices
                  WHERE LOWER(device) = 'mobile'
                    AND date >= @start AND date <= @end
                    {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(SUM({column}), 0)
+                (SELECT SUM({column})
                  FROM search_devices
                  WHERE LOWER(device) = 'mobile'
                    AND date >= @prevStart AND date < @start
                    {filter.WhereClause}) AS Previous
             """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
+        return QueryWindow(connection, sql, filter.WithRange(range)) with
+        {
+            HasComparison = HasPairedHistory(connection, "search_devices", SiteUrlColumn, "date", "LOWER(device) = 'mobile'", range, filter),
+        };
     }
 
     private static MetricWindow PageSpeedMobileScoreWindow(SqliteConnection connection, DateWindowRange range, Filter filter)
     {
         var sql = $"""
             SELECT
-                (SELECT COALESCE(AVG(performance_score), 0)
+                (SELECT AVG(performance_score)
                  FROM pagespeed_runs
                  WHERE strategy = 'MOBILE'
                    AND analysis_utc >= @start AND analysis_utc < @endExclusive
                    {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(AVG(performance_score), 0)
+                (SELECT AVG(performance_score)
                  FROM pagespeed_runs
                  WHERE strategy = 'MOBILE'
                    AND analysis_utc >= @prevStart AND analysis_utc < @start
                    {filter.WhereClause}) AS Previous
             """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
-    }
-
-    private static MetricWindow Ga4EngagementRateWindow(SqliteConnection connection, DateWindowRange range, Filter filter)
-    {
-        var sql = $"""
-            SELECT
-                (SELECT COALESCE(CAST(SUM(engaged_sessions) AS REAL) / NULLIF(SUM(sessions), 0), 0)
-                 FROM google_analytics_daily
-                 WHERE date >= @start AND date <= @end
-                   {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(CAST(SUM(engaged_sessions) AS REAL) / NULLIF(SUM(sessions), 0), 0)
-                 FROM google_analytics_daily
-                 WHERE date >= @prevStart AND date < @start
-                   {filter.WhereClause}) AS Previous
-            """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
+        return QueryWindow(connection, sql, filter.WithRange(range)) with
+        {
+            HasComparison = HasPairedHistory(connection, "pagespeed_runs", "url", "analysis_utc",
+                "strategy = 'MOBILE' AND performance_score IS NOT NULL", range, filter),
+        };
     }
 
     private static MetricWindow CacheHitRatioWindow(SqliteConnection connection, DateWindowRange range, Filter filter)
     {
         var sql = $"""
             SELECT
-                (SELECT COALESCE(CAST(SUM(cached_requests) AS REAL) / NULLIF(SUM(requests), 0), 0)
+                (SELECT CAST(SUM(cached_requests) AS REAL) / NULLIF(SUM(requests), 0)
                  FROM cloudflare_traffic
                  WHERE date >= @start AND date <= @end
                    {filter.WhereClause}) AS Current,
-                (SELECT COALESCE(CAST(SUM(cached_requests) AS REAL) / NULLIF(SUM(requests), 0), 0)
+                (SELECT CAST(SUM(cached_requests) AS REAL) / NULLIF(SUM(requests), 0)
                  FROM cloudflare_traffic
                  WHERE date >= @prevStart AND date < @start
                    {filter.WhereClause}) AS Previous
             """;
-        return QueryWindow(connection, sql, filter.WithRange(range));
+        return QueryWindow(connection, sql, filter.WithRange(range)) with
+        {
+            HasComparison = HasPairedHistory(connection, "cloudflare_traffic", DomainColumn, "date", "requests > 0", range, filter),
+        };
     }
 
     private static StatusCodeSummary StatusCodeSummary(SqliteConnection connection, DateWindowRange range, Filter filter)
@@ -216,7 +217,7 @@ public sealed class InsightMetricsRepository
                 COALESCE(SUM(CASE WHEN last_sync IS NULL OR last_sync = '' THEN 1 ELSE 0 END), 0) AS Missing,
                 COALESCE(SUM(CASE WHEN last_sync IS NOT NULL AND last_sync != '' AND last_sync < @cutoff THEN 1 ELSE 0 END), 0) AS Stale
             FROM connections
-            WHERE id IN ('cf', 'wa', 'sc', 'ga4', 'crux', 'pagespeed', 'bing')
+            WHERE (id IN ('cf', 'wa', 'sc', 'crux', 'pagespeed', 'bing') OR source = 'cloudflare')
               AND status != 'disconnected'
             """,
             new { cutoff });
@@ -246,13 +247,13 @@ public sealed class InsightMetricsRepository
                 GROUP BY page
             )
             SELECT prev.page AS Page,
-                   COALESCE(curr.clicks, 0) AS CurrentClicks,
+                   curr.clicks AS CurrentClicks,
                    prev.clicks AS PreviousClicks
             FROM prev
-            LEFT JOIN curr ON curr.page = prev.page
+            JOIN curr ON curr.page = prev.page
             WHERE prev.clicks >= 5
-              AND COALESCE(curr.clicks, 0) < prev.clicks
-            ORDER BY COALESCE(curr.clicks, 0) - prev.clicks ASC
+              AND curr.clicks < prev.clicks
+            ORDER BY curr.clicks - prev.clicks ASC
             LIMIT 1
             """,
             filter.WithRange(range));
@@ -286,6 +287,7 @@ public sealed class InsightMetricsRepository
             FROM curr
             LEFT JOIN prev ON prev.query = curr.query
             WHERE prev.query IS NULL
+              AND EXISTS (SELECT 1 FROM prev)
               AND curr.clicks > 0
             """,
             filter.WithRange(range));
@@ -293,14 +295,32 @@ public sealed class InsightMetricsRepository
 
     private static MetricWindow QueryWindow(SqliteConnection connection, string sql, DynamicParameters parameters)
     {
-        var row = connection.QuerySingle<(double Current, double Previous)>(sql, parameters);
-        return new MetricWindow(row.Current, row.Previous);
+        var row = connection.QuerySingle<(double? Current, double? Previous)>(sql, parameters);
+        return new MetricWindow(row.Current ?? 0, row.Previous ?? 0, row.Current.HasValue, row.Previous.HasValue);
+    }
+
+    private static bool HasPairedHistory(SqliteConnection connection, string table, string identityColumn,
+        string dateColumn, string predicate, DateWindowRange range, Filter filter)
+    {
+        return connection.ExecuteScalar<bool>($"""
+            SELECT COUNT(*) = 0
+            FROM (
+                SELECT {identityColumn}
+                FROM {table}
+                WHERE {dateColumn} >= @prevStart AND {dateColumn} < @endExclusive
+                  AND {predicate}
+                  {filter.WhereClause}
+                GROUP BY {identityColumn}
+                HAVING MAX(CASE WHEN {dateColumn} >= @start THEN 1 ELSE 0 END) = 0
+                    OR MAX(CASE WHEN {dateColumn} < @start THEN 1 ELSE 0 END) = 0
+            )
+            """, filter.WithRange(range));
     }
 
     private static DateWindowRange DateWindow(int days)
     {
         var endDate = DateOnly.FromDateTime(DateTime.Today);
-        var startDate = endDate.AddDays(-days);
+        var startDate = endDate.AddDays(-(days - 1));
         var previousStart = startDate.AddDays(-days);
         var endExclusive = endDate.AddDays(1);
         string s(DateOnly d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -315,7 +335,7 @@ public sealed class InsightMetricsRepository
         }
 
         var parameters = new DynamicParameters();
-        parameters.Add("domain", SiteIdentity.NormalizeDomain(domainOrAll));
+        parameters.Add(DomainColumn, SiteIdentity.NormalizeDomain(domainOrAll));
         return new Filter($"AND {column} = @domain", parameters);
     }
 
@@ -340,7 +360,7 @@ public sealed class InsightMetricsRepository
 
         var parameters = new DynamicParameters();
         parameters.Add("siteUrl", SiteIdentity.NormalizeHomePageUrl(domainOrAll));
-        return new Filter("AND site_url = @siteUrl", parameters);
+        return new Filter("AND site_url LIKE @siteUrl || '%'", parameters);
     }
 
     private static Filter PageSpeedFilter(string domainOrAll)

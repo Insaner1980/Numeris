@@ -232,12 +232,12 @@ public sealed class CloudflareRepository
             if (!string.IsNullOrWhiteSpace(traffic.BreakdownDate))
             {
                 connection.Execute(
-                    "DELETE FROM cloudflare_countries WHERE domain = @domain AND date = @date",
-                    new { domain, date = traffic.BreakdownDate },
+                    "DELETE FROM cloudflare_countries WHERE domain = @domain AND date >= @start AND date <= @end",
+                    new { domain, start = traffic.BreakdownStartDate, end = traffic.BreakdownDate },
                     transaction);
                 connection.Execute(
-                    "DELETE FROM cloudflare_pages WHERE domain = @domain AND date = @date",
-                    new { domain, date = traffic.BreakdownDate },
+                    "DELETE FROM cloudflare_pages WHERE domain = @domain AND date >= @start AND date <= @end",
+                    new { domain, start = traffic.BreakdownStartDate, end = traffic.BreakdownDate },
                     transaction);
             }
 

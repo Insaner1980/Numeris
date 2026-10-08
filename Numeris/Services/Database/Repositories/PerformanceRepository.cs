@@ -18,14 +18,13 @@ public sealed class PerformanceRepository
     public Task<List<PerformanceUrlInfo>> ListUrlsAsync(bool enabledOnly = false)
         => _db.ReadAsync(connection =>
         {
-            var where = enabledOnly ? "WHERE enabled = 1" : "";
             return connection.Query<PerformanceUrlInfo>(
-                $"""
+                """
                 SELECT id AS Id, url AS Url, origin AS Origin, source AS Source, enabled AS Enabled, created_at AS CreatedAt
                 FROM performance_urls
-                {where}
+                WHERE @enabledOnly = 0 OR enabled = 1
                 ORDER BY origin, url
-                """).AsList();
+                """, new { enabledOnly }).AsList();
         });
 
     public Task<List<CruxMetricSummary>> GetLatestCruxCoreVitalsAsync(string domainOrAll)
@@ -69,22 +68,7 @@ public sealed class PerformanceRepository
         => _db.ReadAsync(connection =>
         {
             var filter = CruxFilter(domainOrAll);
-            var sql = IsAll(domainOrAll)
-                ? $"""
-                  SELECT collection_end AS CollectionEnd,
-                         metric AS Metric,
-                         form_factor AS FormFactor,
-                         MAX(p75) AS P75
-                  FROM crux_metric_points
-                  WHERE metric = @metric
-                    AND form_factor = @formFactor
-                    AND collection_end >= @start
-                    AND collection_end <= @end
-                    {filter.WhereClause}
-                  GROUP BY collection_end, metric, form_factor
-                  ORDER BY collection_end
-                  """
-                : $"""
+            var sql = $"""
                   SELECT collection_end AS CollectionEnd,
                          metric AS Metric,
                          form_factor AS FormFactor,

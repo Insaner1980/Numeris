@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -19,10 +20,16 @@ public sealed class HealthRepository
     {
         return _db.WriteAsync(connection =>
         {
-            var checkedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+            var checkedTime = DateTime.Now;
+            var latest = connection.ExecuteScalar<string>("SELECT MAX(checked_at) FROM uptime_checks WHERE domain = @Domain", new { probe.Domain });
+            if (DateTime.TryParse(latest, CultureInfo.InvariantCulture, DateTimeStyles.None, out var previous) && checkedTime <= previous)
+            {
+                checkedTime = previous.AddTicks(1);
+            }
+            var checkedAt = checkedTime.ToString("yyyy-MM-ddTHH:mm:ss.fffffff", CultureInfo.InvariantCulture);
             connection.Execute(
                 """
-                INSERT OR REPLACE INTO uptime_checks
+                INSERT INTO uptime_checks
                 (domain, checked_at, status, status_code, response_ms, error_message)
                 VALUES (@Domain, @CheckedAt, @Status, @StatusCode, @ResponseMs, @ErrorMessage)
                 """,
@@ -33,7 +40,7 @@ public sealed class HealthRepository
                     probe.Status,
                     probe.StatusCode,
                     probe.ResponseMs,
-                    probe.ErrorMessage,
+                    ErrorMessage = ApiErrorMessage.Sanitize(probe.ErrorMessage),
                 });
         });
     }
@@ -91,7 +98,7 @@ public sealed class HealthRepository
                   SELECT domain AS Domain,
                          substr(checked_at, 1, 10) AS Date,
                          AVG(CASE WHEN status = 'up' THEN 100.0 ELSE 0.0 END) AS UptimePct,
-                         AVG(COALESCE(response_ms, 0)) AS AvgResponseMs,
+                         AVG(response_ms) AS AvgResponseMs,
                          SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) AS Incidents
                   FROM uptime_checks
                   WHERE substr(checked_at, 1, 10) BETWEEN @start AND @end
@@ -101,7 +108,7 @@ public sealed class HealthRepository
                   SELECT domain AS Domain,
                          substr(checked_at, 1, 10) AS Date,
                          AVG(CASE WHEN status = 'up' THEN 100.0 ELSE 0.0 END) AS UptimePct,
-                         AVG(COALESCE(response_ms, 0)) AS AvgResponseMs,
+                         AVG(response_ms) AS AvgResponseMs,
                          SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) AS Incidents
                   FROM uptime_checks
                   WHERE domain = @domain AND substr(checked_at, 1, 10) BETWEEN @start AND @end
@@ -111,14 +118,15 @@ public sealed class HealthRepository
         });
     }
 
-    public Task<SitemapRefreshResult> RefreshSitemapAsync(string domain, IReadOnlyList<string> liveUrls)
+    public async Task<SitemapRefreshResult> RefreshSitemapAsync(string domain, IReadOnlyList<string> liveUrls)
     {
-        return _db.WriteAsync(connection =>
+        SitemapRefreshResult result = null!;
+        await _db.WriteTransactionAsync((connection, transaction) =>
         {
             var nowStr = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
             var existingActive = new HashSet<string>(connection.Query<string>(
                 "SELECT url FROM sitemap_urls WHERE domain = @domain AND removed_at IS NULL",
-                new { domain }));
+                new { domain }, transaction));
 
             var liveSet = new HashSet<string>(liveUrls);
             long newCount = 0;
@@ -128,7 +136,7 @@ public sealed class HealthRepository
                 {
                     connection.Execute(
                         "UPDATE sitemap_urls SET last_seen_at = @nowStr, removed_at = NULL WHERE domain = @domain AND url = @url",
-                        new { nowStr, domain, url });
+                        new { nowStr, domain, url }, transaction);
                 }
                 else
                 {
@@ -137,30 +145,28 @@ public sealed class HealthRepository
                         INSERT OR REPLACE INTO sitemap_urls (domain, url, discovered_at, last_seen_at, removed_at)
                         VALUES (@domain, @url, @nowStr, @nowStr, NULL)
                         """,
-                        new { domain, url, nowStr });
+                        new { domain, url, nowStr }, transaction);
                     newCount++;
                 }
             }
 
             long removedCount = 0;
-            foreach (var oldUrl in existingActive)
+            foreach (var oldUrl in existingActive.Where(oldUrl => !liveSet.Contains(oldUrl)))
             {
-                if (!liveSet.Contains(oldUrl))
-                {
-                    connection.Execute(
-                        "UPDATE sitemap_urls SET removed_at = @nowStr WHERE domain = @domain AND url = @url",
-                        new { nowStr, domain, url = oldUrl });
-                    removedCount++;
-                }
+                connection.Execute(
+                    "UPDATE sitemap_urls SET removed_at = @nowStr WHERE domain = @domain AND url = @url",
+                    new { nowStr, domain, url = oldUrl }, transaction);
+                removedCount++;
             }
 
-            return new SitemapRefreshResult
+            result = new SitemapRefreshResult
             {
                 Domain = domain,
                 TotalUrls = liveSet.Count,
                 NewUrls = newCount,
                 RemovedUrls = removedCount,
             };
-        });
+        }).ConfigureAwait(false);
+        return result;
     }
 }

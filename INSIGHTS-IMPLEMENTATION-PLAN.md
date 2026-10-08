@@ -21,7 +21,6 @@ Jos keskustelun konteksti katoaa, seuraavan ajon tulee lukea:
 
 Tarkistettu ennen toteutuskoodia 2026-06-08:
 
-- Google Analytics Data API `properties.runReport`: virallinen dokumentaatio vahvistaa, etta `runReport` palauttaa GA-tapahtumadataa tauluna pyydetyille dimensioille/metriikoille, endpoint on `POST https://analyticsdata.googleapis.com/v1beta/{property=properties/*}:runReport`, ja `analytics.readonly` on tuettu OAuth-scope. Linkki: https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport
 - PageSpeed Insights API v5 `pagespeedapi.runpagespeed`: virallinen dokumentaatio vahvistaa, etta API analysoi annetun URLin `GET https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed` -endpointilla, `strategy` voi olla `mobile` tai `desktop`, ja Lighthouse performance score on vastauksen `lighthouseResult.categories`-rakenteessa. Linkki: https://developers.google.com/speed/docs/insights/rest/v5/pagespeedapi/runpagespeed
 - Bing Webmaster API: Microsoft Learn vahvistaa nykyiset metodit `GetRankAndTrafficStats`, `GetQueryStats`, `GetPageStats` ja `GetCrawlIssues`. Taman toteutuksen Insights-polku ei lisaa uusia API-kutsuja, vaan lukee aiemmin tallennettuja SQLite-riveja. Linkit: https://learn.microsoft.com/en-us/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi ja https://learn.microsoft.com/en-us/dotnet/api/microsoft.bing.webmaster.api.interfaces.iwebmasterapi.getrankandtrafficstats?view=bing-webmaster-dotnet
 

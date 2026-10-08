@@ -31,6 +31,7 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _ = Services.GetRequiredService<SqliteDatabase>();
+        Services.GetRequiredService<CredentialVault>().RemoveRetiredCredentials();
         var migration = Services.GetRequiredService<LegacyDataMigrationService>();
         migration.ImportAllAsync().GetAwaiter().GetResult();
 
@@ -38,7 +39,7 @@ public partial class App : Application
         _window.Activate();
     }
 
-    private static IServiceProvider ConfigureServices()
+    private static ServiceProvider ConfigureServices()
     {
         var services = new ServiceCollection();
 
@@ -55,9 +56,7 @@ public partial class App : Application
         services.AddSingleton<ConnectionsRepository>();
         services.AddSingleton<PerformanceRepository>();
         services.AddSingleton<BingRepository>();
-        services.AddSingleton<GoogleAnalyticsRepository>();
         services.AddSingleton<InsightMetricsRepository>();
-        services.AddSingleton<InsightEngine>();
 
         services.AddSingleton<UptimeClient>();
         services.AddSingleton<SitemapClient>();
@@ -67,7 +66,6 @@ public partial class App : Application
         services.AddSingleton<CruxClient>();
         services.AddSingleton<PageSpeedClient>();
         services.AddSingleton<BingWebmasterClient>();
-        services.AddSingleton<GoogleAnalyticsClient>();
         services.AddSingleton<GoogleOAuthClient>();
         services.AddSingleton<GoogleOAuthFlow>();
         services.AddSingleton<CredentialVault>();
@@ -76,7 +74,6 @@ public partial class App : Application
         services.AddSingleton<SearchConsoleSyncService>();
         services.AddSingleton<PerformanceSyncService>();
         services.AddSingleton<BingWebmasterSyncService>();
-        services.AddSingleton<GoogleAnalyticsSyncService>();
 
         services.AddSingleton<ShellViewModel>();
         services.AddTransient<DashboardViewModel>();
@@ -84,13 +81,11 @@ public partial class App : Application
         services.AddTransient<SearchConsoleViewModel>();
         services.AddTransient<BingViewModel>();
         services.AddTransient<PerformanceViewModel>();
-        services.AddTransient<GoogleAnalyticsViewModel>();
         services.AddTransient<HealthViewModel>();
         services.AddTransient<CloudflareSourceViewModel>();
         services.AddTransient<WebAnalyticsSourceViewModel>();
         services.AddTransient<SearchConsoleSourceViewModel>();
         services.AddTransient<PerformanceSourceViewModel>();
-        services.AddTransient<GoogleAnalyticsSourceViewModel>();
         services.AddTransient<BingSourceViewModel>();
         services.AddTransient<SourcesViewModel>();
 
@@ -101,7 +96,6 @@ public partial class App : Application
         services.AddTransient<SearchConsolePage>();
         services.AddTransient<BingPage>();
         services.AddTransient<PerformancePage>();
-        services.AddTransient<GoogleAnalyticsPage>();
         services.AddTransient<HealthPage>();
         services.AddTransient<SourcesPage>();
 

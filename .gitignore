@@ -43,6 +43,7 @@ GeneratedInternalTypeHelper.cs
 _ReSharper*/
 
 # SonarQube
+.sonarqube/
 .sonar/
 .sonarlint/
 

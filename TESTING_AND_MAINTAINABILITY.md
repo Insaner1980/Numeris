@@ -1,5 +1,25 @@
 # Testing and Maintainability Notes
 
+## SonarQube Cloud
+
+Run `sonar` in PowerShell from this repository or a subdirectory. The existing
+profile resolves `tools/sonar.ps1`, loads the saved Sonar CLI credential and
+allows the upload to `Insaner1980_Numeris` in organization `insaner1980`.
+Use `sonar -PlanOnly` to preview the steps without building or uploading.
+
+The script restores the pinned local .NET tools, restores and builds
+`Numeris.Tests` and its referenced app in Debug/x64, runs the default console harness under
+`dotnet-coverage`, validates its XML report, and uploads the analysis.
+It does not enable the opt-in live credential or Sources persistence tests.
+Build or test failure stops the upload. Logs are saved to `reports/sonar.txt`
+and coverage to `reports/sonar-coverage.xml`; generated output is Git-ignored.
+The console harness does not produce a VSTest/TRX test execution report.
+
+When invoking the script directly, set `SONAR_TOKEN` in the process environment
+and run `./tools/sonar.ps1 -AllowExternalUpload`. Normal `sonar` use needs no
+extra switches. Successful upload does not itself prove a passing Quality Gate;
+check the linked SonarQube Cloud results after server processing.
+
 ## Unit-Testable Integration Code
 
 The best candidates for unit tests are the integration parts that can run without live API keys:

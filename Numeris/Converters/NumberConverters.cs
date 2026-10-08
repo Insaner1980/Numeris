@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Data;
 
 namespace Numeris.Converters;
 
-public sealed class PercentConverter : IValueConverter
+public sealed partial class PercentConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -18,7 +18,7 @@ public sealed class PercentConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotImplementedException();
 }
 
-public sealed class OneDecimalConverter : IValueConverter
+public sealed partial class OneDecimalConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -36,7 +36,7 @@ public sealed class OneDecimalConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotImplementedException();
 }
 
-public sealed class IsoDateTimeDisplayConverter : IValueConverter
+public sealed partial class IsoDateTimeDisplayConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -57,7 +57,7 @@ public sealed class IsoDateTimeDisplayConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotImplementedException();
 }
 
-public sealed class StatusTextConverter : IValueConverter
+public sealed partial class StatusTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -73,7 +73,7 @@ public sealed class StatusTextConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotImplementedException();
 }
 
-public sealed class EmptyFallbackConverter : IValueConverter
+public sealed partial class EmptyFallbackConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
@@ -84,7 +84,7 @@ public sealed class EmptyFallbackConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotImplementedException();
 }
 
-public sealed class MillisecondsConverter : IValueConverter
+public sealed partial class MillisecondsConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {

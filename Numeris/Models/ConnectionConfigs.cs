@@ -55,26 +55,6 @@ public sealed class SearchConsoleConnectionInfo
     public string? LastSync { get; set; }
 }
 
-public sealed class GoogleAnalyticsConnectionConfig
-{
-    public string Domain { get; set; } = "";
-    public string PropertyId { get; set; } = "";
-    public string ClientId { get; set; } = "";
-    public string? LastValidatedAt { get; set; }
-}
-
-public sealed class GoogleAnalyticsConnectionInfo
-{
-    public string Id { get; set; } = "ga4";
-    public string Domain { get; set; } = "";
-    public string PropertyId { get; set; } = "";
-    public string ClientId { get; set; } = "";
-    public bool HasClientSecret { get; set; }
-    public bool HasRefreshToken { get; set; }
-    public string Status { get; set; } = "disconnected";
-    public string? LastSync { get; set; }
-}
-
 public sealed class PerformanceConnectionConfig
 {
     public string? LastValidatedAt { get; set; }

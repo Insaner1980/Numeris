@@ -40,22 +40,22 @@ public sealed class CloudflareGraphqlClient
                 uniq { uniques }
               }
               topCountries: httpRequestsAdaptiveGroups(
-                limit: 10
+                limit: 10000
                 orderBy: [count_DESC]
                 filter: { datetime_geq: $adaptiveSince, datetime_lt: $adaptiveUntil, requestSource: "eyeball" }
               ) {
                 count
                 sum { visits }
-                dimensions { clientCountryName }
+                dimensions { date clientCountryName }
               }
               topPages: httpRequestsAdaptiveGroups(
-                limit: 10
+                limit: 10000
                 orderBy: [count_DESC]
                 filter: { datetime_geq: $adaptiveSince, datetime_lt: $adaptiveUntil, requestSource: "eyeball" }
               ) {
                 count
                 sum { visits }
-                dimensions { clientRequestPath }
+                dimensions { date clientRequestPath }
               }
             }
           }
@@ -69,19 +69,27 @@ public sealed class CloudflareGraphqlClient
     };
 
     private static readonly HttpClient Http = new();
+    private readonly HttpClient _http;
+
+    public CloudflareGraphqlClient(HttpClient? http = null) => _http = http ?? Http;
 
     public async Task ValidateZoneAsync(string apiToken, string zoneId, string expectedDomain)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/zones/{zoneId.Trim()}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
-        using var response = await Http.SendAsync(req).ConfigureAwait(false);
-        var body = await response.Content.ReadFromJsonAsync<ZoneDetailsResponse>(JsonOptions).ConfigureAwait(false)
+        using var response = await _http.SendAsync(req).ConfigureAwait(false);
+        var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new ApiRequestException("Cloudflare", "zone.details", response.StatusCode, ApiErrorMessage.FromBody(rawBody));
+        }
+        var body = JsonSerializer.Deserialize<ZoneDetailsResponse>(rawBody, JsonOptions)
             ?? throw new InvalidOperationException("Could not parse Cloudflare zone response");
 
-        if (!response.IsSuccessStatusCode || !body.Success)
+        if (!body.Success)
         {
             var msg = body.Errors?.Count > 0 ? body.Errors[0].Message : $"Cloudflare returned HTTP {(int)response.StatusCode}";
-            throw new InvalidOperationException(msg);
+            throw new InvalidOperationException(ApiErrorMessage.Sanitize(msg));
         }
         if (body.Result is null)
         {
@@ -103,7 +111,7 @@ public sealed class CloudflareGraphqlClient
                 zoneTag = zoneId,
                 since,
                 until,
-                adaptiveSince = ToGraphqlStartTime(since),
+                adaptiveSince = ToGraphqlStartTime(AdaptiveStartDate(since, until)),
                 adaptiveUntil = ToGraphqlExclusiveEndTime(until),
             },
         };
@@ -114,29 +122,40 @@ public sealed class CloudflareGraphqlClient
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
-        using var response = await Http.SendAsync(req).ConfigureAwait(false);
-        var graphql = await response.Content.ReadFromJsonAsync<GraphqlResponse>(JsonOptions).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Could not parse Cloudflare analytics response");
-
+        using var response = await _http.SendAsync(req).ConfigureAwait(false);
+        var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"Cloudflare returned HTTP {(int)response.StatusCode}");
+            throw new ApiRequestException("Cloudflare", "analytics", response.StatusCode, ApiErrorMessage.FromBody(rawBody));
         }
+        return ParseTrafficResponse(rawBody, since, until);
+    }
+
+    private static CloudflareTrafficResult ParseTrafficResponse(string rawBody, string since, string until)
+    {
+        var graphql = JsonSerializer.Deserialize<GraphqlResponse>(rawBody, JsonOptions)
+            ?? throw new InvalidOperationException("Could not parse Cloudflare analytics response");
         if (graphql.Errors is { Count: > 0 } errors)
         {
-            throw new InvalidOperationException(errors[0].Message);
+            throw new InvalidOperationException(ApiErrorMessage.Sanitize(errors[0].Message));
         }
-        var zone = graphql.Data?.Viewer?.Zones?.Count > 0 ? graphql.Data.Viewer.Zones[0] : null;
-        if (zone is null)
+        var zones = graphql.Data?.Viewer?.Zones;
+        if (zones is not { Count: 1 } || zones[0] is null)
         {
-            throw new InvalidOperationException("Cloudflare did not return analytics for this zone");
+            throw new InvalidOperationException("Cloudflare did not return one analytics zone");
+        }
+        var zone = zones[0];
+        if (zone.HttpRequests1dGroups is null || zone.TopCountries is null || zone.TopPages is null)
+        {
+            throw new InvalidOperationException("Cloudflare returned incomplete analytics groups");
         }
 
         var result = new CloudflareTrafficResult();
+        result.BreakdownStartDate = AdaptiveStartDate(since, until);
         result.BreakdownDate = until;
-        foreach (var group in zone.HttpRequests1dGroups ?? new())
+        foreach (var group in zone.HttpRequests1dGroups)
         {
-            var date = group.Dimensions?.Date ?? "";
+            var date = ProviderDate(group.Dimensions?.Date);
             result.Daily.Add(new CloudflareTrafficRow
             {
                 Date = date,
@@ -158,7 +177,7 @@ public sealed class CloudflareGraphqlClient
                 });
             }
         }
-        foreach (var group in zone.TopCountries ?? new())
+        foreach (var group in zone.TopCountries)
         {
             var country = group.Dimensions?.ClientCountryName ?? "";
             if (string.IsNullOrWhiteSpace(country))
@@ -168,12 +187,12 @@ public sealed class CloudflareGraphqlClient
 
             result.Countries.Add(new CloudflareCountryRow
             {
-                Date = until,
+                Date = ProviderDate(group.Dimensions!.Date),
                 Country = country,
                 Value = BreakdownValue(group),
             });
         }
-        foreach (var group in zone.TopPages ?? new())
+        foreach (var group in zone.TopPages)
         {
             var path = group.Dimensions?.ClientRequestPath ?? "";
             if (string.IsNullOrWhiteSpace(path))
@@ -183,7 +202,7 @@ public sealed class CloudflareGraphqlClient
 
             result.Pages.Add(new CloudflarePageRow
             {
-                Date = until,
+                Date = ProviderDate(group.Dimensions!.Date),
                 Path = path,
                 Value = BreakdownValue(group),
             });
@@ -193,9 +212,9 @@ public sealed class CloudflareGraphqlClient
 
     private sealed class ZoneDetailsResponse
     {
-        public bool Success { get; set; }
-        public List<ZoneError>? Errors { get; set; }
-        public ZoneDetails? Result { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public bool Success { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<ZoneError>? Errors { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public ZoneDetails? Result { get; set; }
     }
 
     private sealed class ZoneError { public string Message { get; set; } = ""; }
@@ -203,52 +222,53 @@ public sealed class CloudflareGraphqlClient
 
     private sealed class GraphqlResponse
     {
-        public GraphqlData? Data { get; set; }
-        public List<GraphqlError>? Errors { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public GraphqlData? Data { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<GraphqlError>? Errors { get; set; }
     }
     private sealed class GraphqlError { public string Message { get; set; } = ""; }
-    private sealed class GraphqlData { public GraphqlViewer? Viewer { get; set; } }
-    private sealed class GraphqlViewer { public List<GraphqlZone>? Zones { get; set; } }
+    private sealed class GraphqlData { [System.Text.Json.Serialization.JsonInclude] public GraphqlViewer? Viewer { get; set; } }
+    private sealed class GraphqlViewer { [System.Text.Json.Serialization.JsonInclude] public List<GraphqlZone>? Zones { get; set; } }
 
     private sealed class GraphqlZone
     {
-        public List<HttpRequestsGroup>? HttpRequests1dGroups { get; set; }
-        public List<HttpRequestsAdaptiveGroup>? TopCountries { get; set; }
-        public List<HttpRequestsAdaptiveGroup>? TopPages { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<HttpRequestsGroup>? HttpRequests1dGroups { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<HttpRequestsAdaptiveGroup>? TopCountries { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<HttpRequestsAdaptiveGroup>? TopPages { get; set; }
     }
     private sealed class HttpRequestsGroup
     {
-        public HttpDimensions? Dimensions { get; set; }
-        public HttpSums? Sum { get; set; }
-        public HttpUniques? Uniq { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public HttpDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public HttpSums? Sum { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public HttpUniques? Uniq { get; set; }
     }
     private sealed class HttpDimensions { public string Date { get; set; } = ""; }
     private sealed class HttpSums
     {
-        public long PageViews { get; set; }
-        public long Requests { get; set; }
-        public long CachedRequests { get; set; }
-        public long CachedBytes { get; set; }
-        public long Bytes { get; set; }
-        public long Threats { get; set; }
-        public List<ResponseStatusEntry>? ResponseStatusMap { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long PageViews { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Requests { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long CachedRequests { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long CachedBytes { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Bytes { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Threats { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<ResponseStatusEntry>? ResponseStatusMap { get; set; }
     }
     private sealed class ResponseStatusEntry
     {
-        public int EdgeResponseStatus { get; set; }
-        public long Requests { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public int EdgeResponseStatus { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Requests { get; set; }
     }
-    private sealed class HttpUniques { public long Uniques { get; set; } }
+    private sealed class HttpUniques { [System.Text.Json.Serialization.JsonInclude] public long Uniques { get; set; } }
 
     private sealed class HttpRequestsAdaptiveGroup
     {
-        public long Count { get; set; }
-        public HttpAdaptiveSums? Sum { get; set; }
-        public HttpAdaptiveDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Count { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public HttpAdaptiveSums? Sum { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public HttpAdaptiveDimensions? Dimensions { get; set; }
     }
-    private sealed class HttpAdaptiveSums { public long Visits { get; set; } }
+    private sealed class HttpAdaptiveSums { [System.Text.Json.Serialization.JsonInclude] public long Visits { get; set; } }
     private sealed class HttpAdaptiveDimensions
     {
+        public string Date { get; set; } = "";
         public string ClientCountryName { get; set; } = "";
         public string ClientRequestPath { get; set; } = "";
     }
@@ -256,8 +276,25 @@ public sealed class CloudflareGraphqlClient
     private static long BreakdownValue(HttpRequestsAdaptiveGroup group)
         => group.Sum?.Visits > 0 ? group.Sum.Visits : group.Count;
 
+    private static string ProviderDate(string? date)
+    {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+        {
+            throw new InvalidOperationException("Cloudflare returned an invalid analytics date");
+        }
+        return date;
+    }
+
     private static string ToGraphqlStartTime(string date)
         => ParseDate(date).ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    private static string AdaptiveStartDate(string since, string until)
+    {
+        // Adaptive breakdowns allow 30-day queries; daily totals support a longer history.
+        var requested = ParseDate(since);
+        var earliest = ParseDate(until).AddDays(-29);
+        return (requested < earliest ? earliest : requested).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
 
     private static string ToGraphqlExclusiveEndTime(string date)
         => ParseDate(date).AddDays(1).ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
@@ -289,6 +326,7 @@ public sealed class CloudflareTrafficResult
     public List<CloudflareCountryRow> Countries { get; set; } = new();
     public List<CloudflarePageRow> Pages { get; set; } = new();
     public string BreakdownDate { get; set; } = "";
+    public string BreakdownStartDate { get; set; } = "";
 }
 
 public sealed class CloudflareTrafficRow

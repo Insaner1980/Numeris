@@ -29,6 +29,7 @@ public enum StatusCodeGroup
     Redirect,
     ClientError,
     ServerError,
+    Other,
 }
 
 public sealed class StatusCodeGroupTrend

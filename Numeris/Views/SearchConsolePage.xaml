@@ -56,6 +56,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" x:Name="HeaderGrid">
                     <Grid.RowDefinitions>
@@ -82,6 +83,7 @@
                                   Height="{StaticResource ToolbarControlHeight}"
                                   Style="{StaticResource DomainComboBoxStyle}"
                                   AutomationProperties.Name="Domain"
+                                  IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                   SelectionChanged="DomainCombo_SelectionChanged" />
                         <Grid x:Name="ToolbarActionRow"
                               ColumnSpacing="8"
@@ -94,6 +96,7 @@
                                                      Grid.Column="0"
                                                      SelectedPeriod="{x:Bind Shell.SelectedPeriod, Mode=OneWay}"
                                                      AutomationProperties.Name="Period"
+                                                     IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                                      SelectionChanged="PeriodSelector_SelectionChanged" />
                             <Button x:Name="RefreshButton"
                                     Grid.Column="1"
@@ -103,6 +106,11 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
                 </Grid>
 
@@ -116,10 +124,23 @@
                     <SelectorBarItem Tag="devices" Text="Devices" />
                     <SelectorBarItem Tag="indexing" Text="Indexing" />
                 </SelectorBar>
+                <InfoBar Grid.Row="2"
+                         IsOpen="{x:Bind ViewModel.HasRefreshStatusMessage, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.RefreshStatusMessage, Mode=OneWay}"
+                         Severity="{x:Bind ViewModel.RefreshSeverity, Mode=OneWay}"
+                         IsClosable="False"
+                         Style="{StaticResource StatusInfoBarStyle}"
+                         AutomationProperties.Name="Search Console refresh status" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <ScrollViewer Grid.Row="1" x:Name="ReportContentScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Enabled"
+                      VerticalScrollBarVisibility="Disabled"
+                      VerticalScrollMode="Disabled">
+        <Grid MinWidth="{StaticResource ReportDataMinWidth}"
+              Width="{Binding ViewportWidth, ElementName=ReportContentScrollViewer}">
             <!-- Overview -->
             <Grid x:Name="OverviewPanel" Visibility="Visible" RowSpacing="16">
                 <Grid.RowDefinitions>
@@ -384,5 +405,6 @@
                 </ListView>
             </Grid>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </Page>

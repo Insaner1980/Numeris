@@ -31,8 +31,8 @@ public sealed class SitemapRepository
                        page_fetch_state AS PageFetchState,
                        crawled_as AS CrawledAs
                 FROM sitemap_urls
-                WHERE domain = @domain
-                ORDER BY url
+                WHERE (@domain = 'all' OR domain = @domain)
+                ORDER BY domain, url
                 """;
             return new List<SitemapUrl>(connection.Query<SitemapUrl>(sql, new { domain }));
         });

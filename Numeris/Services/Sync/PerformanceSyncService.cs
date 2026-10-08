@@ -98,7 +98,7 @@ public sealed class PerformanceSyncService
         return new ConnectionTestResult
         {
             Ok = true,
-            Message = $"CrUX API key works, but no CrUX field data was found for {missing} configured target(s). Sync will skip those targets; add higher-traffic URLs if needed.",
+            Message = $"No CrUX field data was found for {missing} configured target(s). No successful response was received, so API key validity was not verified. Sync will skip unavailable targets; add higher-traffic URLs if needed.",
         };
     }
 
@@ -132,7 +132,7 @@ public sealed class PerformanceSyncService
     {
         var urls = await _performanceRepo.ListUrlsAsync(enabledOnly: true).ConfigureAwait(false);
         var result = new PerformanceSyncResult { UrlsSynced = urls.Count };
-        var fetchedAt = _connectionsRepo.FormatNow();
+        var fetchedAt = ConnectionsRepository.FormatNow();
 
         var cruxKey = _vault.GetCruxApiKey();
         if (!string.IsNullOrWhiteSpace(cruxKey))
@@ -155,35 +155,40 @@ public sealed class PerformanceSyncService
         var pageSpeedKey = _vault.GetPageSpeedApiKey();
         if (!string.IsNullOrWhiteSpace(pageSpeedKey))
         {
-            foreach (var url in urls)
-            {
-                foreach (var strategy in PageSpeedStrategies)
-                {
-                    try
-                    {
-                        var (runs, audits) = await SyncPageSpeedAsync(pageSpeedKey, url.Url, strategy, fetchedAt).ConfigureAwait(false);
-                        result.PageSpeedRuns += runs;
-                        result.PageSpeedAudits += audits;
-                    }
-                    catch (ApiRequestException ex) when (ex.IsTransient || ex.IsRateLimited)
-                    {
-                        result.PageSpeedErrors++;
-                    }
-                    catch (HttpRequestException)
-                    {
-                        result.PageSpeedErrors++;
-                    }
-                    catch (TaskCanceledException)
-                    {
-                        result.PageSpeedErrors++;
-                    }
-                }
-            }
+            await SyncPageSpeedUrlsAsync(pageSpeedKey, urls, fetchedAt, result).ConfigureAwait(false);
         }
 
         await _performanceRepo.ApplyPageSpeedRetentionAsync().ConfigureAwait(false);
         await _connectionsRepo.UpdatePerformanceLastSyncAsync(fetchedAt).ConfigureAwait(false);
         return result;
+    }
+
+    private async Task SyncPageSpeedUrlsAsync(string pageSpeedKey, List<PerformanceUrlInfo> urls, string fetchedAt, PerformanceSyncResult result)
+    {
+        foreach (var url in urls)
+        {
+            foreach (var strategy in PageSpeedStrategies)
+            {
+                try
+                {
+                    var (runs, audits) = await SyncPageSpeedAsync(pageSpeedKey, url.Url, strategy, fetchedAt).ConfigureAwait(false);
+                    result.PageSpeedRuns += runs;
+                    result.PageSpeedAudits += audits;
+                }
+                catch (ApiRequestException ex) when (ex.IsTransient || ex.IsRateLimited)
+                {
+                    result.PageSpeedErrors++;
+                }
+                catch (HttpRequestException)
+                {
+                    result.PageSpeedErrors++;
+                }
+                catch (TaskCanceledException)
+                {
+                    result.PageSpeedErrors++;
+                }
+            }
+        }
     }
 
     public async Task<PerformanceSyncResult?> SyncConfiguredAsync()
@@ -355,7 +360,7 @@ public sealed class PerformanceSyncService
     private static TimeSpan BackoffForAttempt(int attempt)
         => TimeSpan.FromMilliseconds(PageSpeedInitialBackoff.TotalMilliseconds * Math.Pow(2, attempt - 1));
 
-    private static double? GetAt(IReadOnlyList<double?>? values, int index)
+    private static double? GetAt(List<double?>? values, int index)
         => values is not null && index >= 0 && index < values.Count ? values[index] : null;
 
     private static string FormatScore(double? score)

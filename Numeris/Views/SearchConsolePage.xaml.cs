@@ -32,6 +32,8 @@ public sealed partial class SearchConsolePage : Page
         BuildChart(ref _overviewChart, OverviewChartHost);
         BuildBarChart(ref _devicesChart, DevicesChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
@@ -43,12 +45,14 @@ public sealed partial class SearchConsolePage : Page
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyAllChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)

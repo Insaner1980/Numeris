@@ -10,8 +10,8 @@
             BorderBrush="{StaticResource NumerisCardBorderBrush}"
             BorderThickness="1"
             MinHeight="24">
-        <TextBlock Text="{x:Bind DisplayText, Mode=OneWay}"
-                   Foreground="{x:Bind DeltaBrush, Mode=OneWay}"
+        <TextBlock Text="{x:Bind DisplayText, Mode=OneTime}"
+                   Foreground="{x:Bind DeltaBrush, Mode=OneTime}"
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    FontFamily="{StaticResource NumerisFontFamily}"
                    FontSize="12"

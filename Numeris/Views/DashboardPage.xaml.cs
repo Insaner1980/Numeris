@@ -32,6 +32,8 @@ public sealed partial class DashboardPage : Page
         BuildBarChart(ref _trafficChart, TrafficChartHost);
         BuildChart(ref _searchChart, SearchChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
@@ -40,12 +42,14 @@ public sealed partial class DashboardPage : Page
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -110,6 +114,6 @@ public sealed partial class DashboardPage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 }

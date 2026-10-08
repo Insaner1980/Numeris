@@ -68,13 +68,6 @@
                                    Source="ms-appx:///Assets/Icons/performance-filled.png" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="analytics" Content="Analytics">
-                    <NavigationViewItem.Icon>
-                        <ImageIcon Width="20"
-                                   Height="20"
-                                   Source="ms-appx:///Assets/Icons/analytics-filled.png" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItem Tag="health" Content="Health">
                     <NavigationViewItem.Icon>
                         <ImageIcon Width="20"
@@ -94,7 +87,17 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Frame x:Name="ContentFrame" />
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <InfoBar IsOpen="{x:Bind _shell.HasSettingsError, Mode=OneWay}"
+                         Message="{x:Bind _shell.SettingsErrorMessage, Mode=OneWay}"
+                         Severity="Warning"
+                         IsClosable="False" />
+                <Frame x:Name="ContentFrame" Grid.Row="1" />
+            </Grid>
         </NavigationView>
 
         <Grid x:Name="AppTitleBar"

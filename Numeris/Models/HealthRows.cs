@@ -16,7 +16,7 @@ public sealed class UptimeCheckDay
     public string Domain { get; set; } = "";
     public string Date { get; set; } = "";
     public double UptimePct { get; set; }
-    public double AvgResponseMs { get; set; }
+    public double? AvgResponseMs { get; set; }
     public long Incidents { get; set; }
 }
 

@@ -41,7 +41,6 @@ public sealed record InsightCard(
 
 public sealed record InsightMetrics(
     MetricWindow CloudflareVisitors,
-    MetricWindow Ga4Users,
     MetricWindow GoogleImpressions,
     MetricWindow GoogleClicks,
     MetricWindow GoogleMobileClicks,
@@ -49,8 +48,6 @@ public sealed record InsightMetrics(
     MetricWindow PageSpeedMobileScore,
     MetricWindow BingImpressions,
     MetricWindow BingClicks,
-    MetricWindow Ga4EngagementRate,
-    MetricWindow Ga4KeyEvents,
     MetricWindow CloudflareCacheHitRatio,
     MetricWindow CloudflareThreats,
     StatusCodeSummary HttpStatus,
@@ -77,7 +74,6 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 | Rule | Condition | User-facing English copy |
 |---|---|---|
 | Data stale | Any connected source has no `last_sync` or last sync older than 48 hours | **Some data may be out of date**. One or more connected sources have not synced recently, so the insights may not reflect the latest traffic. |
-| Traffic mismatch | Cloudflare visitors up `>= 25%`, GA4 users flat `<= 5%`, current Cloudflare visitors `>= 50` | **Traffic looks inconsistent**. Cloudflare recorded more visitors, but GA4 users stayed almost the same. This can happen with bots, cached/static requests, or tracking gaps. |
 | Google visibility without clicks | Google impressions up `>= 25%`, clicks flat `<= 5%`, current impressions `>= 100` | **People see your pages, but do not click**. Google impressions are rising, but clicks are not. Your result may need a better title, snippet, or ranking position. |
 | Declining page | Worst declining page has previous clicks `>= 5` and current clicks down at least `25%` or `5` clicks | **A previously useful page is losing search traffic**. One page that used to bring Google clicks is now bringing fewer clicks. |
 | New search queries | At least one new query has current clicks `> 0` for a single selected domain | **New search queries are bringing traffic**. Google is sending clicks from queries that were not visible in the previous period. |
@@ -86,13 +82,11 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 | Indexing data missing | Active sitemap URLs `>= 5`, inspected URLs `== 0` | **Indexing data is missing**. Numeris knows about sitemap URLs, but they have not been inspected through Google URL Inspection yet. |
 | HTTP errors | Cloudflare requests `>= 100` and 5xx share `>= 1%` or 5xx count `>= 10`; 4xx share `>= 5%` can produce warning | **Some visitors may be hitting errors**. Cloudflare recorded HTTP error responses during this period. |
 | Bing visibility without clicks | Bing impressions `>= 50`, Bing clicks `== 0` | **Bing sees the site, but brings no visitors**. Bing has impressions for the site, but no clicks in the selected period. |
-| Engagement gap | GA4 users or sessions up `>= 25%`, engagement rate down `>= 10%` or key events flat/down | **More visitors are not becoming more engaged**. GA4 traffic is growing, but engagement or key events are not improving with it. |
 | Cache efficiency | Cloudflare requests `>= 100`, cache hit ratio down `>= 15%`, current hit ratio `< 50%` | **Caching may be less effective**. Cloudflare is serving fewer requests from cache than before. |
 | Threat spike | Cloudflare threats `NewActivity` or up `>= 50%`, current threats `>= 10` | **Cloudflare is blocking more suspicious traffic**. Threat events increased during this period. |
 
 `WhyShown` examples must use measured numbers:
 
-- `Cloudflare visitors increased by 34%, while GA4 users changed by 2%.`
 - `Google impressions increased by 41%, while clicks changed by 3%.`
 - `18 of 42 inspected sitemap URLs are indexed.`
 - `5xx responses were 1.4% of Cloudflare requests.`
@@ -102,7 +96,6 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 
 - Cloudflare traffic/status/cache issues: `Open Cloudflare and review Traffic, Cache, or Status Codes.`
 - Google search issues: `Open Google Search and review Queries, Pages, and Indexing.`
-- GA4 issues: `Open Analytics and review Pages, Acquisition, Events, and Devices.`
 - Performance issues: `Open Performance and review PageSpeed and Core Web Vitals.`
 - Bing issues: `Open Bing and review Queries, Pages, and Crawl.`
 
@@ -113,7 +106,7 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 - Create or switch to a `codex/...` feature branch.
 - Create `INSIGHTS-IMPLEMENTATION-PLAN.md` at repo root from this plan.
 - Add a `Phase Status` section with checkboxes for every phase.
-- Before coding, verify current official docs and log links/results in the progress doc because `AGENTS.md` requires latest-doc checks before implementation. No new API syntax is expected, but verify Google Analytics Data API, PageSpeed API, and Bing Webmaster API assumptions.
+- Before coding, verify current official docs and log links/results in the progress doc because `AGENTS.md` requires latest-doc checks before implementation. No new API syntax is expected, but verify PageSpeed API and Bing Webmaster API assumptions.
 - After this phase, update `INSIGHTS-IMPLEMENTATION-PLAN.md`, commit with a Finnish commit message, and continue only after `git status` confirms the expected changes.
 
 ### Phase 1: Tests for trend math and rule output
@@ -121,7 +114,7 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 - Add focused tests in `Numeris.Tests/Program.cs` before implementation.
 - Cover `TrendState` behavior: flat, up, down, no data, new activity, ratio formatting.
 - Cover at least these rule outputs: traffic mismatch, Google visibility without clicks, indexing issue, HTTP error, Bing visibility without clicks, and clean empty state.
-- Include tests that verify plain-English strings exist, technical names like `CTR`, `CrUX`, `5xx`, and `GA4` do not appear in titles, and `WhyShown` contains formatted percentages or counts.
+- Include tests that verify plain-English strings exist, technical names like `CTR`, `CrUX`, and `5xx` do not appear in titles, and `WhyShown` contains formatted percentages or counts.
 - Run `dotnet run --project Numeris.Tests/Numeris.Tests.csproj`; expected result is failure because the new types do not exist yet.
 - Mark Phase 1 complete in the progress document with the failing test evidence.
 
@@ -144,7 +137,6 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 - Pull metrics from existing tables only:
   - Cloudflare traffic/cache/threat/status code data.
   - Search Console clicks, impressions, device rows, sitemap inspection state.
-  - GA4 active users, sessions, engagement rate, key events.
   - Bing rank traffic clicks/impressions and crawl issue count.
   - PageSpeed mobile score trend.
   - `connections.status` and `connections.last_sync`.
@@ -224,7 +216,7 @@ Implement these rules in `InsightEngine`. Every rule must be skipped when the ne
 Acceptance criteria:
 
 - Overview shows an `Insights` card with 0-4 rows.
-- Insight titles and messages are understandable without knowing GA4, CTR, CrUX, PageSpeed internals, or HTTP status terminology.
+- Insight titles and messages are understandable without knowing CTR, CrUX, PageSpeed internals, or HTTP status terminology.
 - Each insight has a `Why shown` line with concrete numbers.
 - Each insight has a `Next step` that points to an existing Numeris page.
 - No insight appears when required data is missing, except freshness/data-missing insights.

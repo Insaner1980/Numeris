@@ -33,6 +33,8 @@ public sealed partial class HealthPage : Page
         BuildChart(ref _responseChart, ResponseChartHost);
         BuildBarChart(ref _incidentsChart, IncidentsChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
@@ -42,12 +44,14 @@ public sealed partial class HealthPage : Page
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyAllChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -131,7 +135,7 @@ public sealed partial class HealthPage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 
     private async void CheckNowButton_Click(object sender, RoutedEventArgs e)

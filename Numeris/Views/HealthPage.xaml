@@ -101,6 +101,11 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
                 </Grid>
 
@@ -114,11 +119,13 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1"
+        <ScrollViewer x:Name="HealthContentScrollViewer" Grid.Row="1"
                       Padding="{StaticResource PageScrollContentPadding}"
-                      HorizontalScrollBarVisibility="Disabled"
+                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Enabled"
                       VerticalScrollBarVisibility="Auto">
-        <Grid>
+        <Grid MinWidth="{StaticResource ReportDataMinWidth}"
+              Width="{Binding ViewportWidth, ElementName=HealthContentScrollViewer}">
             <!-- Uptime -->
             <Grid x:Name="UptimePanel" Visibility="Visible" RowSpacing="18">
                 <Grid.RowDefinitions>
@@ -158,7 +165,7 @@
                             <ItemsControl ItemsSource="{x:Bind ViewModel.Domains, Mode=OneWay}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="28" />
+                                        <StackPanel Orientation="Vertical" Spacing="18" />
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
@@ -196,14 +203,14 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Grid.Column="0">
-                                                    <TextBlock Text="Uptime" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="12" />
+                                                    <TextBlock Text="Uptime (all samples)" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="12" />
                                                     <TextBlock Foreground="{StaticResource NumerisTextPrimaryBrush}" FontWeight="SemiBold">
                                                         <Run Text="{x:Bind UptimePct, Converter={StaticResource OneDecimalConverter}}" />
                                                         <Run Text="%" />
                                                     </TextBlock>
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="1">
-                                                    <TextBlock Text="Incidents" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="12" />
+                                                    <TextBlock Text="Failed probes" Foreground="{StaticResource NumerisTextTertiaryBrush}" FontSize="12" />
                                                     <TextBlock Text="{x:Bind Incidents}" Foreground="{StaticResource NumerisTextPrimaryBrush}" FontWeight="SemiBold" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2">
@@ -271,7 +278,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
-                                       Text="Incidents"
+                                       Text="Failed probes"
                                        Style="{StaticResource SectionTitleTextBlockStyle}" />
                             <TextBlock Grid.Column="1"
                                        Text="{x:Bind ViewModel.IncidentChartSummaryText, Mode=OneWay}"
@@ -319,6 +326,7 @@
                     </Grid>
                 </Border>
                 <ListView Grid.Row="1"
+                          MaxHeight="{Binding ActualHeight, ElementName=HealthContentScrollViewer}"
                           ItemsSource="{x:Bind ViewModel.SitemapUrls, Mode=OneWay}"
                           Style="{StaticResource DataListViewStyle}">
                     <ListView.Header>

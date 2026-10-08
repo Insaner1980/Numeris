@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
+using Microsoft.UI.Xaml.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Api;
@@ -18,14 +19,20 @@ using Numeris.Themes;
 
 namespace Numeris.ViewModels;
 
-public partial class BingViewModel : ObservableObject, IDisposable
+public sealed partial class BingViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly BingRepository _bingRepo;
     private readonly BingWebmasterSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    public bool CanRefresh => !IsLoading;
+    [ObservableProperty] public partial bool IsRefreshing { get; set; }
+    [ObservableProperty] public partial string RefreshStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial InfoBarSeverity RefreshSeverity { get; set; } = InfoBarSeverity.Informational;
+    public bool CanRefresh => !IsLoading && !IsRefreshing;
+    public bool HasRefreshStatusMessage => !string.IsNullOrWhiteSpace(RefreshStatusMessage);
     [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
     [ObservableProperty] public partial string QuerySortBy { get; set; } = "clicks";
     [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
@@ -48,22 +55,43 @@ public partial class BingViewModel : ObservableObject, IDisposable
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnRefreshStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasRefreshStatusMessage));
 
-    public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
+    public void Dispose()
+    {
+        _disposed = true;
+        _loadVersion++;
+        _shell.PropertyChanged -= OnShellChanged;
+    }
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ShellViewModel.SelectedPeriod) or nameof(ShellViewModel.SelectedDomain))
         {
-            _ = LoadAsync();
+            _ = LoadFromShellAsync();
         }
     }
 
-    partial void OnQuerySortByChanged(string value) => _ = ReloadQueriesAsync();
+    partial void OnQuerySortByChanged(string value) => _ = LoadFromShellAsync();
+
+    private async Task LoadFromShellAsync()
+    {
+        var loadVersion = _loadVersion + 1;
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Load failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
+        }
+    }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
@@ -79,6 +107,7 @@ public partial class BingViewModel : ObservableObject, IDisposable
             var issuesTask = _bingRepo.GetCrawlIssueItemsAsync(siteUrl, 50);
 
             await Task.WhenAll(trafficTask, queriesTask, pagesTask, summariesTask, issuesTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
             var traffic = await trafficTask;
             BuildTraffic(traffic);
@@ -89,41 +118,45 @@ public partial class BingViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        if (IsLoading)
+        if (!CanRefresh)
         {
             return;
         }
 
-        IsLoading = true;
+        IsRefreshing = true;
+        RefreshSeverity = InfoBarSeverity.Informational;
+        RefreshStatusMessage = "Refreshing Bing data for all configured sites...";
         try
         {
-            await _sync.SyncConfiguredAsync();
+            var result = await _sync.SyncConfiguredAsync();
+            if (result is null)
+            {
+                RefreshSeverity = InfoBarSeverity.Warning;
+                RefreshStatusMessage = "Configure Bing in Sources first.";
+                return;
+            }
+            await LoadAsync();
+            RefreshSeverity = result.SitesSynced == 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
+            RefreshStatusMessage = result.SitesSynced == 0
+                ? "No active Bing sites. Add a site in Sources first."
+                : $"Updated {result.SitesSynced} site(s): {result.RankRows} traffic rows, {result.QueryRows} queries and {result.PageRows} pages.";
         }
         catch (Exception ex)
         {
-            _ = ApiErrorMessage.Sanitize(ex);
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
-            IsLoading = false;
+            IsRefreshing = false;
         }
-
-        await LoadAsync();
-    }
-
-    private async Task ReloadQueriesAsync()
-    {
-        var range = _shell.SelectedPeriod.ToDateRange();
-        var start = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var end = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        ReplaceCollection(Queries, await _bingRepo.GetQueriesAsync(SelectedBingSiteUrl(), start, end, QuerySortBy, 100));
     }
 
     private void BuildTraffic(IReadOnlyList<BingTrafficDay> rows)

@@ -6,7 +6,7 @@ using Numeris.Helpers;
 
 namespace Numeris.Services.Database;
 
-public sealed class SqliteDatabase : IDisposable
+public sealed partial class SqliteDatabase : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -53,35 +53,25 @@ public sealed class SqliteDatabase : IDisposable
         }
     }
 
+    public Task<T> WriteAsync<T>(Func<SqliteConnection, T> work, CancellationToken ct = default)
+        => ReadAsync(work, ct);
+
     public async Task WriteTransactionAsync(Action<SqliteConnection, SqliteTransaction> work, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            using var transaction = _connection.BeginTransaction();
+            using var transaction = (SqliteTransaction)await _connection.BeginTransactionAsync(ct).ConfigureAwait(false);
             try
             {
                 work(_connection, transaction);
-                transaction.Commit();
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
             }
             catch
             {
-                transaction.Rollback();
+                await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
                 throw;
             }
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public async Task<T> WriteAsync<T>(Func<SqliteConnection, T> work, CancellationToken ct = default)
-    {
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            return work(_connection);
         }
         finally
         {
@@ -94,7 +84,9 @@ public sealed class SqliteDatabase : IDisposable
         _gate.Wait();
         try
         {
+            using var transaction = _connection.BeginTransaction();
             using var cmd = _connection.CreateCommand();
+            cmd.Transaction = transaction;
             cmd.CommandText = """
                 DELETE FROM cloudflare_traffic;
                 DELETE FROM cloudflare_countries;
@@ -121,14 +113,10 @@ public sealed class SqliteDatabase : IDisposable
                 DELETE FROM bing_query_stats;
                 DELETE FROM bing_page_stats;
                 DELETE FROM bing_raw_items;
-                DELETE FROM google_analytics_daily;
-                DELETE FROM google_analytics_pages;
-                DELETE FROM google_analytics_sources;
-                DELETE FROM google_analytics_events;
-                DELETE FROM google_analytics_devices;
                 UPDATE connections SET status = 'disconnected', last_sync = NULL;
                 """;
             cmd.ExecuteNonQuery();
+            transaction.Commit();
         }
         finally
         {

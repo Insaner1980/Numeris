@@ -15,6 +15,7 @@ namespace Numeris.ViewModels.Sources;
 public partial class SearchConsoleSourceViewModel : ObservableObject
 {
     private readonly ConnectionsRepository _connectionsRepo;
+    private int _loadVersion;
     private readonly CredentialVault _vault;
     private readonly GoogleOAuthFlow _oauth;
     private readonly SearchConsoleSyncService _sync;
@@ -44,7 +45,10 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        Connection = await _connectionsRepo.GetSearchConsoleAsync();
+        var loadVersion = ++_loadVersion;
+        var connection = await _connectionsRepo.GetSearchConsoleAsync();
+        if (loadVersion != _loadVersion) return;
+        Connection = connection;
         if (Connection is { ClientId.Length: > 0 })
         {
             NewClientId = Connection.ClientId;
@@ -54,6 +58,7 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task SaveAsync()
     {
+        if (IsBusy) return;
         if (string.IsNullOrWhiteSpace(NewClientId))
         {
             StatusMessage = "Client ID is required";
@@ -78,7 +83,7 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
                 new SearchConsoleConnectionConfig
                 {
                     ClientId = clientId,
-                    LastValidatedAt = _connectionsRepo.FormatNow(),
+                    LastValidatedAt = ConnectionsRepository.FormatNow(),
                 },
                 "configured");
             await LoadAsync();
@@ -98,6 +103,7 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task ConnectAsync()
     {
+        if (IsBusy) return;
         if (Connection is null || string.IsNullOrEmpty(Connection.ClientId) || !Connection.HasClientSecret)
         {
             StatusMessage = "Save client ID and secret first";
@@ -107,16 +113,21 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
         StatusMessage = "Opening browser for Google consent...";
         try
         {
-            var clientSecret = _vault.GetSearchConsoleClientSecret(Connection.ClientId)
+            var clientId = Connection.ClientId;
+            var clientSecret = _vault.GetSearchConsoleClientSecret(clientId)
                 ?? throw new InvalidOperationException("Missing client secret");
             var tokens = await _oauth.AuthorizeAsync(
-                Connection.ClientId,
+                clientId,
                 clientSecret,
-                uri => _ = Launcher.LaunchUriAsync(uri),
+                async uri =>
+                {
+                    if (!await Launcher.LaunchUriAsync(uri))
+                        throw new InvalidOperationException("Could not open the browser for Google authorization");
+                },
                 new[] { SearchConsoleClient.Scope });
             if (!string.IsNullOrEmpty(tokens.RefreshToken))
             {
-                _vault.SetSearchConsoleRefreshToken(Connection.ClientId, tokens.RefreshToken);
+                _vault.SetSearchConsoleRefreshToken(clientId, tokens.RefreshToken);
             }
             await LoadAsync();
             StatusMessage = "Authorized. Use Google Search page refresh to fetch live data.";
@@ -134,6 +145,7 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task TestAsync()
     {
+        if (IsBusy) return;
         if (Connection is null || string.IsNullOrWhiteSpace(Connection.ClientId))
         {
             StatusMessage = "Save Search Console credentials first";
@@ -147,6 +159,10 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
             var result = await _sync.TestAsync(Connection.ClientId);
             StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
         }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Action failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
         finally
         {
             IsBusy = false;
@@ -156,14 +172,27 @@ public partial class SearchConsoleSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task DeleteAsync()
     {
-        if (Connection is null) return;
-        if (!string.IsNullOrEmpty(Connection.ClientId))
+        if (IsBusy) return;
+        IsBusy = true;
+        try
         {
-            _vault.DeleteSearchConsoleClientSecret(Connection.ClientId);
-            _vault.DeleteSearchConsoleRefreshToken(Connection.ClientId);
+            if (Connection is null) return;
+            if (!string.IsNullOrEmpty(Connection.ClientId))
+            {
+                _vault.DeleteSearchConsoleClientSecret(Connection.ClientId);
+                _vault.DeleteSearchConsoleRefreshToken(Connection.ClientId);
+            }
+            await _connectionsRepo.DeleteSearchConsoleAsync();
+            await LoadAsync();
+            StatusMessage = "Removed";
         }
-        await _connectionsRepo.DeleteSearchConsoleAsync();
-        await LoadAsync();
-        StatusMessage = "Removed";
+        catch (Exception ex)
+        {
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 }

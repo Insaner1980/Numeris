@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
+using Microsoft.UI.Xaml.Controls;
 using Numeris.Models;
 using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
@@ -19,16 +20,24 @@ using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
-public partial class PerformanceViewModel : ObservableObject, IDisposable
+public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
 {
+    private const string LargestContentfulPaintMetric = "largest_contentful_paint";
+
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly PerformanceRepository _performanceRepo;
     private readonly PerformanceSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    public bool CanRefresh => !IsLoading;
+    [ObservableProperty] public partial bool IsRefreshing { get; set; }
+    [ObservableProperty] public partial string RefreshStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial InfoBarSeverity RefreshSeverity { get; set; } = InfoBarSeverity.Informational;
+    public bool CanRefresh => !IsLoading && !IsRefreshing;
+    public bool HasRefreshStatusMessage => !string.IsNullOrWhiteSpace(RefreshStatusMessage);
     [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
-    [ObservableProperty] public partial string SelectedMetric { get; set; } = "largest_contentful_paint";
+    [ObservableProperty] public partial string SelectedMetric { get; set; } = LargestContentfulPaintMetric;
     [ObservableProperty] public partial string SelectedFormFactor { get; set; } = "PHONE";
     [ObservableProperty] public partial string WebVitalsStatus { get; set; } = "No data";
     [ObservableProperty] public partial string WebVitalsDetail { get; set; } = "No CrUX data";
@@ -47,7 +56,7 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
 
     public string[] MetricOptions { get; } =
     [
-        "largest_contentful_paint",
+        LargestContentfulPaintMetric,
         "interaction_to_next_paint",
         "cumulative_layout_shift",
     ];
@@ -63,23 +72,44 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnRefreshStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasRefreshStatusMessage));
 
-    public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
+    public void Dispose()
+    {
+        _disposed = true;
+        _loadVersion++;
+        _shell.PropertyChanged -= OnShellChanged;
+    }
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ShellViewModel.SelectedPeriod) or nameof(ShellViewModel.SelectedDomain))
         {
-            _ = LoadAsync();
+            _ = LoadFromShellAsync();
         }
     }
 
-    partial void OnSelectedMetricChanged(string value) => _ = ReloadCruxTrendAsync();
-    partial void OnSelectedFormFactorChanged(string value) => _ = ReloadCruxTrendAsync();
+    partial void OnSelectedMetricChanged(string value) => _ = LoadFromShellAsync();
+    partial void OnSelectedFormFactorChanged(string value) => _ = LoadFromShellAsync();
+
+    private async Task LoadFromShellAsync()
+    {
+        var loadVersion = _loadVersion + 1;
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Load failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
+        }
+    }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
@@ -98,6 +128,7 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
             var urlsTask = _performanceRepo.ListUrlsAsync();
 
             await Task.WhenAll(vitalsTask, cruxTrendTask, runsTask, scoreTrendTask, issuesTask, urlsTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
             var vitals = await vitalsTask;
             ReplaceCollection(CoreVitals, vitals);
@@ -113,44 +144,53 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        if (IsLoading)
+        if (!CanRefresh)
         {
             return;
         }
 
-        IsLoading = true;
+        IsRefreshing = true;
+        RefreshSeverity = InfoBarSeverity.Informational;
+        RefreshStatusMessage = "Refreshing CrUX and PageSpeed data for all configured URLs...";
         try
         {
-            await _sync.SyncConfiguredAsync();
+            var result = await _sync.SyncConfiguredAsync();
+            if (result is null)
+            {
+                RefreshSeverity = InfoBarSeverity.Warning;
+                RefreshStatusMessage = "Configure CrUX or PageSpeed in Sources first.";
+                return;
+            }
+            await LoadAsync();
+            RefreshSeverity = result.UrlsSynced == 0 || result.PageSpeedErrors > 0 || result.CruxSkipped > 0
+                || (result.CruxMetricPoints == 0 && result.PageSpeedRuns == 0)
+                ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
+            var missingFieldData = result.CruxSkipped > 0 ? $" {result.CruxSkipped} CrUX target/form-factor request(s) had no field data." : "";
+            var pageSpeedErrors = result.PageSpeedErrors > 0 ? $" {result.PageSpeedErrors} PageSpeed request(s) failed." : "";
+            RefreshStatusMessage = result.UrlsSynced == 0
+                ? "No active performance URLs. Add a URL in Sources first."
+                : $"Processed {result.UrlsSynced} configured URL(s): stored {result.CruxMetricPoints} CrUX metric points and {result.PageSpeedRuns} PageSpeed reports."
+                    + missingFieldData + pageSpeedErrors;
         }
         catch (Exception ex)
         {
-            _ = ApiErrorMessage.Sanitize(ex);
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
         }
         finally
         {
-            IsLoading = false;
+            IsRefreshing = false;
         }
-
-        await LoadAsync();
     }
 
-    private async Task ReloadCruxTrendAsync()
-    {
-        var range = _shell.SelectedPeriod.ToDateRange();
-        var start = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var end = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        BuildCruxTrend(await _performanceRepo.GetCruxTrendAsync(_shell.SelectedDomain, SelectedMetric, SelectedFormFactor, start, end));
-    }
-
-    private void BuildVitalsSummary(IReadOnlyList<CruxMetricSummary> vitals)
+    private void BuildVitalsSummary(List<CruxMetricSummary> vitals)
     {
         if (vitals.Count == 0)
         {
@@ -159,17 +199,17 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
             return;
         }
 
-        WebVitalsStatus = vitals.Any(v => v.Status == "Fail") ? "Fail"
-            : vitals.Any(v => v.Status == "Warn") ? "Warn"
-            : vitals.Any(v => v.Status == "Pass") ? "Pass"
-            : "No data";
-        WebVitalsDetail = $"{vitals.Count(v => v.Metric == "largest_contentful_paint")} LCP, {vitals.Count(v => v.Metric == "interaction_to_next_paint")} INP, {vitals.Count(v => v.Metric == "cumulative_layout_shift")} CLS";
+        WebVitalsStatus = "No data";
+        if (vitals.Any(v => v.Status == "Fail")) WebVitalsStatus = "Fail";
+        else if (vitals.Any(v => v.Status == "Warn")) WebVitalsStatus = "Warn";
+        else if (vitals.Any(v => v.Status == "Pass")) WebVitalsStatus = "Pass";
+        WebVitalsDetail = $"{vitals.Count(v => v.Metric == LargestContentfulPaintMetric)} LCP, {vitals.Count(v => v.Metric == "interaction_to_next_paint")} INP, {vitals.Count(v => v.Metric == "cumulative_layout_shift")} CLS";
     }
 
     private void BuildPageSpeedSummary(IReadOnlyList<PageSpeedLatestRun> runs)
     {
-        MobileScoreText = ScoreText(runs.FirstOrDefault(r => r.Strategy == "MOBILE")?.PerformanceScore);
-        DesktopScoreText = ScoreText(runs.FirstOrDefault(r => r.Strategy == "DESKTOP")?.PerformanceScore);
+        MobileScoreText = ScoreText(runs.Where(r => r.Strategy == "MOBILE").Select(r => r.PerformanceScore));
+        DesktopScoreText = ScoreText(runs.Where(r => r.Strategy == "DESKTOP").Select(r => r.PerformanceScore));
     }
 
     private void BuildCruxTrend(IReadOnlyList<CruxTrendPoint> rows)
@@ -205,20 +245,26 @@ public partial class PerformanceViewModel : ObservableObject, IDisposable
         PageSpeedYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0, MaxLimit = 100 }) };
     }
 
-    private static double[] ScoreValues(IReadOnlyList<PageSpeedScorePoint> rows, string[] dates, string strategy)
+    private static double?[] ScoreValues(IReadOnlyList<PageSpeedScorePoint> rows, string[] dates, string strategy)
         => dates
-            .Select(date => rows.FirstOrDefault(r => r.AnalysisUtc == date && r.Strategy == strategy)?.PerformanceScore * 100.0 ?? 0.0)
+            .Select(date => rows.FirstOrDefault(r => r.AnalysisUtc == date && r.Strategy == strategy)?.PerformanceScore * 100.0)
             .ToArray();
 
-    private static string ScoreText(double? score)
-        => score.HasValue ? (score.Value * 100.0).ToString("0", CultureInfo.InvariantCulture) : "—";
+    private static string ScoreText(IEnumerable<double?> scores)
+    {
+        var values = scores.Where(score => score.HasValue).Select(score => score!.Value * 100.0).ToArray();
+        if (values.Length == 0) return "—";
+        var min = values.Min().ToString("0", CultureInfo.InvariantCulture);
+        var max = values.Max().ToString("0", CultureInfo.InvariantCulture);
+        return min == max ? min : $"{min}–{max}";
+    }
 
     private static string MetricLabel(string metric)
         => metric switch
         {
-            "largest_contentful_paint" => "LCP p75",
-            "interaction_to_next_paint" => "INP p75",
-            "cumulative_layout_shift" => "CLS p75",
+            LargestContentfulPaintMetric => "LCP p75 (ms)",
+            "interaction_to_next_paint" => "INP p75 (ms)",
+            "cumulative_layout_shift" => "CLS p75 (unitless)",
             _ => metric,
         };
 

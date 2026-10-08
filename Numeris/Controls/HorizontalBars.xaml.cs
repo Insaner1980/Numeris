@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Globalization;
@@ -91,7 +92,6 @@ public sealed partial class HorizontalBars : UserControl
             return;
         }
 
-        long max = 0;
         var rows = new List<BarRow>(Items);
         if (rows.Count == 0)
         {
@@ -99,10 +99,7 @@ public sealed partial class HorizontalBars : UserControl
             return;
         }
 
-        foreach (var row in rows)
-        {
-            if (row.Value > max) max = row.Value;
-        }
+        var max = Math.Max(0, rows.Max(row => row.Value));
         var scaleMax = max <= 0 ? 1 : max;
 
         var trackBrush = GetBrush("HorizontalBarTrackBrush");

@@ -102,7 +102,7 @@ function Get-DotNetSolution {
 
 function Get-DependencyCheckCommand {
     foreach ($name in @("dependency-check.bat", "dependency-check", "dependency-check.sh")) {
-        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        $cmd = Get-Command $name -CommandType Application,ExternalScript -ErrorAction SilentlyContinue
         if ($null -ne $cmd) {
             return $cmd.Source
         }

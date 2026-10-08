@@ -14,6 +14,10 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 
 ## Key Changes
 
+- Schema-version tarkistus tehdään ennen schema/default-kirjoituksia. Tuleva tai virheellinen fallback-versio estää migraation muuttamatta tietokantaa; jokainen valmistunut migraatio tallentaa oman versionumeronsa, jotta keskeytynyt ketju jatkuu oikeasta kohdasta.
+
+- Schema v8 korjaa tallennetut Bingin WCF-päivämäärät ISO-päiviksi käynnistyksen migraatiossa ennen raporttien latausta. Samalle päivälle osuvat rivit säilyttävät tuoreimman tuloksen.
+
 ### 1. Lukitse nykyinen Web Analytics -korjaus
 
 - Viimeistele ja committoi nykyiset muutokset: Numeris Web Analytics -migraatio, manuaalinen site tag mapping, tarkempi GraphQL-virheviesti ja PasswordBox-tokenin eksplisiittinen lukeminen.
@@ -111,6 +115,9 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 - Ei lisätä Play Store live -integraatiota tässä passissa. Play Store -taulut ja mock-data jäävät ennalleen.
 
 ## Test Plan
+
+- Schema v11 removes retired Google Analytics connection metadata and all six report tables. Startup removes its two CredentialVault resources; other integrations and their data are preserved.
+- Schema v9 refreshes Cloudflare and Web Analytics breakdown caches as daily groups. It removes only the old overlapping period aggregates; daily totals, connection settings and credentials are preserved. Subsequent report refreshes refill the breakdowns, with each logical result committed in one transaction.
 
 - Build: `dotnet build C:\Dev\Numeris\Numeris.slnx` palauttaa `0 Error(s)`.
 - Migration:

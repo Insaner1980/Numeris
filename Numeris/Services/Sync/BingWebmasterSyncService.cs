@@ -62,7 +62,7 @@ public sealed class BingWebmasterSyncService
     public async Task<BingSyncResult> SyncAsync()
     {
         var apiKey = _vault.GetBingApiKey() ?? throw new InvalidOperationException("No Bing Webmaster API key saved");
-        var fetchedAt = _connectionsRepo.FormatNow();
+        var fetchedAt = ConnectionsRepository.FormatNow();
         var result = new BingSyncResult();
 
         result.RawItems += await StoreMethodAsync(apiKey, "GetUserSites", "", new Dictionary<string, string?>(), fetchedAt).ConfigureAwait(false);
@@ -123,7 +123,7 @@ public sealed class BingWebmasterSyncService
                 RawJson = RawJsonStoragePolicy.TrimRawJson(JsonSerializer.Serialize(new { error = ApiErrorMessage.Sanitize(ex), provider = ex.Provider, operation = ex.Operation, statusCode = (int)ex.StatusCode })),
                 FetchedAt = fetchedAt,
             }).ConfigureAwait(false);
-            return 1;
+            throw;
         }
         catch (Exception ex)
         {
@@ -135,7 +135,7 @@ public sealed class BingWebmasterSyncService
                 RawJson = RawJsonStoragePolicy.TrimRawJson(JsonSerializer.Serialize(new { error = ApiErrorMessage.Sanitize(ex) })),
                 FetchedAt = fetchedAt,
             }).ConfigureAwait(false);
-            return 1;
+            throw;
         }
     }
 
@@ -166,7 +166,7 @@ public sealed class BingWebmasterSyncService
         var rows = 0L;
         foreach (var item in EnumerateItems(BingWebmasterClient.Unwrap(doc)))
         {
-            var date = FirstString(item, "Date", "date", "Day", "day") ?? ExtractKey(item) ?? fetchedAt;
+            var date = BingWebmasterClient.NormalizeDate(FirstString(item, "Date", "date", "Day", "day") ?? "");
             var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
             await _bingRepo.UpsertRankTrafficWithRawItemAsync(
                 siteUrl,
@@ -190,18 +190,15 @@ public sealed class BingWebmasterSyncService
         {
             var query = FirstString(item, "Query", "query", "Keyword", "keyword") ?? ExtractKey(item);
             if (string.IsNullOrWhiteSpace(query)) continue;
-            var date = FirstString(item, "Date", "date") ?? "";
+            var date = BingWebmasterClient.NormalizeDate(FirstString(item, "Date", "date") ?? "");
             var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
             await _bingRepo.UpsertQueryStatsWithRawItemAsync(
-                siteUrl,
                 query,
                 date,
                 FirstLong(item, "Clicks", "clicks"),
                 FirstLong(item, "Impressions", "impressions"),
                 FirstDouble(item, "AvgClickPosition", "avgClickPosition", "AverageClickPosition"),
                 FirstDouble(item, "AvgImpressionPosition", "avgImpressionPosition", "AverageImpressionPosition"),
-                rawJson,
-                fetchedAt,
                 new BingRawItem { Method = "GetQueryStats", SiteUrl = siteUrl, ItemKey = BuildRawItemKey(query, date), RawJson = rawJson, FetchedAt = fetchedAt }).ConfigureAwait(false);
             rows++;
             raw++;
@@ -218,16 +215,13 @@ public sealed class BingWebmasterSyncService
         {
             var page = FirstString(item, "Url", "url", "Page", "page") ?? ExtractKey(item);
             if (string.IsNullOrWhiteSpace(page)) continue;
-            var date = FirstString(item, "Date", "date") ?? "";
+            var date = BingWebmasterClient.NormalizeDate(FirstString(item, "Date", "date") ?? "");
             var rawJson = RawJsonStoragePolicy.TrimRawJson(item.GetRawText());
             await _bingRepo.UpsertPageStatsWithRawItemAsync(
-                siteUrl,
                 page,
                 date,
                 FirstLong(item, "Clicks", "clicks"),
                 FirstLong(item, "Impressions", "impressions"),
-                rawJson,
-                fetchedAt,
                 new BingRawItem { Method = "GetPageStats", SiteUrl = siteUrl, ItemKey = BuildRawItemKey(page, date), RawJson = rawJson, FetchedAt = fetchedAt }).ConfigureAwait(false);
             rows++;
             raw++;

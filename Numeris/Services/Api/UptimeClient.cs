@@ -7,6 +7,10 @@ namespace Numeris.Services.Api;
 
 public sealed class UptimeClient
 {
+    private readonly HttpClient _http;
+
+    public UptimeClient(HttpClient? http = null) => _http = http ?? HttpClient;
+
     private static readonly HttpClient HttpClient = CreateHttpClient();
 
     private static HttpClient CreateHttpClient()
@@ -31,7 +35,7 @@ public sealed class UptimeClient
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            using var response = await HttpClient.SendAsync(request).ConfigureAwait(false);
+            using var response = await _http.SendAsync(request).ConfigureAwait(false);
             sw.Stop();
             var code = (int)response.StatusCode;
             var status = response.IsSuccessStatusCode || ((int)response.StatusCode is >= 300 and < 400) ? "up" : "down";
@@ -53,7 +57,7 @@ public sealed class UptimeClient
                 Status = "down",
                 StatusCode = null,
                 ResponseMs = null,
-                ErrorMessage = ex.Message,
+                ErrorMessage = ApiErrorMessage.Sanitize(ex),
             };
         }
     }

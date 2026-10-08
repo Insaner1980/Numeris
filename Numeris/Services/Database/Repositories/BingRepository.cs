@@ -17,14 +17,13 @@ public sealed class BingRepository
     public Task<List<string>> ListSitesAsync(bool enabledOnly = false)
         => _db.ReadAsync(connection =>
         {
-            var where = enabledOnly ? "WHERE enabled = 1" : "";
             return connection.Query<string>(
-                $"""
+                """
                 SELECT site_url
                 FROM bing_sites
-                {where}
+                WHERE @enabledOnly = 0 OR enabled = 1
                 ORDER BY site_url
-                """).AsList();
+                """, new { enabledOnly }).AsList();
         });
 
     public Task<List<BingTrafficDay>> GetTrafficDailyAsync(string siteUrl, string start, string end)
@@ -47,7 +46,7 @@ public sealed class BingRepository
                          COALESCE(SUM(impressions), 0) AS Impressions,
                          CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
                   FROM bing_rank_traffic
-                  WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                  WHERE site_url LIKE @normalizedSiteUrl || '%' AND date >= @start AND date <= @end
                   GROUP BY date
                   ORDER BY date
                   """;
@@ -70,8 +69,8 @@ public sealed class BingRepository
                           COALESCE(SUM(clicks), 0) AS Clicks,
                           COALESCE(SUM(impressions), 0) AS Impressions,
                           CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
-                          COALESCE(AVG(avg_click_position), 0) AS AvgClickPosition,
-                          COALESCE(AVG(avg_impression_position), 0) AS AvgImpressionPosition
+                          COALESCE(SUM(avg_click_position * clicks) / NULLIF(SUM(CASE WHEN avg_click_position IS NOT NULL THEN clicks END), 0), 0) AS AvgClickPosition,
+                          COALESCE(SUM(avg_impression_position * impressions) / NULLIF(SUM(CASE WHEN avg_impression_position IS NOT NULL THEN impressions END), 0), 0) AS AvgImpressionPosition
                    FROM bing_query_stats
                    WHERE date >= @start AND date <= @end
                    GROUP BY query
@@ -83,10 +82,10 @@ public sealed class BingRepository
                           COALESCE(SUM(clicks), 0) AS Clicks,
                           COALESCE(SUM(impressions), 0) AS Impressions,
                           CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
-                          COALESCE(AVG(avg_click_position), 0) AS AvgClickPosition,
-                          COALESCE(AVG(avg_impression_position), 0) AS AvgImpressionPosition
+                          COALESCE(SUM(avg_click_position * clicks) / NULLIF(SUM(CASE WHEN avg_click_position IS NOT NULL THEN clicks END), 0), 0) AS AvgClickPosition,
+                          COALESCE(SUM(avg_impression_position * impressions) / NULLIF(SUM(CASE WHEN avg_impression_position IS NOT NULL THEN impressions END), 0), 0) AS AvgImpressionPosition
                    FROM bing_query_stats
-                   WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                   WHERE site_url LIKE @normalizedSiteUrl || '%' AND date >= @start AND date <= @end
                    GROUP BY query
                    ORDER BY {orderClause}
                    LIMIT @limit
@@ -115,7 +114,7 @@ public sealed class BingRepository
                          COALESCE(SUM(impressions), 0) AS Impressions,
                          CASE WHEN COALESCE(SUM(impressions), 0) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr
                   FROM bing_page_stats
-                  WHERE site_url = @normalizedSiteUrl AND date >= @start AND date <= @end
+                  WHERE site_url LIKE @normalizedSiteUrl || '%' AND date >= @start AND date <= @end
                   GROUP BY page_url
                   ORDER BY Clicks DESC
                   LIMIT @limit
@@ -136,7 +135,7 @@ public sealed class BingRepository
                 : """
                   SELECT method AS Method, COUNT(*) AS ItemCount, COALESCE(MAX(fetched_at), '') AS LastFetchedAt
                   FROM bing_raw_items
-                  WHERE site_url = @normalizedSiteUrl
+                  WHERE site_url LIKE @normalizedSiteUrl || '%'
                   GROUP BY method
                   ORDER BY method
                   """;
@@ -157,7 +156,7 @@ public sealed class BingRepository
                 : """
                   SELECT method AS Method, site_url AS SiteUrl, item_key AS ItemKey, raw_json AS RawJson, fetched_at AS FetchedAt
                   FROM bing_raw_items
-                  WHERE method = 'GetCrawlIssues' AND site_url = @normalizedSiteUrl
+                  WHERE method = 'GetCrawlIssues' AND site_url LIKE @normalizedSiteUrl || '%'
                   ORDER BY fetched_at DESC, item_key
                   LIMIT @limit
                   """;
@@ -226,19 +225,18 @@ public sealed class BingRepository
         });
 
     public Task UpsertQueryStatsWithRawItemAsync(
-        string siteUrl,
         string query,
         string date,
         long? clicks,
         long? impressions,
         double? avgClickPosition,
         double? avgImpressionPosition,
-        string rawJson,
-        string fetchedAt,
         BingRawItem rawItem)
         => _db.WriteTransactionAsync((connection, transaction) =>
         {
-            rawJson = RawJsonStoragePolicy.TrimRawJson(rawJson);
+            var siteUrl = rawItem.SiteUrl;
+            var fetchedAt = rawItem.FetchedAt;
+            var rawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             rawItem.RawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             connection.Execute(
                 """
@@ -259,17 +257,16 @@ public sealed class BingRepository
         });
 
     public Task UpsertPageStatsWithRawItemAsync(
-        string siteUrl,
         string pageUrl,
         string date,
         long? clicks,
         long? impressions,
-        string rawJson,
-        string fetchedAt,
         BingRawItem rawItem)
         => _db.WriteTransactionAsync((connection, transaction) =>
         {
-            rawJson = RawJsonStoragePolicy.TrimRawJson(rawJson);
+            var siteUrl = rawItem.SiteUrl;
+            var fetchedAt = rawItem.FetchedAt;
+            var rawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             rawItem.RawJson = RawJsonStoragePolicy.TrimRawJson(rawItem.RawJson);
             connection.Execute(
                 """

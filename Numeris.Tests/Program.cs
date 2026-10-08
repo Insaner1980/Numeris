@@ -10,6 +10,196 @@ using Numeris.Services.Database;
 using Numeris.Services.Insights;
 using Numeris.Services.Performance;
 using Numeris.ViewModels;
+using Numeris.ViewModels.Sources;
+
+if (args.Contains("--ui-coverage", StringComparer.Ordinal))
+{
+    Run("WinUI reports load using isolated services", NativeUiRegressionTests.Run);
+    return;
+}
+
+if (args.Contains("--live-credential-vault", StringComparer.Ordinal))
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("--live-credential-vault must be used alone.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    Run("Live vault saves replaces and deletes its temporary credential", CredentialVaultRegressionTests.LiveStoreSavesReplacesAndDeletesTemporaryCredential);
+    return;
+}
+
+if (args.Contains("--credential-vault", StringComparer.Ordinal))
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("--credential-vault must be used alone.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    // These tests use a synthetic credential reader and in-memory SQLite only.
+    RunCredentialVaultTests();
+    return;
+}
+
+
+    Run("Cloudflare saves replaces reloads and deletes credentials", SourcesPersistenceRegressionTests.CloudflareSavesReplacesAndDeletes);
+    Run("Web Analytics saves replaces reloads and deletes mappings and credentials", SourcesPersistenceRegressionTests.WebAnalyticsSavesMappingsAndDeletes);
+    Run("Search Console saves replaces reloads and deletes OAuth credentials", SourcesPersistenceRegressionTests.SearchConsoleSavesReplacesAndDeletes);
+    Run("Performance saves replaces reloads and deletes keys and URLs", SourcesPersistenceRegressionTests.PerformanceSavesUrlsAndDeletes);
+    Run("Bing saves replaces reloads and deletes keys and sites", SourcesPersistenceRegressionTests.BingSavesSitesAndDeletes);
+
+Run("Settings restore invalid periods without losing valid preferences", SettingsRegressionTests.RestoresInvalidPeriodWithoutLosingOtherPreferences);
+Run("Settings replacement failures preserve the previous file", SettingsRegressionTests.FailedReplacementPreservesPreviousSettings);
+Run("Settings save failures preserve selection and report recovery", SettingsRegressionTests.SaveFailurePreservesSelectionAndReportsRecovery);
+Run("Site identity rejects hyphens at DNS label boundaries", SiteIdentityRegressionTests.RejectsInvalidDnsLabels);
+Run("Vault domain keys share site identity without credential access", SiteIdentityRegressionTests.VaultDomainKeysUseSiteIdentity);
+Run("Page targets reject secrets and preserve encoded query keys", SiteIdentityRegressionTests.RejectsSecretTargetsAndPreservesPageKeys);
+Run("Bing domain reports include configured path sites", SiteIdentityRegressionTests.BingDomainReportsIncludeConfiguredPathSites);
+Run("Search device replacement rolls back both related tables", DatabaseReviewRegressionTests.SearchReplacementRollsBackBothDeviceTables);
+Run("Search page-query replacement rolls back completely", DatabaseReviewRegressionTests.SearchPageQueriesRollBackReplacement);
+Run("Failed schema upgrades resume at the completed version", DatabaseReviewRegressionTests.FailedUpgradeResumesAtCompletedVersion);
+Run("Future and malformed schema versions preserve database contents", DatabaseReviewRegressionTests.RejectsFutureAndMalformedVersionsWithoutMutation);
+Run("Future schema pragma is rejected before schema creation", DatabaseReviewRegressionTests.RejectsFuturePragmaWithoutCreatingSchema);
+Run("A failed data clear preserves the complete previous state", DatabaseReviewRegressionTests.FailedClearPreservesCompleteData);
+RunCredentialVaultTests();
+Run("Legacy import skips incompatible schema shapes", LegacyImportRegressionTests.SkipsIncompatibleLegacySchemas);
+Run("Legacy import skips malformed rows without losing valid sources", LegacyImportRegressionTests.SkipsMalformedRowsAndKeepsValidIndependentSources);
+Run("Legacy account reads preserve source bytes without optional mappings", LegacyImportRegressionTests.ReadsLegacyAccountWithoutOptionalMappingsAndPreservesSource);
+Run("Legacy site mappings retain reflection-populated metadata", LegacyImportRegressionTests.ReadsLegacySiteMappingMetadata);
+Run("Legacy mock status normalization preserves native connected state", LegacyImportRegressionTests.NormalizesMockStatusAndPreservesConnected);
+Run("Disposed reports do not publish pending local loads", LoadLifetimeRegressionTests.DisposedReportsDoNotPublishPendingLoads);
+Run("Malformed raw JSON cannot retain secret text", RawPolicyRegressionTests.OmitsMalformedSecretBearingRawJson);
+Run("Encoded query secret names are redacted", RawPolicyRegressionTests.RedactsEncodedAndRepeatedSecretQueryNames);
+Run("Unrecognized error bodies preserve HTTP classification", RawPolicyRegressionTests.NonObjectErrorBodiesPreserveHttpClassification);
+Run("Uptime error persistence sanitizes secrets", RawPolicyRegressionTests.UptimePersistenceSanitizesErrorText);
+Run("Raw redaction preserves analytics and exact character thresholds", RawPolicyRegressionTests.TraversalAndBoundsPreserveValidAnalytics);
+
+Run("OAuth expires while an accepted callback is incomplete", OAuthRegressionTests.TimesOutWithIncompleteCallback);
+Run("OAuth accepts a valid callback before token exchange", OAuthRegressionTests.AcceptsValidCallback);
+Run("OAuth expires when the browser does not return", OAuthRegressionTests.TimesOutWithoutCallback);
+Run("OAuth rejects denied and mismatched callbacks without claiming success", OAuthRegressionTests.RejectsDeniedAndMismatchedCallbacks);
+Run("OAuth requires an access token in a successful response", OAuthRegressionTests.ValidatesTokenResponses);
+Run("Search metadata saves preserve sites only for the same client", SearchConsoleReviewRegressionTests.PreservesSitesOnSameClientMetadataSave);
+Run("Search inspection rejects unrelated property URLs before HTTP", SearchConsoleReviewRegressionTests.RejectsInspectionUrlsOutsideThePropertyBeforeHttp);
+Run("Search inspection accepts authorized property boundaries", SearchConsoleReviewRegressionTests.AcceptsInspectionPropertyMembershipBoundaries);
+Run("Search sync preserves stored state without authorized property matches", SearchConsoleReviewRegressionTests.SyncPreservesStateWithoutAuthorizedMatches);
+Run("Search HTTP dimensions and successful empty windows map correctly", SearchConsoleReviewRegressionTests.SyncMapsDimensionsAndReplacesSuccessfulEmptyWindows);
+Run("Search inspection preserves partial results and reports progress", SearchConsoleReviewRegressionTests.InspectionPreservesPartialResultsAndReportsProgress);
+Run("Search inspection stops after three initial failures", SearchConsoleReviewRegressionTests.InspectionStopsAfterThreeInitialFailures);
+Run("OAuth HTTP failures preserve sync state and sanitize errors", SearchConsoleReviewRegressionTests.OAuthFailuresPreserveSyncStateAndSanitizeErrors);
+Run("OAuth requests the configured read-only scope and offline access", OAuthRegressionTests.BuildsReadOnlyAuthorizationRequest);
+Run("OAuth ignores unrelated requests before the actual callback", OAuthRegressionTests.IgnoresUnrelatedRequestsBeforeValidCallback);
+Run("OAuth rejects blank and ambiguous callback values", OAuthRegressionTests.RejectsBlankOrAmbiguousCallbackValues);
+Run("OAuth bounds and validates callback request lines and headers", OAuthRegressionTests.RejectsMalformedAndOversizedCallbackRequests);
+Run("OAuth observes asynchronous browser failure and releases the listener", OAuthRegressionTests.BrowserFailureIsObservedAndListenerIsReleased);
+Run("Shell report loads observe repository read failures", LoadLifetimeRegressionTests.ShellLoadsReportReadFailures);
+Run("Superseded report loads do not publish stale data", LoadLifetimeRegressionTests.SupersededReportsDoNotPublishPendingLoads);
+
+Run("Analytics removal preserves other sources and database operations", AnalyticsRemovalRegressionTests.RemovesLegacyDataAndPreservesOtherSources);
+Run("Analytics removal clears navigation and falls back from saved page", () => AnalyticsRemovalRegressionTests.RemovesNavigationAndSettings(FindRepositoryRoot()));
+
+Run("Configured Cloudflare domains appear before their first sync", DomainSelectionRegressionTests.IncludesConfiguredDomainsBeforeFirstSync);
+Run("Domain selection follows saved and deleted Cloudflare connections", DomainSelectionRegressionTests.UpdatesDomainsAfterConnectionChanges);
+Run("Domain selection and sync include sites without Cloudflare credentials", DomainSelectionRegressionTests.IncludesSitesWithoutCloudflareConnection);
+Run("Domain discovery ignores disabled and deleted Bing metadata targets", DomainSelectionRegressionTests.IgnoresDisabledOrDeletedBingMetadataTargets);
+Run("Web Analytics discovery includes standalone hostname sites", CloudflareRefreshRegressionTests.DiscoversStandaloneWebAnalyticsSites);
+Run("Health sitemap refresh rolls back the complete result on failure", HealthRegressionTests.RollsBackFailedSitemapRefresh);
+Run("Health retains rapid uptime samples", HealthRegressionTests.RetainsRapidUptimeSamples);
+Run("Health response averages exclude missing timings", HealthRegressionTests.ExcludesMissingResponseTimesFromAverages);
+Run("Sitemap rejects unsupported document shapes", HealthRegressionTests.RejectsUnsupportedSitemapShapes);
+Run("Sitemap parses only membership locations", HealthRegressionTests.ParsesOnlySitemapMembershipLocations);
+Run("Health discards old-domain sitemap action results", HealthRegressionTests.DiscardsSitemapActionResultsAfterDomainSwitch);
+Run("Health sitemap summary follows the selected domain", HealthRegressionTests.UpdatesSitemapSummaryAfterDomainChange);
+Run("Health publishes a large sitemap with one list update", HealthRegressionTests.PublishesLargeSitemapInOneUpdate);
+Run("Health actions prevent overlapping checks", HealthRegressionTests.PreventsConcurrentChecks);
+Run("Search indexing includes all sites and reports failed authorization", HealthRegressionTests.IncludesAllSitesInIndexing);
+Run("Bing method failures retain diagnostics without claiming success", HealthRegressionTests.DoesNotCountBingFailuresAsSavedData);
+Run("Cloudflare refetch replaces the complete breakdown date range", DailyBreakdownRegressionTests.ReplacesCloudflareBreakdownRange);
+Run("Web Analytics breakdowns retain their actual dates", DailyBreakdownRegressionTests.PreservesWebAnalyticsCategoryDates);
+Run("Web Analytics rollup rolls back completely on failure", DailyBreakdownRegressionTests.RollsBackFailedWebAnalyticsRollup);
+Run("Web Analytics discovery saves mappings atomically", DailyBreakdownRegressionTests.RollsBackFailedWebAnalyticsDiscovery);
+Run("Cloudflare rejects incomplete or undated Zone responses", CloudflareReviewRegressionTests.RejectsMalformedZoneResponses);
+Run("Web Analytics rejects incomplete or undated RUM responses", CloudflareReviewRegressionTests.RejectsMalformedRumResponses);
+Run("Cloudflare parsing preserves provider dates and distinct metrics", CloudflareReviewRegressionTests.PreservesProviderDatesAndDistinctMetrics);
+Run("Cloudflare groups only actual 5xx responses as server errors", CloudflareReviewRegressionTests.GroupsOnlyActual5xxAsServerErrors);
+Run("Web Analytics discovery reload includes manually saved mappings", CloudflareReviewRegressionTests.ReloadsAllSavedMappingsAfterDiscoveryUpsert);
+Run("Cloudflare HTTP sync preserves data after malformed responses", CloudflareReviewRegressionTests.SyncsZoneHttpResponsesWithoutReplacingDataOnMalformedPayloads);
+Run("Web Analytics HTTP sync preserves last sync after failures", CloudflareReviewRegressionTests.SyncsRumHttpResponsesWithoutAdvancingLastSyncOnFailure);
+Run("Cloudflare saved HTTP tests remain read-only", CloudflareReviewRegressionTests.KeepsSavedZoneHttpTestsReadOnly);
+Run("Cloudflare unsaved source test rejects a mismatched zone", CloudflareReviewRegressionTests.RejectsUnsavedMismatchedZoneThroughSourceTest);
+Run("Web Analytics HTTP discovery preserves manual source mappings", CloudflareReviewRegressionTests.DiscoversSitesThroughHttpAndPreservesManualMappingsInSource);
+Run("Daily breakdown migration preserves traffic and configured sites", DailyBreakdownRegressionTests.MigratesOnlyInvalidBreakdownCaches);
+Run("Search Console aggregates weight position and CTR by traffic", DailyBreakdownRegressionTests.WeightsSearchMetricsByTraffic);
+Run("Search Console reads zero and nonzero metrics together", DailyBreakdownRegressionTests.ReadsZeroAndNonzeroSearchMetricsTogether);
+Run("Bing aggregates weight positions by traffic", DailyBreakdownRegressionTests.WeightsBingPositionsByTraffic);
+
+foreach (var sourceType in new[]
+{
+    typeof(CloudflareSourceViewModel), typeof(WebAnalyticsSourceViewModel), typeof(SearchConsoleSourceViewModel),
+    typeof(PerformanceSourceViewModel), typeof(BingSourceViewModel),
+})
+{
+    Run($"{sourceType.Name} prevents concurrent actions", () => SourceActionRegressionTests.PreventsConcurrentActions(sourceType));
+    Run($"{sourceType.Name} reports delete failures", () => SourceActionRegressionTests.ReportsDeleteFailure(sourceType));
+}
+
+foreach (var webAnalytics in new[] { false, true })
+{
+    var report = webAnalytics ? "Web Analytics" : "Cloudflare";
+    Run($"{report} refresh reports missing configuration", () => CloudflareRefreshRegressionTests.ReportsMissingConnection(webAnalytics));
+    Run($"{report} refresh exposes sync failures", () => CloudflareRefreshRegressionTests.ReportsSyncFailure(webAnalytics));
+    Run($"{report} refresh prevents concurrent requests", () => CloudflareRefreshRegressionTests.PreventsConcurrentRefresh(webAnalytics));
+}
+
+Run("Overview summaries use exactly the selected days", OverviewRegressionTests.UsesExactlySelectedDays);
+Run("Overview keeps missing data and changes missing", OverviewRegressionTests.DoesNotInventMissingTrafficOrChanges);
+Run("Overview hides comparisons for incomplete periods", OverviewRegressionTests.HidesChangesForPartialAndNewData);
+Run("Overview comparisons require every contributing site", OverviewRegressionTests.HidesComparisonsForComplementaryDomainCoverage);
+Run("Insights preserve the sign of large growth ratios", InsightReviewRegressionTests.FormatsLargeGrowthWithoutReversingItsSign);
+Run("Insights include per-domain Cloudflare freshness", InsightReviewRegressionTests.IncludesPerDomainCloudflareFreshness);
+Run("Insights empty state describes rule evaluation only", InsightReviewRegressionTests.EmptyStateDoesNotCertifyAllConnectedSources);
+Run("Insights include exact mobile score decline thresholds", InsightReviewRegressionTests.IncludesExactMobileScoreDropBoundary);
+Run("Insights retain established thresholds and deterministic ordering", InsightReviewRegressionTests.VerifiesRuleThresholdsAndOrdering);
+Run("Insights distinguish missing threat history from measured zero", InsightReviewRegressionTests.DistinguishesMissingThreatHistoryFromMeasuredZero);
+Run("Insights do not invent zero Bing clicks", InsightReviewRegressionTests.DoesNotInventZeroBingClicks);
+Run("Insights require observed page and query comparison rows", InsightReviewRegressionTests.RequiresObservedPageAndQueryComparisonRows);
+Run("Insights exclude missing mobile score evidence", InsightReviewRegressionTests.KeepsMissingMobileEvidenceOutOfTheExplanation);
+Run("Insights preserve availability for every aggregate", InsightReviewRegressionTests.PreservesMetricAvailabilityForAllAggregates);
+Run("Insights do not compare disjoint site histories", InsightReviewRegressionTests.DoesNotCompareDisjointSiteHistories);
+Run("Insights do not hide missing Bing clicks behind other sites", InsightReviewRegressionTests.DoesNotHideMissingBingClicksBehindOtherSites);
+Run("Bing normalizes provider date formats", OverviewRegressionTests.ConvertsBingDates);
+Run("Bing date migration preserves history and newer rows", OverviewRegressionTests.RepairsStoredBingDatesWithoutDuplicates);
+Run("Cloudflare limits breakdowns without widening short periods", OverviewRegressionTests.LimitsOnlyCloudflareBreakdowns);
+Run("Overview refresh checks configured sources", () => OverviewRegressionTests.RefreshesConfiguredSources(false, false));
+Run("Overview refresh exposes each source failure", () => OverviewRegressionTests.RefreshesConfiguredSources(true, false));
+Run("Overview refresh prevents concurrent requests", () => OverviewRegressionTests.RefreshesConfiguredSources(false, true));
+
+Run("CrUX reads numeric strings using invariant culture", ReportRefreshRegressionTests.ReadsCruxNumericStrings);
+Run("CrUX rejects malformed numeric strings", ReportRefreshRegressionTests.RejectsMalformedCruxNumbers);
+Run("PageSpeed chart preserves missing scores", ReportRefreshRegressionTests.PreservesMissingPageSpeedScores);
+Run("PageSpeed summary includes every selected URL", ReportRefreshRegressionTests.IncludesEveryPageSpeedUrlInSummary);
+Run("Measured zero cached bytes remain zero", ReportRefreshRegressionTests.FormatsMeasuredZeroCachedBytes);
+Run("CrUX percentile displays preserve values and units", ReportRefreshRegressionTests.FormatsCruxPercentilesWithUnits);
+Run("CrUX retains actual collection dates when no replacement is stored", PerformanceReviewRegressionTests.RetainsCruxCollectionDatesWhenNoReplacementIsStored);
+Run("CrUX HTTP requests preserve targets and collection dates", PerformanceReviewRegressionTests.RequestsCruxTargetsAndPreservesCollectionDates);
+Run("CrUX missing field data preserves history and neutral feedback", PerformanceReviewRegressionTests.AllCruxNotFoundResponsesPreserveHistoryAndNeutralFeedback);
+Run("CrUX authorization failures preserve stored data and stop PageSpeed", PerformanceReviewRegressionTests.Non404CruxFailuresPreserveStoredDataAndAbortPageSpeed);
+Run("PageSpeed mixed HTTP outcomes count only saved reports", PerformanceReviewRegressionTests.PageSpeedMixedResultsCountSavedReportsAndPreserveFailedStrategy);
+Run("PageSpeed failures cannot mark Overview as updated", PerformanceReviewRegressionTests.PageSpeedFailuresDoNotMarkOverviewUpdated);
+Run("PageSpeed runtime errors preserve previous reports", PerformanceReviewRegressionTests.RejectsPageSpeedRuntimeErrorsWithoutReplacingHistory);
+Run("PageSpeed invalid analysis times preserve previous reports", PerformanceReviewRegressionTests.RejectsInvalidPageSpeedAnalysisTimesWithoutReplacingHistory);
+Run("PageSpeed nonfinite scores preserve previous reports", PerformanceReviewRegressionTests.RejectsNonfinitePageSpeedScoresWithoutReplacingHistory);
+Run("PageSpeed warning-only reports retain their identity", PerformanceReviewRegressionTests.PreservesPageSpeedWarningsAndRequestedIdentity);
+foreach (var report in new[] { "Search Console", "Performance", "Bing" })
+{
+    Run($"{report} refresh reports sync failures", () => ReportRefreshRegressionTests.ShowsSyncFailure(report));
+    Run($"{report} refresh reports missing configuration", () => ReportRefreshRegressionTests.ShowsMissingConfiguration(report));
+    Run($"{report} refresh stays busy and prevents duplicate requests", () => ReportRefreshRegressionTests.PreventsConcurrentRefresh(report));
+}
 
 Run("normalizes domain origin and home page into one site identity", () =>
 {
@@ -52,20 +242,6 @@ Run("insight trend math uses ratios and avoids fake percentage jumps", () =>
     Equal("+34%", Trend.FormatRatio(0.34));
     Equal("-12%", Trend.FormatRatio(-0.12));
     Equal("0%", Trend.FormatRatio(0));
-});
-
-Run("InsightEngine explains traffic mismatch with measured numbers", () =>
-{
-    var cards = GenerateInsights(Metrics(
-        cloudflareVisitors: new MetricWindow(67, 50),
-        ga4Users: new MetricWindow(102, 100)));
-
-    var card = FindInsight(cards, "Traffic looks inconsistent");
-    Contains(card.Message, "Cloudflare recorded more visitors");
-    Contains(card.Message, "Analytics users stayed almost the same");
-    Contains(card.WhyShown, "34%");
-    Contains(card.WhyShown, "2%");
-    Contains(card.NextStep, "Open Cloudflare");
 });
 
 Run("InsightEngine explains Google visibility without clicks", () =>
@@ -120,20 +296,18 @@ Run("InsightEngine returns clean empty state when connected data has no rule mat
 {
     var metrics = Metrics(
         cloudflareVisitors: new MetricWindow(100, 100),
-        ga4Users: new MetricWindow(100, 100),
         googleImpressions: new MetricWindow(100, 100),
         googleClicks: new MetricWindow(10, 10),
         freshness: new SourceFreshnessSummary(ConnectedSources: 3, MissingLastSyncSources: 0, StaleSources: 0));
 
     Equal("0", GenerateInsights(metrics).Count.ToString());
-    Equal("All connected sources look consistent for this period.", GetInsightEmptyState(metrics));
+    Equal("No insight rules were triggered by the stored data for this period.", GetInsightEmptyState(metrics));
 });
 
 Run("InsightEngine sorts by severity then priority and caps rows at four", () =>
 {
     var cards = GenerateInsights(Metrics(
         cloudflareVisitors: new MetricWindow(67, 50),
-        ga4Users: new MetricWindow(102, 100),
         googleImpressions: new MetricWindow(141, 100),
         googleClicks: new MetricWindow(103, 100),
         bingImpressions: new MetricWindow(320, 100),
@@ -161,7 +335,6 @@ Run("InsightEngine avoids false positives for tiny or missing windows", () =>
 {
     var cards = GenerateInsights(Metrics(
         cloudflareVisitors: new MetricWindow(2, 1),
-        ga4Users: new MetricWindow(1, 1),
         googleImpressions: new MetricWindow(80, 40),
         googleClicks: new MetricWindow(0, 0),
         bingImpressions: new MetricWindow(49, 100),
@@ -233,7 +406,7 @@ Run("database migrations use explicit schema versions", () =>
     var root = FindRepositoryRoot();
     var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
 
-    Contains(migrations, "CurrentSchemaVersion = 7");
+    Contains(migrations, "CurrentSchemaVersion = 11");
     Contains(migrations, "PRAGMA user_version");
     Contains(migrations, "RunPendingMigrations");
 });
@@ -341,7 +514,7 @@ Run("CrUX test treats NotFound as missing field data instead of key failure", ()
 
     Contains(performanceSync, "catch (ApiRequestException ex) when (ex.IsNotFound)");
     Contains(performanceSync, "no CrUX field data");
-    Contains(performanceSync, "CrUX API key works");
+    Contains(performanceSync, "API key validity was not verified");
 });
 
 Run("Bing page and raw stats keep dated history", () =>
@@ -385,16 +558,7 @@ Run("navigation items use packaged filled image icons", () =>
     var mainWindow = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml"));
     var projectFile = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
     var iconDir = Path.Combine(root, "Numeris", "Assets", "Icons");
-    var icons = new[]
-    {
-        "overview-filled.png",
-        "cloudflare-filled.png",
-        "google-search-filled.png",
-        "bing-filled.png",
-        "performance-filled.png",
-        "health-filled.png",
-        "sources-filled.png"
-    };
+    var icons = ProgramInputs.Vector1;
 
     Contains(mainWindow, "Width=\"20\"");
     Contains(mainWindow, "Height=\"20\"");
@@ -436,116 +600,21 @@ Run("Bing and Performance reports read through repositories", () =>
     NotContains(performanceViewModel, "SqliteDatabase");
 });
 
-Run("Google Analytics schema and connection registry are first-class", () =>
-{
-    var root = FindRepositoryRoot();
-    var migrations = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Migrations.cs"));
-    var sqliteDatabase = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "SqliteDatabase.cs"));
-
-    Contains(migrations, "CurrentSchemaVersion = 7");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_daily");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_pages");
-    Contains(migrations, "engaged_sessions INTEGER NOT NULL DEFAULT 0");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_sources");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_events");
-    Contains(migrations, "CREATE TABLE IF NOT EXISTS google_analytics_devices");
-    Contains(migrations, "('ga4', 'google_analytics', 'disconnected')");
-    Contains(sqliteDatabase, "DELETE FROM google_analytics_daily;");
-    Contains(sqliteDatabase, "DELETE FROM google_analytics_events;");
-    NotContains(migrations, "INSERT OR IGNORE INTO connections (id, source, status) VALUES ('youtube'");
-});
-
-Run("Google OAuth token handling is centralized for Search Console and Analytics", () =>
+Run("Google OAuth token handling is centralized for Search Console", () =>
 {
     var root = FindRepositoryRoot();
     var oauthClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Auth", "GoogleOAuthClient.cs"));
     var oauthFlow = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Auth", "GoogleOAuthFlow.cs"));
     var searchClient = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "SearchConsoleClient.cs"));
-    var analyticsSync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "GoogleAnalyticsSyncService.cs"));
 
     Contains(oauthClient, "BuildAuthUrl");
     Contains(oauthClient, "ExchangeCodeAsync");
     Contains(oauthClient, "RefreshAccessTokenAsync");
     Contains(oauthFlow, "IReadOnlyList<string> scopes");
     Contains(oauthFlow, "BuildAuthUrl(clientId, redirectUri, state, scopes)");
-    Contains(analyticsSync, "GoogleOAuthClient");
-    Contains(analyticsSync, "GoogleAnalyticsClient.Scope");
     NotContains(searchClient, "TokenEndpoint");
     NotContains(searchClient, "ExchangeCodeAsync");
     NotContains(searchClient, "RefreshAccessTokenAsync");
-});
-
-Run("Google Analytics sync and reporting follow repository and visual architecture", () =>
-{
-    var root = FindRepositoryRoot();
-    var appCode = File.ReadAllText(Path.Combine(root, "Numeris", "App.xaml.cs"));
-    var sync = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Sync", "GoogleAnalyticsSyncService.cs"));
-    var client = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Api", "GoogleAnalyticsClient.cs"));
-    var repository = File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Database", "Repositories", "GoogleAnalyticsRepository.cs"));
-    var viewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "GoogleAnalyticsViewModel.cs"));
-    var page = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml"));
-    var pageCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml.cs"));
-
-    Contains(appCode, "services.AddSingleton<GoogleAnalyticsRepository>();");
-    Contains(appCode, "services.AddSingleton<GoogleAnalyticsClient>();");
-    Contains(appCode, "services.AddSingleton<GoogleAnalyticsSyncService>();");
-    Contains(appCode, "services.AddTransient<GoogleAnalyticsViewModel>();");
-    Contains(appCode, "services.AddTransient<GoogleAnalyticsPage>();");
-    NotContains(sync, "SqliteDatabase");
-    Contains(client, "analytics.readonly");
-    Contains(sync, "GoogleAnalyticsClient.Scope");
-    Contains(sync, "RunReportAsync");
-    Contains(repository, "WriteTransactionAsync");
-    Contains(repository, "UpsertRollupAsync");
-    Contains(repository, "COALESCE(SUM(engaged_sessions), 0) AS EngagedSessions");
-    Contains(viewModel, "ChartPalette.Accent");
-    Contains(viewModel, "ChartPalette.Secondary");
-    Contains(viewModel, "EngagedSessionsText");
-    Contains(viewModel, "GeometrySize = 6");
-    Contains(viewModel, "DataPadding");
-    Contains(page, "Text=\"Analytics\"");
-    Contains(page, "Text=\"Engagement rate\"");
-    Contains(page, "Text=\"Engaged sessions\"");
-    Contains(page, "Style=\"{StaticResource PageTitleTextBlockStyle}\"");
-    Contains(page, "Style=\"{StaticResource TopTabSelectorBarStyle}\"");
-    Contains(page, "Style=\"{StaticResource ChartCardBorderStyle}\"");
-    Contains(page, "Style=\"{StaticResource ContentCardBorderStyle}\"");
-    Contains(page, "Style=\"{StaticResource DataListViewStyle}\"");
-    Contains(page, "Overview");
-    Contains(page, "Pages");
-    Contains(page, "Acquisition");
-    Contains(page, "Events");
-    Contains(page, "Devices");
-    Contains(pageCode, "ChartTheme.CreateCartesianChart()");
-    Contains(pageCode, "ChartTheme.CreateChartSurface(chart)");
-});
-
-Run("Google Analytics is available from navigation and Sources", () =>
-{
-    var root = FindRepositoryRoot();
-    var mainWindow = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml"));
-    var mainWindowCode = File.ReadAllText(Path.Combine(root, "Numeris", "MainWindow.xaml.cs"));
-    var shellViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "ShellViewModel.cs"));
-    var sourcesViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "SourcesViewModel.cs"));
-    var sourcesPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml"));
-    var sourcesCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml.cs"));
-    var projectFile = File.ReadAllText(Path.Combine(root, "Numeris", "Numeris.csproj"));
-
-    Contains(mainWindow, "Tag=\"analytics\" Content=\"Analytics\"");
-    Contains(mainWindow, "Source=\"ms-appx:///Assets/Icons/analytics-filled.png\"");
-    Contains(mainWindowCode, "[\"analytics\"] = typeof(GoogleAnalyticsPage)");
-    Contains(shellViewModel, "or \"analytics\"");
-    Contains(sourcesViewModel, "GoogleAnalyticsSourceViewModel GoogleAnalytics");
-    Contains(sourcesPage, "Text=\"Google Analytics\"");
-    Contains(sourcesPage, "GA4 traffic, pages, acquisition, and events");
-    Contains(sourcesPage, "Header=\"Edit Google Analytics credentials\"");
-    Contains(sourcesPage, "ViewModel.GoogleAnalytics.StatusMessage");
-    Contains(sourcesCode, "SaveGoogleAnalyticsButton_Click");
-    Contains(sourcesCode, "ConnectGoogleAnalyticsButton_Click");
-    Contains(projectFile, "Assets\\Icons\\analytics-filled.png");
-    NotContains(mainWindow, "Tag=\"youtube\" Content=\"YouTube\"");
-    NotContains(sourcesPage, "Text=\"YouTube\"");
-    NotContains(projectFile, "Assets\\Icons\\youtube-filled.png");
 });
 
 Run("Insight metrics aggregation reads local repositories without schema or API drift", () =>
@@ -566,8 +635,6 @@ Run("Insight metrics aggregation reads local repositories without schema or API 
     Contains(repository, "search_console");
     Contains(repository, "search_devices");
     Contains(repository, "sitemap_urls");
-    Contains(repository, "google_analytics_daily");
-    Contains(repository, "google_analytics_events");
     Contains(repository, "pagespeed_runs");
     Contains(repository, "bing_rank_traffic");
     Contains(repository, "connections");
@@ -575,13 +642,12 @@ Run("Insight metrics aggregation reads local repositories without schema or API 
     Contains(repository, "SiteIdentity.NormalizeHomePageUrl");
     NotContains(repository, "CloudflareGraphqlClient");
     NotContains(repository, "SearchConsoleClient");
-    NotContains(repository, "GoogleAnalyticsClient");
     NotContains(repository, "PageSpeedClient");
     NotContains(repository, "BingWebmasterClient");
     NotContains(repository, "RunReportAsync");
     NotContains(repository, "RunPageSpeedAsync");
     NotContains(repository, "SyncConfiguredAsync");
-    Contains(migrations, "CurrentSchemaVersion = 7");
+    Contains(migrations, "CurrentSchemaVersion = 11");
     NotContains(migrations, "CREATE TABLE IF NOT EXISTS insights");
     NotContains(migrations, "insight_metrics");
 });
@@ -593,15 +659,15 @@ Run("Dashboard ViewModel consumes insight engine and metrics repository only", (
     var viewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "DashboardViewModel.cs"));
 
     Contains(app, "services.AddSingleton<InsightMetricsRepository>();");
-    Contains(app, "services.AddSingleton<InsightEngine>();");
+    Contains(File.ReadAllText(Path.Combine(root, "Numeris", "Services", "Insights", "InsightEngine.cs")), "public static class InsightEngine");
     Contains(viewModel, "InsightMetricsRepository");
     Contains(viewModel, "InsightEngine");
     Contains(viewModel, "ObservableCollection<InsightCard> Insights");
     Contains(viewModel, "InsightsSummaryText");
     Contains(viewModel, "HasInsightRows");
     Contains(viewModel, "GetInsightMetricsAsync(domain, range.Days)");
-    Contains(viewModel, "_insightEngine.Generate");
-    Contains(viewModel, "_insightEngine.GetEmptyStateText");
+    Contains(viewModel, "InsightEngine.Generate");
+    Contains(viewModel, "InsightEngine.GetEmptyStateText");
     NotContains(viewModel, "SqliteDatabase");
 });
 
@@ -619,9 +685,9 @@ Run("Dashboard Insights section binds rows with shared UI resources", () =>
     Contains(dashboard, "AutomationProperties.Name=\"Insight row\"");
     Contains(dashboard, "Text=\"Why shown\"");
     Contains(dashboard, "Text=\"Next step\"");
-    Contains(dashboard, "Text=\"{x:Bind SeverityText, Mode=OneWay}\"");
-    Contains(dashboard, "Text=\"{x:Bind WhyShown, Mode=OneWay}\"");
-    Contains(dashboard, "Text=\"{x:Bind NextStep, Mode=OneWay}\"");
+    Contains(dashboard, "Text=\"{x:Bind SeverityText, Mode=OneTime}\"");
+    Contains(dashboard, "Text=\"{x:Bind WhyShown, Mode=OneTime}\"");
+    Contains(dashboard, "Text=\"{x:Bind NextStep, Mode=OneTime}\"");
     Contains(dashboard, "BorderBrush=\"{StaticResource NumerisCardBorderBrush}\"");
     NotContains(dashboard, "CTR");
     NotContains(dashboard, "CrUX");
@@ -684,7 +750,7 @@ Run("Windows check scripts and command shims are documented", () =>
     Contains(lint, "reports/ktlint.txt");
     Contains(lint, "reports/detekt.txt");
     Contains(lint, "reports/lint.txt");
-    Contains(lint, "Write-CheckSummary");
+    Contains(lint, "Show-CheckSummary");
     Contains(lint, "lint-check summary");
     Contains(lint, "Tee-Object -FilePath $reportPath -Append | Out-Host");
     Contains(security, "reports/security-code.txt");
@@ -1196,7 +1262,7 @@ Run("Overview promotes traffic as a matte bar hero", () =>
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
 
     Contains(dashboardPage, "x:Name=\"TrafficHeroCard\"");
-    Contains(dashboardPage, "Text=\"Visitors\"");
+    Contains(dashboardPage, "Text=\"Daily visitors (sum)\"");
     Contains(dashboardPage, "Text=\"{x:Bind ViewModel.VisitorsTotal, Mode=OneWay}\"");
     Contains(dashboardPage, "<controls:DeltaBadge");
     Contains(dashboardPage, "Value=\"{x:Bind ViewModel.VisitorsChangeValue, Mode=OneWay}\"");
@@ -1213,7 +1279,7 @@ Run("Overview promotes traffic as a matte bar hero", () =>
 
     Contains(dashboardViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visitors\"");
     Contains(dashboardViewModel, "HighlightIndex(rows)");
-    Contains(dashboardViewModel, "private static int? HighlightIndex(IReadOnlyList<TrafficDay> rows)");
+    Contains(dashboardViewModel, "private static int? HighlightIndex(List<TrafficDay> rows)");
     Contains(dashboardViewModel, "rows[^1].UniqueVisitors");
     NotContains(dashboardViewModel, "Name = \"Pageviews\"");
 
@@ -1266,7 +1332,7 @@ Run("Overview KPI and status surfaces carry context instead of empty boxes", () 
     Contains(kpiCard, "MetricContent");
     Contains(kpiCard, "Detail");
     Contains(dashboardPage, "x:Name=\"TrafficHeroCard\"");
-    Contains(dashboardPage, "Detail=\"Google Search\"");
+    Contains(dashboardPage, "Detail=\"{x:Bind ViewModel.ClicksDetail, Mode=OneWay}\"");
     Contains(dashboardPage, "Label=\"Bing Clicks\"");
     Contains(dashboardPage, "Label=\"Web Vitals\"");
     Contains(dashboardPage, "Label=\"PageSpeed Mobile\"");
@@ -1372,7 +1438,7 @@ Run("Overview controls use user-facing period labels and polished health states"
     Contains(periodSelectorCode, "SelectedPeriodProperty");
     Contains(periodSelectorCode, "SelectionChanged");
     Contains(periodSelectorCode, "PeriodOptions.All");
-    Contains(periodSelectorCode, "option.Value.ShortLabel()");
+    Contains(periodSelectorCode, "period.ShortLabel()");
     Contains(periodSelectorCode, "PeriodSelectorSelectedBrush");
     Contains(periodSelectorCode, "PeriodSelectorSelectedForegroundBrush");
     Contains(periodSelectorCode, "PeriodSelectorSelectedBorderBrush");
@@ -1394,16 +1460,7 @@ Run("Overview controls use user-facing period labels and polished health states"
 Run("Report pages use shared PeriodSelector instead of period ComboBox", () =>
 {
     var root = FindRepositoryRoot();
-    var pages = new[]
-    {
-        "DashboardPage",
-        "CloudflarePage",
-        "SearchConsolePage",
-        "GoogleAnalyticsPage",
-        "BingPage",
-        "PerformancePage",
-        "HealthPage",
-    };
+    var pages = ProgramInputs.Vector2;
 
     foreach (var page in pages)
     {
@@ -1539,8 +1596,8 @@ Run("Cloudflare volume charts use the shared matte bar style", () =>
     Contains(cloudflareViewModel, "ChartTheme.CreateMatteColumnSeries(\"Threats\"");
     Contains(cloudflareViewModel, "ChartTheme.CreateMatteColumnSeries(\"Visits\"");
     Contains(cloudflareViewModel, "ChartTheme.CreateMutedColumnSeries(\"Page views\"");
-    Contains(cloudflareViewModel, "private static int? HighlightIndex(IReadOnlyList<long> values)");
-    Contains(cloudflareViewModel, "private static int? LargestValueIndex(IReadOnlyList<long> values)");
+    Contains(cloudflareViewModel, "private static int? HighlightIndex(long[] values)");
+    Contains(cloudflareViewModel, "private static int? LargestValueIndex(long[] values)");
     Contains(cloudflareViewModel, "HighlightIndex(visitors)");
     Contains(cloudflareViewModel, "LargestValueIndex(threats)");
     Contains(cloudflareViewModel, "StatusCodeGroup.Success => ChartPalette.Success.WithAlpha");
@@ -1579,7 +1636,7 @@ Run("Cloudflare traffic sync persists top country and page breakdowns", () =>
     Contains(client, "List<CloudflareCountryRow> Countries");
     Contains(client, "List<CloudflarePageRow> Pages");
 
-    Contains(migrations, "CurrentSchemaVersion = 7");
+    Contains(migrations, "CurrentSchemaVersion = 11");
     Contains(migrations, "CREATE TABLE IF NOT EXISTS cloudflare_pages");
     Contains(migrations, "UNIQUE(domain, date, path)");
     Contains(migrations, "RunV5Migration");
@@ -1587,8 +1644,8 @@ Run("Cloudflare traffic sync persists top country and page breakdowns", () =>
 
     Contains(repository, "INSERT INTO cloudflare_countries");
     Contains(repository, "INSERT INTO cloudflare_pages");
-    Contains(repository, "DELETE FROM cloudflare_countries WHERE domain = @domain AND date = @date");
-    Contains(repository, "DELETE FROM cloudflare_pages WHERE domain = @domain AND date = @date");
+    Contains(repository, "DELETE FROM cloudflare_countries WHERE domain = @domain AND date >= @start AND date <= @end");
+    Contains(repository, "DELETE FROM cloudflare_pages WHERE domain = @domain AND date >= @start AND date <= @end");
     Contains(repository, "FROM cloudflare_pages");
     NotContains(repository, "top_path AS Path");
 });
@@ -1758,7 +1815,9 @@ Run("Health page uses shared visual surfaces and chart palette", () =>
     Contains(healthPage, "Style=\"{StaticResource ChartCardBorderStyle}\"");
     Contains(healthPage, "Style=\"{StaticResource ContentCardBorderStyle}\"");
     Contains(healthPage, "Style=\"{StaticResource DataListViewStyle}\"");
-    Contains(healthPage, "HorizontalScrollBarVisibility=\"Disabled\"");
+    Contains(healthPage, "HorizontalScrollBarVisibility=\"Auto\"");
+    Contains(healthPage, "HorizontalScrollMode=\"Enabled\"");
+    Contains(healthPage, "MinWidth=\"{StaticResource ReportDataMinWidth}\"");
     Contains(healthPage, "Margin=\"{StaticResource PageHeaderMargin}\"");
     Contains(healthPage, "Padding=\"{StaticResource PageScrollContentPadding}\"");
     Contains(healthPage, "UptimeOverviewText");
@@ -1766,7 +1825,7 @@ Run("Health page uses shared visual surfaces and chart palette", () =>
     Contains(healthPage, "Last seen");
     Contains(healthPage, "IsoDateTimeDisplayConverter");
     Contains(healthViewModel, "ChartPalette.Accent");
-    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Incidents\"");
+    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Failed probes\"");
     Contains(healthViewModel, "BuildResponseAxisMax");
     Contains(healthViewModel, "SitemapLastUpdatedText");
     NotContains(healthViewModel, "SKColor.Parse(\"#D9A24E\")");
@@ -1815,10 +1874,9 @@ Run("Sources page uses accent actions only for committed source changes", () =>
     var root = FindRepositoryRoot();
     var sourcesPage = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SourcesPage.xaml"));
 
-    Equal("11", CountOccurrences(sourcesPage, "Style=\"{StaticResource AccentActionButtonStyle}\"").ToString());
+    Equal("9", CountOccurrences(sourcesPage, "Style=\"{StaticResource AccentActionButtonStyle}\"").ToString());
     NotContains(sourcesPage, "Style=\"{StaticResource PrimaryActionButtonStyle}\"");
     Contains(sourcesPage, "Content=\"Connect Google account\" Click=\"ConnectScButton_Click\" IsEnabled=\"{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}\" Style=\"{StaticResource AccentActionButtonStyle}\"");
-    Contains(sourcesPage, "Content=\"Connect Google Analytics\" Click=\"ConnectGoogleAnalyticsButton_Click\" IsEnabled=\"{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}\" Style=\"{StaticResource AccentActionButtonStyle}\"");
     Contains(sourcesPage, "Content=\"Save\" Style=\"{StaticResource AccentActionButtonStyle}\"");
     Contains(sourcesPage, "Content=\"Add\" VerticalAlignment=\"Bottom\" IsEnabled=\"{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}\" Click=\"AddWaSiteButton_Click\" Style=\"{StaticResource AccentActionButtonStyle}\"");
     Contains(sourcesPage, "Content=\"Add\" VerticalAlignment=\"Bottom\" IsEnabled=\"{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}\" Click=\"AddPerformanceUrlButton_Click\" Style=\"{StaticResource AccentActionButtonStyle}\"");
@@ -1832,8 +1890,6 @@ Run("Report volume charts use matte bars without forcing continuous metrics", ()
     var root = FindRepositoryRoot();
     var searchCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "SearchConsolePage.xaml.cs"));
     var searchViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "SearchConsoleViewModel.cs"));
-    var analyticsCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "GoogleAnalyticsPage.xaml.cs"));
-    var analyticsViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "GoogleAnalyticsViewModel.cs"));
     var bingCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "BingPage.xaml.cs"));
     var bingViewModel = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", "BingViewModel.cs"));
     var performanceCode = File.ReadAllText(Path.Combine(root, "Numeris", "Views", "PerformancePage.xaml.cs"));
@@ -1846,10 +1902,6 @@ Run("Report volume charts use matte bars without forcing continuous metrics", ()
     Contains(searchCode, "BuildChart(ref _overviewChart, OverviewChartHost)");
     Contains(searchCode, "BuildBarChart(ref _devicesChart, DevicesChartHost)");
 
-    Contains(analyticsViewModel, "ChartTheme.CreateMatteColumnSeries(device");
-    NotContains(analyticsViewModel, "return CreateLine(device");
-    Contains(analyticsCode, "BuildChart(ref _overviewChart, OverviewChartHost)");
-    Contains(analyticsCode, "BuildBarChart(ref _deviceChart, DevicesPanel)");
 
     Contains(bingViewModel, "ChartTheme.CreateMatteColumnSeries(\"Clicks\"");
     Contains(bingViewModel, "ChartTheme.CreateMutedColumnSeries(\"Impressions\"");
@@ -1862,12 +1914,12 @@ Run("Report volume charts use matte bars without forcing continuous metrics", ()
     Contains(performanceCode, "BuildChart(ref _cruxChart, CruxChartHost)");
     Contains(performanceCode, "BuildBarChart(ref _pageSpeedChart, PageSpeedChartHost)");
 
-    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Incidents\"");
-    Contains(healthViewModel, "new LineSeries<double>");
+    Contains(healthViewModel, "ChartTheme.CreateMatteColumnSeries(\"Failed probes\"");
+    Contains(healthViewModel, "new LineSeries<double?>");
     Contains(healthCode, "BuildChart(ref _responseChart, ResponseChartHost)");
     Contains(healthCode, "BuildBarChart(ref _incidentsChart, IncidentsChartHost)");
 
-    Contains(searchCode + analyticsCode + bingCode + performanceCode + healthCode, "ChartTheme.CreateBarChartSurface(chart)");
+    Contains(searchCode + bingCode + performanceCode + healthCode, "ChartTheme.CreateBarChartSurface(chart)");
 });
 
 Run("Sources page presents integrations as shared settings cards", () =>
@@ -1884,7 +1936,6 @@ Run("Sources page presents integrations as shared settings cards", () =>
     Contains(sourcesPage, "<Setter Property=\"HorizontalContentAlignment\" Value=\"Stretch\" />");
     Contains(sourcesPage, "Traffic, cache, security events");
     Contains(sourcesPage, "Clicks, impressions, pages, indexing");
-    Contains(sourcesPage, "GA4 traffic, pages, acquisition, and events");
     Contains(sourcesPage, "Core Web Vitals and PageSpeed lab data");
     Contains(sourcesPage, "Search visibility and indexing data");
     Contains(sourcesPage, "StatusMessage");
@@ -1902,7 +1953,7 @@ Run("Sources page groups settings by provider", () =>
     Contains(sourcesPage, "Text=\"Bing\"");
     Contains(sourcesPage, "Zone Analytics");
     Contains(sourcesPage, "Web Analytics");
-    Contains(sourcesPage, "Google Analytics");
+    Contains(sourcesPage, "Search Console and Performance");
     Contains(sourcesPage, "Search Console");
     Contains(sourcesPage, "Web Performance");
     Contains(sourcesPage, "Bing Webmaster");
@@ -1919,11 +1970,10 @@ Run("Sources page hides credential forms behind collapsed editors", () =>
 
     Contains(sourcesPage, "Header=\"Add Cloudflare Zone Analytics connection\"");
     Contains(sourcesPage, "Header=\"Edit Cloudflare Web Analytics credentials\"");
-    Contains(sourcesPage, "Header=\"Edit Google Analytics credentials\"");
     Contains(sourcesPage, "Header=\"Edit Google Search Console credentials\"");
     Contains(sourcesPage, "Header=\"Edit Google Web Performance API keys\"");
     Contains(sourcesPage, "Header=\"Edit Bing Webmaster API key\"");
-    Equal("6", CountOccurrences(sourcesPage, "IsExpanded=\"False\"").ToString());
+    Equal("5", CountOccurrences(sourcesPage, "IsExpanded=\"False\"").ToString());
     Contains(sourcesPage, "Content=\"Test CrUX\"");
     Contains(sourcesPage, "Content=\"Test PageSpeed\"");
     NotContains(sourcesPage, "Header=\"Advanced: override YouTube OAuth credentials\"");
@@ -1980,15 +2030,7 @@ Run("UI improvement implementation plan is saved at repository root", () =>
 Run("Report pages use SelectorBar for local view switching", () =>
 {
     var root = FindRepositoryRoot();
-    var pages = new[]
-    {
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "HealthPage.xaml",
-    };
+    var pages = ProgramInputs.Vector3;
 
     foreach (var page in pages)
     {
@@ -2006,16 +2048,7 @@ Run("Report pages use SelectorBar for local view switching", () =>
 Run("Report toolbars expose automation names and loading guards", () =>
 {
     var root = FindRepositoryRoot();
-    var pages = new[]
-    {
-        "DashboardPage.xaml",
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "HealthPage.xaml",
-    };
+    var pages = ProgramInputs.Vector4;
 
     foreach (var page in pages)
     {
@@ -2036,16 +2069,7 @@ Run("Report toolbar controls use matte surfaces and complete refresh icons", () 
 {
     var root = FindRepositoryRoot();
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
-    var pages = new[]
-    {
-        "DashboardPage.xaml",
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "HealthPage.xaml",
-    };
+    var pages = ProgramInputs.Vector4;
 
     Contains(tokens, "DomainComboBoxStyle");
     Contains(tokens, "ToolbarRefreshIconStyle");
@@ -2072,14 +2096,7 @@ Run("Report toolbar controls use matte surfaces and complete refresh icons", () 
 Run("Report refresh buttons run service sync before reloading local data", () =>
 {
     var root = FindRepositoryRoot();
-    var reportPages = new[]
-    {
-        "CloudflarePage.xaml.cs",
-        "SearchConsolePage.xaml.cs",
-        "BingPage.xaml.cs",
-        "PerformancePage.xaml.cs",
-        "GoogleAnalyticsPage.xaml.cs",
-    };
+    var reportPages = ProgramInputs.Vector5;
 
     foreach (var page in reportPages)
     {
@@ -2088,7 +2105,7 @@ Run("Report refresh buttons run service sync before reloading local data", () =>
         NotContains(code, "RefreshButton_Click(object sender, RoutedEventArgs e)\r\n    {\r\n        await ViewModel.LoadAsync();");
     }
 
-    foreach (var viewModel in new[] { "CloudflareViewModel.cs", "SearchConsoleViewModel.cs", "BingViewModel.cs", "PerformanceViewModel.cs", "GoogleAnalyticsViewModel.cs" })
+    foreach (var viewModel in ProgramInputs.Vector6)
     {
         var code = File.ReadAllText(Path.Combine(root, "Numeris", "ViewModels", viewModel));
         Contains(code, "public async Task RefreshAsync()");
@@ -2100,16 +2117,7 @@ Run("Report refresh buttons run service sync before reloading local data", () =>
 Run("Report pages define responsive visual states", () =>
 {
     var root = FindRepositoryRoot();
-    var pages = new[]
-    {
-        "DashboardPage.xaml",
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "HealthPage.xaml",
-    };
+    var pages = ProgramInputs.Vector4;
 
     foreach (var page in pages)
     {
@@ -2125,16 +2133,7 @@ Run("Report layouts use responsive headers, hero spacing, and narrow KPI grids",
     var root = FindRepositoryRoot();
     var tokens = File.ReadAllText(Path.Combine(root, "Numeris", "Themes", "Tokens.xaml"));
     var periodSelector = File.ReadAllText(Path.Combine(root, "Numeris", "Controls", "PeriodSelector.xaml"));
-    var pages = new[]
-    {
-        "DashboardPage.xaml",
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "HealthPage.xaml",
-    };
+    var pages = ProgramInputs.Vector4;
 
     Contains(tokens, "ReportHeroMinHeight");
     Contains(tokens, "ReportHeroChartHeight");
@@ -2191,31 +2190,9 @@ Run("Matte UI test coverage enforces centralized visual resources", () =>
     var viewModelFiles = Directory.EnumerateFiles(Path.Combine(root, "Numeris", "ViewModels"), "*ViewModel.cs", SearchOption.AllDirectories)
         .Select(path => (Path: path, Text: File.ReadAllText(path)))
         .ToArray();
-    var reportPages = new[]
-    {
-        "DashboardPage.xaml",
-        "CloudflarePage.xaml",
-        "SearchConsolePage.xaml",
-        "GoogleAnalyticsPage.xaml",
-        "BingPage.xaml",
-        "PerformancePage.xaml",
-        "HealthPage.xaml",
-    };
+    var reportPages = ProgramInputs.Vector4;
 
-    foreach (var resource in new[]
-    {
-        "ChartBarNeutralTopColor",
-        "ChartBarNeutralMidColor",
-        "ChartBarNeutralBottomColor",
-        "ChartBarHighlightTopColor",
-        "ChartBarHighlightMidColor",
-        "ChartBarHighlightBottomColor",
-        "ChartBarCapColor",
-        "ChartReferenceLineColor",
-        "PositiveDeltaColor",
-        "NegativeDeltaColor",
-        "NeutralDeltaColor",
-    })
+    foreach (var resource in ProgramInputs.Vector7)
     {
         Contains(tokens, $"x:Key=\"{resource}\"");
         Contains(chartPalette, $"FromResource(\"{resource}\"");
@@ -2272,13 +2249,11 @@ Run("Sources page exposes status bars and guarded actions", () =>
     Contains(sourcesPage, "<InfoBar");
     Contains(sourcesPage, "AutomationProperties.Name=\"Cloudflare status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Google Search Console status\"");
-    Contains(sourcesPage, "AutomationProperties.Name=\"Google Analytics status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Web Performance status\"");
     Contains(sourcesPage, "AutomationProperties.Name=\"Bing status\"");
     Contains(sourcesPage, "Style=\"{StaticResource DangerActionButtonStyle}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Cloudflare.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.WebAnalytics.CanRun, Mode=OneWay}\"");
-    Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.GoogleAnalytics.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.SearchConsole.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Performance.CanRun, Mode=OneWay}\"");
     Contains(sourcesPage, "IsEnabled=\"{x:Bind ViewModel.Bing.CanRun, Mode=OneWay}\"");
@@ -2289,6 +2264,21 @@ Run("Sources page exposes status bars and guarded actions", () =>
         Contains(viewModel, "OnPropertyChanged(nameof(CanRun))");
     }
 });
+
+Run("Bing core sync persists dated reports and raw history", ProviderCoverageRegressionTests.BingPersistsCoreReportsAndHistory);
+Run("Bing rejected and malformed responses retain safe diagnostics", ProviderCoverageRegressionTests.BingErrorsPreserveStateAndDiagnostics);
+Run("Sitemap discovery and uptime map successful and failed HTTP responses", ProviderCoverageRegressionTests.SitemapDiscoveryAndUptimeMapResponses);
+Run("WinUI reports and controls work with empty and populated isolated storage", NativeUiRegressionTests.Run);
+
+static void RunCredentialVaultTests()
+{
+    Run("Missing credentials return null without accessing the Windows store", CredentialVaultRegressionTests.MissingCredentialsReturnNull);
+    Run("Credential reads preserve provider identity", CredentialVaultRegressionTests.SuccessfulReadsKeepProviderIdentity);
+    Run("Credential read failures remain distinct and keep private details out of UI", CredentialVaultRegressionTests.ReadFailuresAreReportedWithoutExposingDetails);
+    Run("Cloudflare registry propagates credential-store failures", CredentialVaultRegressionTests.CloudflareRegistryPropagatesVaultFailures);
+    Run("Source loads preserve saved state and independent providers on credential failure", CredentialVaultRegressionTests.SourceLoadsPreserveStateAndOtherProviders);
+    Run("Credential read failures prevent metadata saves", CredentialVaultRegressionTests.FailedReadsPreventMetadataSaves);
+}
 
 static void Run(string name, Action test)
 {
@@ -2363,7 +2353,6 @@ static void Throws<TException>(Action action)
 
 static InsightMetrics Metrics(
     MetricWindow? cloudflareVisitors = null,
-    MetricWindow? ga4Users = null,
     MetricWindow? googleImpressions = null,
     MetricWindow? googleClicks = null,
     MetricWindow? googleMobileClicks = null,
@@ -2371,8 +2360,6 @@ static InsightMetrics Metrics(
     MetricWindow? pageSpeedMobileScore = null,
     MetricWindow? bingImpressions = null,
     MetricWindow? bingClicks = null,
-    MetricWindow? ga4EngagementRate = null,
-    MetricWindow? ga4KeyEvents = null,
     MetricWindow? cloudflareCacheHitRatio = null,
     MetricWindow? cloudflareThreats = null,
     StatusCodeSummary? httpStatus = null,
@@ -2385,7 +2372,6 @@ static InsightMetrics Metrics(
     var empty = new MetricWindow(0, 0);
     return new InsightMetrics(
         CloudflareVisitors: cloudflareVisitors ?? empty,
-        Ga4Users: ga4Users ?? empty,
         GoogleImpressions: googleImpressions ?? empty,
         GoogleClicks: googleClicks ?? empty,
         GoogleMobileClicks: googleMobileClicks ?? empty,
@@ -2393,8 +2379,6 @@ static InsightMetrics Metrics(
         PageSpeedMobileScore: pageSpeedMobileScore ?? empty,
         BingImpressions: bingImpressions ?? empty,
         BingClicks: bingClicks ?? empty,
-        Ga4EngagementRate: ga4EngagementRate ?? empty,
-        Ga4KeyEvents: ga4KeyEvents ?? empty,
         CloudflareCacheHitRatio: cloudflareCacheHitRatio ?? empty,
         CloudflareThreats: cloudflareThreats ?? empty,
         HttpStatus: httpStatus ?? new StatusCodeSummary(0, 0, 0),
@@ -2405,31 +2389,9 @@ static InsightMetrics Metrics(
         IsSingleDomain: isSingleDomain);
 }
 
-static IReadOnlyList<InsightCard> GenerateInsights(InsightMetrics metrics)
-{
-    var engine = CreateInsightEngine();
-    var method = engine.GetType().GetMethod("Generate", new[] { typeof(InsightMetrics) })
-        ?? throw new InvalidOperationException("InsightEngine.Generate(InsightMetrics) is missing");
-    return ((IEnumerable<InsightCard>?)method.Invoke(engine, new object[] { metrics }))
-        ?.ToList() ?? throw new InvalidOperationException("InsightEngine.Generate returned null");
-}
+static IReadOnlyList<InsightCard> GenerateInsights(InsightMetrics metrics) => InsightEngine.Generate(metrics);
 
-static string GetInsightEmptyState(InsightMetrics metrics)
-{
-    var engine = CreateInsightEngine();
-    var method = engine.GetType().GetMethod("GetEmptyStateText", new[] { typeof(InsightMetrics) })
-        ?? throw new InvalidOperationException("InsightEngine.GetEmptyStateText(InsightMetrics) is missing");
-    return (string?)method.Invoke(engine, new object[] { metrics })
-        ?? throw new InvalidOperationException("InsightEngine.GetEmptyStateText returned null");
-}
-
-static object CreateInsightEngine()
-{
-    var type = Type.GetType("Numeris.Services.Insights.InsightEngine, Numeris")
-        ?? throw new InvalidOperationException("Numeris.Services.Insights.InsightEngine is missing");
-    return Activator.CreateInstance(type)
-        ?? throw new InvalidOperationException("InsightEngine could not be created");
-}
+static string GetInsightEmptyState(InsightMetrics metrics) => InsightEngine.GetEmptyStateText(metrics);
 
 static InsightCard FindInsight(IReadOnlyList<InsightCard> cards, string title)
     => cards.FirstOrDefault(card => string.Equals(card.Title, title, StringComparison.Ordinal))
@@ -2480,4 +2442,66 @@ static string FindRepositoryRoot()
         dir = Directory.GetParent(dir)?.FullName;
     }
     throw new InvalidOperationException("Repository root not found");
+}
+
+internal static class ProgramInputs
+{
+    internal static readonly string[] Vector1 = new[]
+    {
+        "overview-filled.png",
+        "cloudflare-filled.png",
+        "google-search-filled.png",
+        "bing-filled.png",
+        "performance-filled.png",
+        "health-filled.png",
+        "sources-filled.png"
+    };
+    internal static readonly string[] Vector2 = new[]
+    {
+        "DashboardPage",
+        "CloudflarePage",
+        "SearchConsolePage",
+        "BingPage",
+        "PerformancePage",
+        "HealthPage",
+    };
+    internal static readonly string[] Vector3 = new[]
+    {
+        "CloudflarePage.xaml",
+        "SearchConsolePage.xaml",
+        "BingPage.xaml",
+        "PerformancePage.xaml",
+        "HealthPage.xaml",
+    };
+    internal static readonly string[] Vector4 = new[]
+    {
+        "DashboardPage.xaml",
+        "CloudflarePage.xaml",
+        "SearchConsolePage.xaml",
+        "BingPage.xaml",
+        "PerformancePage.xaml",
+        "HealthPage.xaml",
+    };
+    internal static readonly string[] Vector5 = new[]
+    {
+        "CloudflarePage.xaml.cs",
+        "SearchConsolePage.xaml.cs",
+        "BingPage.xaml.cs",
+        "PerformancePage.xaml.cs",
+    };
+    internal static readonly string[] Vector6 = new[] { "CloudflareViewModel.cs", "SearchConsoleViewModel.cs", "BingViewModel.cs", "PerformanceViewModel.cs" };
+    internal static readonly string[] Vector7 = new[]
+    {
+        "ChartBarNeutralTopColor",
+        "ChartBarNeutralMidColor",
+        "ChartBarNeutralBottomColor",
+        "ChartBarHighlightTopColor",
+        "ChartBarHighlightMidColor",
+        "ChartBarHighlightBottomColor",
+        "ChartBarCapColor",
+        "ChartReferenceLineColor",
+        "PositiveDeltaColor",
+        "NegativeDeltaColor",
+        "NeutralDeltaColor",
+    };
 }

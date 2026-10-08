@@ -1,11 +1,12 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Numeris.Services.Migration;
 
-internal static class LegacyCredentialReader
+internal static partial class LegacyCredentialReader
 {
     private const int CredTypeGeneric = 1;
 
@@ -29,14 +30,8 @@ internal static class LegacyCredentialReader
         var legacyPrefix = user + ".";
         var ordered = new List<string> { currentTargetName };
 
-        foreach (var targetName in targetNames)
-        {
-            if (targetName.StartsWith(legacyPrefix, StringComparison.Ordinal)
-                && !string.Equals(targetName, currentTargetName, StringComparison.Ordinal))
-            {
-                ordered.Add(targetName);
-            }
-        }
+        ordered.AddRange(targetNames.Where(targetName => targetName.StartsWith(legacyPrefix, StringComparison.Ordinal)
+            && !string.Equals(targetName, currentTargetName, StringComparison.Ordinal)));
 
         return ordered;
     }
@@ -122,14 +117,16 @@ internal static class LegacyCredentialReader
         return string.IsNullOrWhiteSpace(utf16) ? null : utf16;
     }
 
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern bool CredRead(string targetName, int type, int reservedFlag, out IntPtr credentialPtr);
+    [LibraryImport("advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CredRead(string targetName, int type, int reservedFlag, out IntPtr credentialPtr);
 
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern bool CredEnumerate(string? filter, int flags, out int count, out IntPtr credentials);
+    [LibraryImport("advapi32.dll", EntryPoint = "CredEnumerateW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CredEnumerate(string? filter, int flags, out int count, out IntPtr credentials);
 
-    [DllImport("advapi32.dll", SetLastError = true)]
-    private static extern void CredFree(IntPtr buffer);
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    private static partial void CredFree(IntPtr buffer);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct Credential

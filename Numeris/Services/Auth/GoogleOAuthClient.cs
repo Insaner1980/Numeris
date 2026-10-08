@@ -21,8 +21,11 @@ public sealed class GoogleOAuthClient
     };
 
     private static readonly HttpClient Http = new();
+    private readonly HttpClient _http;
 
-    public string BuildAuthUrl(string clientId, string redirectUri, string state, IReadOnlyList<string> scopes)
+    public GoogleOAuthClient(HttpClient? httpClient = null) => _http = httpClient ?? Http;
+
+    public static string BuildAuthUrl(string clientId, string redirectUri, string state, IReadOnlyList<string> scopes)
     {
         var scope = string.Join(" ", scopes.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct(StringComparer.Ordinal));
         if (string.IsNullOrWhiteSpace(scope))
@@ -43,7 +46,7 @@ public sealed class GoogleOAuthClient
 
     public async Task<OAuthTokens> ExchangeCodeAsync(string clientId, string clientSecret, string code, string redirectUri)
     {
-        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["client_id"] = clientId,
             ["client_secret"] = clientSecret,
@@ -51,20 +54,20 @@ public sealed class GoogleOAuthClient
             ["grant_type"] = "authorization_code",
             ["redirect_uri"] = redirectUri,
         });
-        using var response = await Http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
+        using var response = await _http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
         return await ParseTokenResponseAsync(response).ConfigureAwait(false);
     }
 
     public async Task<string> RefreshAccessTokenAsync(string clientId, string clientSecret, string refreshToken)
     {
-        var form = new FormUrlEncodedContent(new Dictionary<string, string>
+        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["client_id"] = clientId,
             ["client_secret"] = clientSecret,
             ["refresh_token"] = refreshToken,
             ["grant_type"] = "refresh_token",
         });
-        using var response = await Http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
+        using var response = await _http.PostAsync(TokenEndpoint, form).ConfigureAwait(false);
         var tokens = await ParseTokenResponseAsync(response).ConfigureAwait(false);
         return tokens.AccessToken;
     }
@@ -79,10 +82,14 @@ public sealed class GoogleOAuthClient
 
         var parsed = JsonSerializer.Deserialize<TokenResponse>(body, JsonOptions)
             ?? throw new InvalidOperationException("Could not parse Google token response");
+        if (string.IsNullOrWhiteSpace(parsed.AccessToken))
+        {
+            throw new InvalidOperationException("Google token response did not contain an access token");
+        }
         return new OAuthTokens
         {
             AccessToken = parsed.AccessToken,
-            RefreshToken = parsed.RefreshToken,
+            RefreshToken = string.IsNullOrWhiteSpace(parsed.RefreshToken) ? null : parsed.RefreshToken,
         };
     }
 

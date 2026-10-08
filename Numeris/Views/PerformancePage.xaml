@@ -56,6 +56,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid x:Name="HeaderGrid" Grid.Row="0" RowSpacing="12">
                     <Grid.RowDefinitions>
@@ -80,6 +81,7 @@
                                   Height="{StaticResource ToolbarControlHeight}"
                                   Style="{StaticResource DomainComboBoxStyle}"
                                   AutomationProperties.Name="Domain"
+                                  IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                   SelectionChanged="DomainCombo_SelectionChanged" />
                         <Grid x:Name="ToolbarActionRow"
                               ColumnSpacing="8"
@@ -92,6 +94,7 @@
                                                      Grid.Column="0"
                                                      SelectedPeriod="{x:Bind Shell.SelectedPeriod, Mode=OneWay}"
                                                      AutomationProperties.Name="Period"
+                                                     IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                                      SelectionChanged="PeriodSelector_SelectionChanged" />
                             <Button x:Name="RefreshButton"
                                     Grid.Column="1"
@@ -101,6 +104,11 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
                 </Grid>
 
@@ -113,10 +121,26 @@
                     <SelectorBarItem Tag="pagespeed" Text="PageSpeed" />
                     <SelectorBarItem Tag="urls" Text="URLs" />
                 </SelectorBar>
+                <InfoBar Grid.Row="2"
+                         IsOpen="{x:Bind ViewModel.HasRefreshStatusMessage, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.RefreshStatusMessage, Mode=OneWay}"
+                         Severity="{x:Bind ViewModel.RefreshSeverity, Mode=OneWay}"
+                         IsClosable="False"
+                         Style="{StaticResource StatusInfoBarStyle}"
+                         AutomationProperties.Name="Performance refresh status" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <ScrollViewer Grid.Row="1"
+                      x:Name="PageScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Enabled"
+                      HorizontalContentAlignment="Stretch"
+                      VerticalScrollBarVisibility="Auto"
+                      SizeChanged="PageScrollViewer_SizeChanged">
+        <Grid x:Name="ReportContent" MinHeight="{StaticResource ReportHeroMinHeight}"
+              MinWidth="{StaticResource ReportDataMinWidth}"
+              Width="{Binding ViewportWidth, ElementName=PageScrollViewer}">
             <Grid x:Name="OverviewPanel" Visibility="Visible" RowSpacing="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -161,10 +185,16 @@
                                     <ColumnDefinition Width="90" />
                                     <ColumnDefinition Width="90" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{x:Bind Target}" TextTrimming="CharacterEllipsis" Style="{StaticResource DataTableCellTextBlockStyle}" />
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{x:Bind Target}" TextTrimming="CharacterEllipsis" Style="{StaticResource DataTableCellTextBlockStyle}" />
+                                    <TextBlock TextTrimming="CharacterEllipsis" Style="{StaticResource DataTableCellTextBlockStyle}" Foreground="{StaticResource NumerisTextTertiaryBrush}">
+                                        <Run Text="Collected through " />
+                                        <Run Text="{x:Bind LatestCollectionEnd}" />
+                                    </TextBlock>
+                                </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{x:Bind FormFactor}" Style="{StaticResource DataTableCellTextBlockStyle}" />
                                 <TextBlock Grid.Column="2" Text="{x:Bind Metric}" TextTrimming="CharacterEllipsis" Style="{StaticResource DataTableCellTextBlockStyle}" />
-                                <TextBlock Grid.Column="3" Text="{x:Bind P75}" HorizontalAlignment="Right" Style="{StaticResource DataTableCellTextBlockStyle}" />
+                                <TextBlock Grid.Column="3" Text="{x:Bind P75Text}" HorizontalAlignment="Right" Style="{StaticResource DataTableCellTextBlockStyle}" />
                                 <TextBlock Grid.Column="4" Text="{x:Bind Status}" HorizontalAlignment="Right" Style="{StaticResource DataTableCellTextBlockStyle}" FontWeight="SemiBold" />
                             </Grid>
                         </DataTemplate>
@@ -212,7 +242,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{x:Bind Url}" TextTrimming="CharacterEllipsis" Style="{StaticResource DataTableCellTextBlockStyle}" />
                                     <TextBlock Grid.Column="1" Text="{x:Bind Strategy}" Style="{StaticResource DataTableCellTextBlockStyle}" />
-                                    <TextBlock Grid.Column="2" Text="{x:Bind PerformanceScore}" HorizontalAlignment="Right" Style="{StaticResource DataTableCellTextBlockStyle}" />
+                                    <TextBlock Grid.Column="2" Text="{x:Bind PerformanceScoreText}" HorizontalAlignment="Right" Style="{StaticResource DataTableCellTextBlockStyle}" />
                                 </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -257,5 +287,6 @@
                 </ListView.ItemTemplate>
             </ListView>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </Page>

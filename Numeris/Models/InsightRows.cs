@@ -18,7 +18,8 @@ public enum TrendState
     NewActivity,
 }
 
-public sealed record MetricWindow(double Current, double Previous);
+public sealed record MetricWindow(double Current, double Previous, bool HasCurrent = true, bool HasPrevious = true,
+    bool HasComparison = true);
 
 public sealed record InsightCard(
     string Title,
@@ -71,7 +72,6 @@ public sealed record SearchPageTrend(
 
 public sealed record InsightMetrics(
     MetricWindow CloudflareVisitors,
-    MetricWindow Ga4Users,
     MetricWindow GoogleImpressions,
     MetricWindow GoogleClicks,
     MetricWindow GoogleMobileClicks,
@@ -79,8 +79,6 @@ public sealed record InsightMetrics(
     MetricWindow PageSpeedMobileScore,
     MetricWindow BingImpressions,
     MetricWindow BingClicks,
-    MetricWindow Ga4EngagementRate,
-    MetricWindow Ga4KeyEvents,
     MetricWindow CloudflareCacheHitRatio,
     MetricWindow CloudflareThreats,
     StatusCodeSummary HttpStatus,

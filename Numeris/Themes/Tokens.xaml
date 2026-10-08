@@ -30,6 +30,7 @@
     <x:Double x:Key="ToolbarControlHeight">40</x:Double>
     <x:Double x:Key="RefreshButtonSize">44</x:Double>
     <x:Double x:Key="TableRowHeight">42</x:Double>
+    <x:Double x:Key="ReportDataMinWidth">760</x:Double>
     <x:Double x:Key="HorizontalBarLabelWidth">140</x:Double>
     <x:Double x:Key="HorizontalBarValueWidth">80</x:Double>
     <x:Double x:Key="HorizontalBarHeight">7</x:Double>
@@ -451,6 +452,35 @@
         <Setter Property="Foreground" Value="{StaticResource NumerisTextTertiaryBrush}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter Padding="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver" />
+                                <VisualState x:Name="Pressed" />
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.46" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="DataTableHeaderBorderStyle" TargetType="Grid">

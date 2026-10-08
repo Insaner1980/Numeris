@@ -39,7 +39,7 @@ public sealed class CloudflareSyncService
 
         var traffic = await _client.FetchDailyTrafficAsync(apiToken, zoneId, startStr, endStr).ConfigureAwait(false);
 
-        var nowStr = _connectionsRepo.FormatNow();
+        var nowStr = ConnectionsRepository.FormatNow();
         var records = await _cloudflareRepo.UpsertTrafficAsync(domain, traffic, nowStr).ConfigureAwait(false);
 
         await _connectionsRepo.UpdateCloudflareLastSyncAsync(domain, nowStr, "connected").ConfigureAwait(false);

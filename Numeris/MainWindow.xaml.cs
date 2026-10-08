@@ -11,6 +11,8 @@ namespace Numeris;
 
 public sealed partial class MainWindow : Window
 {
+    private const string PrimaryTextColorResource = "NumerisTextPrimaryColor";
+
     private static readonly Color Transparent = Color.FromArgb(0, 0, 0, 0);
 
     private static readonly Dictionary<string, Type> Routes = new()
@@ -20,7 +22,6 @@ public sealed partial class MainWindow : Window
         ["search"] = typeof(SearchConsolePage),
         ["bing"] = typeof(BingPage),
         ["performance"] = typeof(PerformancePage),
-        ["analytics"] = typeof(GoogleAnalyticsPage),
         ["health"] = typeof(HealthPage),
         ["sources"] = typeof(SourcesPage),
     };
@@ -47,15 +48,15 @@ public sealed partial class MainWindow : Window
 
         var titleBar = AppWindow.TitleBar;
         titleBar.BackgroundColor = Transparent;
-        titleBar.ForegroundColor = ReadColorResource("NumerisTextPrimaryColor");
+        titleBar.ForegroundColor = ReadColorResource(PrimaryTextColorResource);
         titleBar.InactiveBackgroundColor = Transparent;
         titleBar.InactiveForegroundColor = ReadColorResource("NumerisTextTertiaryColor");
         titleBar.ButtonBackgroundColor = Transparent;
-        titleBar.ButtonForegroundColor = ReadColorResource("NumerisTextPrimaryColor");
+        titleBar.ButtonForegroundColor = ReadColorResource(PrimaryTextColorResource);
         titleBar.ButtonHoverBackgroundColor = ReadColorResource("ControlSurfaceHoverColor");
-        titleBar.ButtonHoverForegroundColor = ReadColorResource("NumerisTextPrimaryColor");
+        titleBar.ButtonHoverForegroundColor = ReadColorResource(PrimaryTextColorResource);
         titleBar.ButtonPressedBackgroundColor = ReadColorResource("ControlSurfacePressedColor");
-        titleBar.ButtonPressedForegroundColor = ReadColorResource("NumerisTextPrimaryColor");
+        titleBar.ButtonPressedForegroundColor = ReadColorResource(PrimaryTextColorResource);
         titleBar.ButtonInactiveBackgroundColor = Transparent;
         titleBar.ButtonInactiveForegroundColor = ReadColorResource("NumerisTextTertiaryColor");
     }

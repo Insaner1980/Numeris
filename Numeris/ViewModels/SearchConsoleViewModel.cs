@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
+using Microsoft.UI.Xaml.Controls;
 using Numeris.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
@@ -21,15 +22,23 @@ using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
-public partial class SearchConsoleViewModel : ObservableObject, IDisposable
+public sealed partial class SearchConsoleViewModel : ObservableObject, IDisposable
 {
+    private const string DateFormat = "yyyy-MM-dd";
+
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly SearchConsoleRepository _scRepo;
     private readonly SitemapRepository _sitemapRepo;
     private readonly SearchConsoleSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    public bool CanRefresh => !IsLoading && !IsInspectingIndexing;
+    [ObservableProperty] public partial bool IsRefreshing { get; set; }
+    [ObservableProperty] public partial string RefreshStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial InfoBarSeverity RefreshSeverity { get; set; } = InfoBarSeverity.Informational;
+    public bool CanRefresh => !IsLoading && !IsRefreshing && !IsInspectingIndexing;
+    public bool HasRefreshStatusMessage => !string.IsNullOrWhiteSpace(RefreshStatusMessage);
     [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
     [ObservableProperty] public partial string QuerySortBy { get; set; } = "clicks";
     [ObservableProperty] public partial string QueryFilter { get; set; } = "";
@@ -70,19 +79,26 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnRefreshStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasRefreshStatusMessage));
     partial void OnIsInspectingIndexingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
 
-    public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
+    public void Dispose()
+    {
+        _disposed = true;
+        _loadVersion++;
+        _shell.PropertyChanged -= OnShellChanged;
+    }
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ShellViewModel.SelectedPeriod) or nameof(ShellViewModel.SelectedDomain))
         {
-            _ = LoadAsync();
+            _ = LoadFromShellAsync();
         }
     }
 
-    partial void OnQuerySortByChanged(string value) => _ = ReloadQueriesAsync();
+    partial void OnQuerySortByChanged(string value) => _ = LoadFromShellAsync();
     partial void OnQueryFilterChanged(string value) => ApplyQueryFilter();
 
     [RelayCommand]
@@ -96,24 +112,49 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         IsInspectingIndexing = true;
         try
         {
-            var domain = _shell.SelectedDomain == "all" ? Domains.KnitTools : _shell.SelectedDomain;
+            var domain = _shell.SelectedDomain;
             IndexingDetailText = "Inspecting sitemap URLs with Google Search Console...";
-            var progress = new Progress<IndexingInspectionResult>(p =>
-            {
-                IndexingDetailText = $"Checked {p.UrlsChecked + p.Errors} / {p.TotalUrls} URLs";
-            });
-            var result = await _sync.InspectSitemapUrlsAsync(domain, progress);
             var urls = await _sitemapRepo.ListUrlsAsync(domain);
-            BuildIndexing(urls);
-            IndexingDetailText = result.Errors > 0 && result.UrlsChecked == 0
-                ? $"Inspection failed for all URLs: {result.FirstError ?? "unknown error"}"
-                : result.Errors > 0
-                ? $"Checked {result.UrlsChecked} URLs; {result.Errors} failed"
-                : $"Checked {result.UrlsChecked} URLs";
+            var domains = domain == "all"
+                ? urls.Where(url => url.RemovedAt is null).Select(url => url.Domain).Distinct().ToArray()
+                : new[] { domain };
+            if (domains.Length == 0) throw new InvalidOperationException("No sitemap URLs found. Refresh sitemap first.");
+            var result = new IndexingInspectionResult { Domain = domain };
+            foreach (var site in domains)
+            {
+                try
+                {
+                    var progress = new Progress<IndexingInspectionResult>(p =>
+                        IndexingDetailText = $"{site}: checked {p.UrlsChecked + p.Errors} / {p.TotalUrls} URLs");
+                    var inspected = await _sync.InspectSitemapUrlsAsync(site, progress);
+                    result.UrlsChecked += inspected.UrlsChecked;
+                    result.Errors += inspected.Errors;
+                    result.FirstError ??= inspected.FirstError;
+                }
+                catch (Exception ex)
+                {
+                    result.Errors += urls.Count(url => url.Domain == site && url.RemovedAt is null);
+                    result.FirstError ??= ApiErrorMessage.Sanitize(ex);
+                }
+            }
+            BuildIndexing(await _sitemapRepo.ListUrlsAsync(domain));
+            if (result.Errors > 0 && result.UrlsChecked == 0)
+                IndexingDetailText = $"Inspection failed for all URLs: {result.FirstError ?? "unknown error"}";
+            else if (result.Errors > 0)
+                IndexingDetailText = $"Checked {result.UrlsChecked} URLs; {result.Errors} failed";
+            else
+                IndexingDetailText = $"Checked {result.UrlsChecked} URLs";
+            if (result.Errors > 0)
+            {
+                RefreshSeverity = result.UrlsChecked == 0 ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+                RefreshStatusMessage = IndexingDetailText;
+            }
         }
         catch (Exception ex)
         {
             IndexingDetailText = $"Inspection failed: {ApiErrorMessage.Sanitize(ex)}";
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = IndexingDetailText;
         }
         finally
         {
@@ -121,19 +162,32 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task LoadFromShellAsync()
+    {
+        var loadVersion = _loadVersion + 1;
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Load failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
+        }
+    }
+
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
             var range = _shell.SelectedPeriod.ToDateRange();
-            var startStr = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var endStr = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var prevStart = range.Start.AddDays(-range.Days).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var prevEnd = range.Start.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var startStr = range.Start.ToString(DateFormat, CultureInfo.InvariantCulture);
+            var endStr = range.End.ToString(DateFormat, CultureInfo.InvariantCulture);
+            var prevStart = range.Start.AddDays(-range.Days).ToString(DateFormat, CultureInfo.InvariantCulture);
+            var prevEnd = range.Start.AddDays(-1).ToString(DateFormat, CultureInfo.InvariantCulture);
             var domain = _shell.SelectedDomain;
-            var sitemapDomain = domain == "all" ? Domains.KnitTools : domain;
 
             var dailyTask = _scRepo.GetSearchDailyAsync(domain, startStr, endStr);
             var queriesTask = _scRepo.GetQueriesAsync(domain, startStr, endStr, QuerySortBy, 100);
@@ -145,9 +199,10 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
             var decliningTask = domain == "all"
                 ? Task.FromResult(new List<DecliningPage>())
                 : _scRepo.GetDecliningPagesAsync(domain, startStr, endStr, prevStart, prevEnd, 10, 5);
-            var sitemapTask = _sitemapRepo.ListUrlsAsync(sitemapDomain);
+            var sitemapTask = _sitemapRepo.ListUrlsAsync(domain);
 
             await Task.WhenAll(dailyTask, queriesTask, pagesTask, devicesTask, newQueriesTask, decliningTask, sitemapTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
             BuildOverview(await dailyTask);
             _allQueries = await queriesTask;
@@ -160,47 +215,48 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
-        if (IsLoading || IsInspectingIndexing)
+        if (!CanRefresh)
         {
             return;
         }
 
-        IsLoading = true;
+        IsRefreshing = true;
+        RefreshSeverity = InfoBarSeverity.Informational;
+        RefreshStatusMessage = "Refreshing Google Search Console data...";
         try
         {
-            await _sync.SyncConfiguredAsync(_shell.SelectedPeriod.Days());
+            var result = await _sync.SyncConfiguredAsync(_shell.SelectedPeriod.Days());
+            if (result is null)
+            {
+                RefreshSeverity = InfoBarSeverity.Warning;
+                RefreshStatusMessage = "Connect Google Search Console in Sources first.";
+                return;
+            }
+            await LoadAsync();
+            RefreshSeverity = InfoBarSeverity.Success;
+            RefreshStatusMessage = $"Search Console updated: {result.RecordsUpserted} rows saved.";
+
+            if (ActiveTab == "indexing")
+            {
+                await InspectIndexingAsync();
+            }
         }
         catch (Exception ex)
         {
-            _ = ApiErrorMessage.Sanitize(ex);
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
         }
         finally
         {
-            IsLoading = false;
+            IsRefreshing = false;
         }
-
-        await LoadAsync();
-
-        if (ActiveTab == "indexing")
-        {
-            await InspectIndexingAsync();
-        }
-    }
-
-    private async Task ReloadQueriesAsync()
-    {
-        var range = _shell.SelectedPeriod.ToDateRange();
-        var startStr = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var endStr = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        _allQueries = await _scRepo.GetQueriesAsync(_shell.SelectedDomain, startStr, endStr, QuerySortBy, 100);
-        ApplyQueryFilter();
     }
 
     private void ApplyQueryFilter()
@@ -229,8 +285,10 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
 
         TotalClicksText = rows.Sum(r => r.TotalClicks).ToString("N0", CultureInfo.CurrentCulture);
         TotalImpressionsText = rows.Sum(r => r.TotalImpressions).ToString("N0", CultureInfo.CurrentCulture);
-        var avg = rows.Count > 0 ? rows.Average(r => r.AvgPosition) : 0.0;
-        AvgPositionText = avg.ToString("0.0", CultureInfo.CurrentCulture);
+        var impressions = rows.Sum(r => r.TotalImpressions);
+        AvgPositionText = impressions > 0
+            ? (rows.Sum(r => r.AvgPosition * r.TotalImpressions) / impressions).ToString("0.0", CultureInfo.CurrentCulture)
+            : "—";
     }
 
     private void BuildDevicesChart(IReadOnlyList<SearchDeviceDay> rows)
@@ -261,7 +319,7 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
         var active = urls.Where(u => u.RemovedAt is null).ToList();
         var inspected = active.Count(u => u.HasInspectionData);
         var indexed = active.Count(u => u.IsIndexed);
-        ReplaceCollection(SitemapUrls, active);
+        SitemapUrls = new(active);
         IndexingSummaryText = active.Count switch
         {
             0 => "No sitemap data",
@@ -294,7 +352,7 @@ public partial class SearchConsoleViewModel : ObservableObject, IDisposable
 
     private static string ShortDate(string isoDate)
     {
-        if (DateTime.TryParseExact(isoDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+        if (DateTime.TryParseExact(isoDate, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
         {
             return $"{d.Month}/{d.Day}";
         }

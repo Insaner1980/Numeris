@@ -80,6 +80,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0" x:Name="HeaderGrid">
                     <Grid.RowDefinitions>
@@ -127,6 +128,11 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
                 </Grid>
 
@@ -140,6 +146,13 @@
                     <SelectorBarItem Tag="status" Text="Status codes" />
                     <SelectorBarItem Tag="webanalytics" Text="Web Analytics" />
                 </SelectorBar>
+                <InfoBar Grid.Row="2"
+                         IsOpen="{x:Bind ViewModel.HasRefreshStatusMessage, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.RefreshStatusMessage, Mode=OneWay}"
+                         Severity="{x:Bind ViewModel.RefreshSeverity, Mode=OneWay}"
+                         IsClosable="False"
+                         Style="{StaticResource StatusInfoBarStyle}"
+                         AutomationProperties.Name="Cloudflare refresh status" />
             </Grid>
         </Border>
 

@@ -56,6 +56,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid x:Name="HeaderGrid" Grid.Row="0" RowSpacing="12">
                     <Grid.RowDefinitions>
@@ -101,6 +102,11 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
                 </Grid>
 
@@ -113,10 +119,23 @@
                     <SelectorBarItem Tag="pages" Text="Pages" />
                     <SelectorBarItem Tag="crawl" Text="Crawl" />
                 </SelectorBar>
+                <InfoBar Grid.Row="2"
+                         IsOpen="{x:Bind ViewModel.HasRefreshStatusMessage, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.RefreshStatusMessage, Mode=OneWay}"
+                         Severity="{x:Bind ViewModel.RefreshSeverity, Mode=OneWay}"
+                         IsClosable="False"
+                         Style="{StaticResource StatusInfoBarStyle}"
+                         AutomationProperties.Name="Bing refresh status" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <ScrollViewer Grid.Row="1" x:Name="ReportContentScrollViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      HorizontalScrollMode="Enabled"
+                      VerticalScrollBarVisibility="Disabled"
+                      VerticalScrollMode="Disabled">
+        <Grid MinWidth="{StaticResource ReportDataMinWidth}"
+              Width="{Binding ViewportWidth, ElementName=ReportContentScrollViewer}">
             <Grid x:Name="OverviewPanel" Visibility="Visible" RowSpacing="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -277,5 +296,6 @@
                 </ListView>
             </Grid>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </Page>

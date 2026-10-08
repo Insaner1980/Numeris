@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -18,7 +19,7 @@ public sealed class GoogleOAuthFlow
     public async Task<OAuthTokens> AuthorizeAsync(
         string clientId,
         string clientSecret,
-        Action<Uri> openBrowser,
+        Func<Uri, Task> openBrowser,
         IReadOnlyList<string> scopes,
         TimeSpan? timeout = null)
     {
@@ -32,61 +33,117 @@ public sealed class GoogleOAuthFlow
 
         try
         {
-            var authUrl = _client.BuildAuthUrl(clientId, redirectUri, state, scopes);
-            openBrowser(new Uri(authUrl));
+            var authUrl = GoogleOAuthClient.BuildAuthUrl(clientId, redirectUri, state, scopes);
+            await openBrowser(new Uri(authUrl));
 
-            using var cts = new System.Threading.CancellationTokenSource(timeout.Value);
-            using var registration = cts.Token.Register(listener.Stop);
-
-            var (code, returnedState) = await ReceiveCallbackAsync(listener).ConfigureAwait(false);
-            if (returnedState != state)
+            using var cts = new CancellationTokenSource(timeout.Value);
+            string code;
+            try
             {
-                throw new InvalidOperationException("OAuth state mismatch — possible cross-site request forgery");
+                code = await ReceiveCallbackAsync(listener, state, cts.Token).ConfigureAwait(false);
             }
-            if (string.IsNullOrEmpty(code))
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {
-                throw new InvalidOperationException("OAuth flow returned no code");
+                throw new TimeoutException("Google authorization timed out. Press Connect Google account to try again.");
             }
 
             return await _client.ExchangeCodeAsync(clientId, clientSecret, code, redirectUri).ConfigureAwait(false);
         }
         finally
         {
-            try { listener.Stop(); } catch { }
+            listener.Stop();
         }
     }
 
-    private static async Task<(string Code, string State)> ReceiveCallbackAsync(TcpListener listener)
+    private static async Task<string> ReceiveCallbackAsync(TcpListener listener, string expectedState, CancellationToken cancellationToken)
     {
-        using var tcpClient = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
-        using var stream = tcpClient.GetStream();
-        using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
-
-        var requestLine = await reader.ReadLineAsync().ConfigureAwait(false) ?? "";
-        var parts = requestLine.Split(' ');
-        if (parts.Length < 2)
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        while (true)
         {
-            throw new InvalidOperationException("Malformed OAuth callback request");
+            using var tcpClient = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
+            using var stream = tcpClient.GetStream();
+            using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+            var requestLine = await ReadCallbackLineAsync(reader, cancellationToken).ConfigureAwait(false);
+            var parts = ParseRequestLine(requestLine);
+
+            var host = await ReadCallbackHostAsync(reader, cancellationToken).ConfigureAwait(false);
+
+            var queryStart = parts[1].IndexOf('?');
+            var path = queryStart >= 0 ? parts[1][..queryStart] : parts[1];
+            var isCallback = parts[0] == "GET" && path == "/oauth2callback"
+                && (string.Equals(host, $"127.0.0.1:{port}", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(host, $"localhost:{port}", StringComparison.OrdinalIgnoreCase));
+            var parsed = HttpUtility.ParseQueryString(queryStart >= 0 ? parts[1][(queryStart + 1)..] : "");
+            var code = parsed["code"] ?? "";
+            var error = ValidateCallback(isCallback, parsed, expectedState, code);
+
+            var message = error is null ? "Authorization response received. Return to Numeris to finish." : "Authorization did not complete. Return to Numeris to try again.";
+            var responseBody = $"<html><body style='font-family:sans-serif;text-align:center;padding-top:80px'><h1>Numeris</h1><p>{message}</p></body></html>";
+            var status = error is null ? "200 OK" : "400 Bad Request";
+            var responseBytes = Encoding.UTF8.GetBytes(
+                $"HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\n" +
+                $"Content-Length: {Encoding.UTF8.GetByteCount(responseBody)}\r\nConnection: close\r\n\r\n" + responseBody);
+            await stream.WriteAsync(responseBytes, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!isCallback) continue;
+            if (error is not null) throw new InvalidOperationException(error);
+            return code;
         }
-        var path = parts[1];
-        var queryStart = path.IndexOf('?');
-        var query = queryStart >= 0 ? path[(queryStart + 1)..] : "";
-        var parsed = HttpUtility.ParseQueryString(query);
-        var code = parsed["code"] ?? "";
-        var state = parsed["state"] ?? "";
+    }
 
-        // drain headers
-        string? line;
-        while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false))) { }
+    private static string[] ParseRequestLine(string requestLine)
+    {
+        var parts = requestLine.Split(' ');
+        if (parts.Length != 3 || parts[1].Length == 0 || (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0"))
+            throw new InvalidOperationException("Malformed OAuth callback request");
+        return parts;
+    }
 
-        var responseBody = "<html><body style='font-family:sans-serif;text-align:center;padding-top:80px'><h1>Numeris</h1><p>Authentication complete — you can close this window.</p></body></html>";
-        var responseBytes = Encoding.UTF8.GetBytes(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
-            $"Content-Length: {Encoding.UTF8.GetByteCount(responseBody)}\r\nConnection: close\r\n\r\n" +
-            responseBody);
-        await stream.WriteAsync(responseBytes).ConfigureAwait(false);
-        await stream.FlushAsync().ConfigureAwait(false);
+    private static string? ValidateCallback(bool isCallback, System.Collections.Specialized.NameValueCollection parsed, string expectedState, string code)
+    {
+        if (!isCallback) return "Unrelated OAuth callback request";
+        if (parsed.GetValues("state")?.Length != 1 || parsed["state"] != expectedState)
+            return "OAuth state mismatch — possible cross-site request forgery";
+        if (!string.IsNullOrEmpty(parsed["error"])) return "Google authorization was denied or cancelled.";
+        if (parsed.GetValues("code")?.Length != 1 || string.IsNullOrWhiteSpace(code))
+            return "OAuth flow returned no unambiguous code";
+        return null;
+    }
 
-        return (code, state);
+    private static async Task<string?> ReadCallbackHostAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        string? host = null;
+        var headerChars = 0;
+        var headerCount = 0;
+        while (true)
+        {
+            var line = await ReadCallbackLineAsync(reader, cancellationToken).ConfigureAwait(false);
+            if (line.Length == 0) break;
+            headerChars += line.Length;
+            if (++headerCount > 100 || headerChars > 32768)
+                throw new InvalidOperationException("OAuth callback headers are too large");
+            var colon = line.IndexOf(':');
+            if (colon <= 0) throw new InvalidOperationException("Malformed OAuth callback header");
+            if (line[..colon].Equals("Host", StringComparison.OrdinalIgnoreCase))
+            {
+                if (host is not null) throw new InvalidOperationException("Ambiguous OAuth callback host");
+                host = line[(colon + 1)..].Trim();
+            }
+        }
+        return host;
+    }
+
+    private static async Task<string> ReadCallbackLineAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        var line = new StringBuilder();
+        var character = new char[1];
+        while (await reader.ReadAsync(character.AsMemory(), cancellationToken).ConfigureAwait(false) != 0)
+        {
+            if (character[0] == '\n') return line.ToString().TrimEnd('\r');
+            if (line.Length >= 8192) throw new InvalidOperationException("OAuth callback line is too large");
+            line.Append(character[0]);
+        }
+        throw new InvalidOperationException("Incomplete OAuth callback request");
     }
 }

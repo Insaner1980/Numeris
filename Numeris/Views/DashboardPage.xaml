@@ -71,6 +71,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -92,6 +93,7 @@
                                   Height="{StaticResource ToolbarControlHeight}"
                                   Style="{StaticResource DomainComboBoxStyle}"
                                   AutomationProperties.Name="Domain"
+                                  IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                   SelectionChanged="DomainCombo_SelectionChanged" />
                         <Grid x:Name="ToolbarActionRow"
                               ColumnSpacing="8"
@@ -104,6 +106,7 @@
                                                      Grid.Column="0"
                                                      SelectedPeriod="{x:Bind Shell.SelectedPeriod, Mode=OneWay}"
                                                      AutomationProperties.Name="Period"
+                                                     IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
                                                      SelectionChanged="PeriodSelector_SelectionChanged" />
                             <Button x:Name="RefreshButton"
                                     Grid.Column="1"
@@ -113,7 +116,18 @@
                                     AutomationProperties.Name="Refresh current report"
                                     ToolTipService.ToolTip="Refresh" />
                         </Grid>
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20"
+                                      AutomationProperties.Name="Loading selected report"
+                                      ToolTipService.ToolTip="Loading selected report; previously loaded data is still shown." />
                     </StackPanel>
+                    <InfoBar Grid.Row="2" Grid.ColumnSpan="2"
+                             Style="{StaticResource StatusInfoBarStyle}"
+                             IsOpen="{x:Bind ViewModel.HasRefreshStatusMessage, Mode=OneWay}"
+                             Severity="{x:Bind ViewModel.RefreshSeverity, Mode=OneWay}"
+                             Message="{x:Bind ViewModel.RefreshStatusMessage, Mode=OneWay}"
+                             IsClosable="False" />
                 </Grid>
             </Border>
 
@@ -140,10 +154,13 @@
                         <StackPanel Grid.Row="0" Spacing="2">
                             <TextBlock Text="Traffic"
                                        Style="{StaticResource SectionTitleTextBlockStyle}" />
-                            <TextBlock Text="Visitors"
+                            <TextBlock Text="Daily visitors (sum)"
                                        Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                        FontFamily="{StaticResource NumerisFontFamily}"
                                        FontSize="13" />
+                            <TextBlock Text="{x:Bind ViewModel.VisitorsDetail, Mode=OneWay}"
+                                       Foreground="{StaticResource NumerisTextTertiaryBrush}"
+                                       TextWrapping="Wrap" FontSize="12" />
                         </StackPanel>
                         <Grid Grid.Row="1" ColumnSpacing="{StaticResource Space3}">
                             <Grid.ColumnDefinitions>
@@ -164,6 +181,7 @@
                                                  Value="{x:Bind ViewModel.VisitorsChangeValue, Mode=OneWay}"
                                                  Suffix="%"
                                                  ShowSign="True"
+                                                 Visibility="{x:Bind ViewModel.VisitorsChangeVisibility, Mode=OneWay}"
                                                  VerticalAlignment="Center" />
                         </Grid>
                         <Border Grid.Row="2"
@@ -205,13 +223,15 @@
                 <controls:KpiCard x:Name="GoogleClicksKpi"
                                   Grid.Column="0"
                                   Label="Google Clicks"
-                                  Detail="Google Search"
+                                  Detail="{x:Bind ViewModel.ClicksDetail, Mode=OneWay}"
+                                  ToolTipService.ToolTip="{x:Bind ViewModel.ClicksDetail, Mode=OneWay}"
                                   Value="{x:Bind ViewModel.ClicksTotal, Mode=OneWay}"
                                   ChangePct="{x:Bind ViewModel.ClicksChangePct, Mode=OneWay}" />
                 <controls:KpiCard x:Name="BingClicksKpi"
                                   Grid.Column="1"
                                   Label="Bing Clicks"
-                                  Detail="Bing Webmaster"
+                                  Detail="{x:Bind ViewModel.BingClicksDetail, Mode=OneWay}"
+                                  ToolTipService.ToolTip="{x:Bind ViewModel.BingClicksDetail, Mode=OneWay}"
                                   Value="{x:Bind ViewModel.BingClicksTotal, Mode=OneWay}"
                                   ChangePct="{x:Bind ViewModel.BingClicksChangePct, Mode=OneWay}" />
                 <controls:KpiCard x:Name="WebVitalsKpi"
@@ -255,18 +275,18 @@
                                         <StackPanel Grid.Row="0"
                                                     Orientation="Horizontal"
                                                     Spacing="{StaticResource Space2}">
-                                            <TextBlock Text="{x:Bind SeverityText, Mode=OneWay}"
+                                            <TextBlock Text="{x:Bind SeverityText, Mode=OneTime}"
                                                        Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}"
                                                        FontWeight="SemiBold" />
-                                            <TextBlock Text="{x:Bind Title, Mode=OneWay}"
+                                            <TextBlock Text="{x:Bind Title, Mode=OneTime}"
                                                        Foreground="{StaticResource NumerisTextPrimaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}"
                                                        FontWeight="SemiBold"
                                                        TextWrapping="WrapWholeWords" />
                                         </StackPanel>
                                         <TextBlock Grid.Row="1"
-                                                   Text="{x:Bind Message, Mode=OneWay}"
+                                                   Text="{x:Bind Message, Mode=OneTime}"
                                                    TextWrapping="WrapWholeWords"
                                                    Foreground="{StaticResource NumerisTextSecondaryBrush}"
                                                    FontFamily="{StaticResource NumerisFontFamily}" />
@@ -276,7 +296,7 @@
                                                        Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}"
                                                        FontWeight="SemiBold" />
-                                            <TextBlock Text="{x:Bind WhyShown, Mode=OneWay}"
+                                            <TextBlock Text="{x:Bind WhyShown, Mode=OneTime}"
                                                        TextWrapping="WrapWholeWords"
                                                        Foreground="{StaticResource NumerisTextSecondaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}" />
@@ -287,7 +307,7 @@
                                                        Foreground="{StaticResource NumerisTextTertiaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}"
                                                        FontWeight="SemiBold" />
-                                            <TextBlock Text="{x:Bind NextStep, Mode=OneWay}"
+                                            <TextBlock Text="{x:Bind NextStep, Mode=OneTime}"
                                                        TextWrapping="WrapWholeWords"
                                                        Foreground="{StaticResource NumerisTextSecondaryBrush}"
                                                        FontFamily="{StaticResource NumerisFontFamily}" />
@@ -324,7 +344,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Indexed"
+                        <TextBlock Grid.Column="0" Text="{x:Bind ViewModel.IndexingScopeLabel, Mode=OneWay}"
                                    Foreground="{StaticResource NumerisTextSecondaryBrush}" />
                         <TextBlock Grid.Column="1"
                                    Text="{x:Bind ViewModel.IndexedRatio, Mode=OneWay}"

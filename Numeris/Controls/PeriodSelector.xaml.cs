@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -50,21 +51,22 @@ public sealed partial class PeriodSelector : UserControl
 
     private void ApplyLabels()
     {
-        foreach (var option in PeriodOptions.All)
+        foreach (var period in PeriodOptions.All.Select(option => option.Value))
         {
-            var button = ButtonFor(option.Value);
-            button.Content = option.Value.ShortLabel();
-            ToolTipService.SetToolTip(button, option.Value.DisplayLabel());
-            AutomationProperties.SetName(button, option.Value.DisplayLabel());
+            var button = ButtonFor(period);
+            button.Content = period.ShortLabel();
+            ToolTipService.SetToolTip(button, period.DisplayLabel());
         }
     }
 
     private void UpdateSelectionVisuals()
     {
-        foreach (var option in PeriodOptions.All)
+        foreach (var period in PeriodOptions.All.Select(option => option.Value))
         {
-            var button = ButtonFor(option.Value);
-            var selected = option.Value == SelectedPeriod;
+            var button = ButtonFor(period);
+            var selected = period == SelectedPeriod;
+            AutomationProperties.SetName(button, period.DisplayLabel() + (selected ? ", selected" : ""));
+            AutomationProperties.SetItemStatus(button, selected ? "Selected" : "Not selected");
             button.Background = GetBrush(selected ? "PeriodSelectorSelectedBrush" : "TransparentLayerBrush");
             button.Foreground = GetBrush(selected ? "PeriodSelectorSelectedForegroundBrush" : "NumerisTextTertiaryBrush");
             button.BorderBrush = GetBrush(selected ? "PeriodSelectorSelectedBorderBrush" : "TransparentLayerBrush");

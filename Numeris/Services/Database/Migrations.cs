@@ -1,11 +1,13 @@
+using System;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Numeris.Services.Api;
 
 namespace Numeris.Services.Database;
 
 internal static class Migrations
 {
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 11;
 
     private const string SchemaSql = """
         CREATE TABLE IF NOT EXISTS cloudflare_traffic (
@@ -358,82 +360,6 @@ internal static class Migrations
         CREATE INDEX IF NOT EXISTS idx_bing_raw_method
             ON bing_raw_items(method, site_url);
 
-        CREATE TABLE IF NOT EXISTS google_analytics_daily (
-            domain TEXT NOT NULL,
-            property_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            active_users INTEGER NOT NULL DEFAULT 0,
-            sessions INTEGER NOT NULL DEFAULT 0,
-            page_views INTEGER NOT NULL DEFAULT 0,
-            engaged_sessions INTEGER NOT NULL DEFAULT 0,
-            event_count INTEGER NOT NULL DEFAULT 0,
-            engagement_rate REAL NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (domain, property_id, date)
-        );
-
-        CREATE TABLE IF NOT EXISTS google_analytics_pages (
-            domain TEXT NOT NULL,
-            property_id TEXT NOT NULL,
-            period_start TEXT NOT NULL,
-            period_end TEXT NOT NULL,
-            page_path TEXT NOT NULL,
-            active_users INTEGER NOT NULL DEFAULT 0,
-            sessions INTEGER NOT NULL DEFAULT 0,
-            page_views INTEGER NOT NULL DEFAULT 0,
-            engaged_sessions INTEGER NOT NULL DEFAULT 0,
-            engagement_rate REAL NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (domain, property_id, period_start, period_end, page_path)
-        );
-
-        CREATE TABLE IF NOT EXISTS google_analytics_sources (
-            domain TEXT NOT NULL,
-            property_id TEXT NOT NULL,
-            period_start TEXT NOT NULL,
-            period_end TEXT NOT NULL,
-            source_medium TEXT NOT NULL,
-            sessions INTEGER NOT NULL DEFAULT 0,
-            active_users INTEGER NOT NULL DEFAULT 0,
-            key_events INTEGER NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (domain, property_id, period_start, period_end, source_medium)
-        );
-
-        CREATE TABLE IF NOT EXISTS google_analytics_events (
-            domain TEXT NOT NULL,
-            property_id TEXT NOT NULL,
-            period_start TEXT NOT NULL,
-            period_end TEXT NOT NULL,
-            event_name TEXT NOT NULL,
-            event_count INTEGER NOT NULL DEFAULT 0,
-            key_events INTEGER NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (domain, property_id, period_start, period_end, event_name)
-        );
-
-        CREATE TABLE IF NOT EXISTS google_analytics_devices (
-            domain TEXT NOT NULL,
-            property_id TEXT NOT NULL,
-            date TEXT NOT NULL,
-            device_category TEXT NOT NULL,
-            sessions INTEGER NOT NULL DEFAULT 0,
-            active_users INTEGER NOT NULL DEFAULT 0,
-            fetched_at TEXT NOT NULL,
-            PRIMARY KEY (domain, property_id, date, device_category)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_ga_daily_domain_date
-            ON google_analytics_daily(domain, date);
-        CREATE INDEX IF NOT EXISTS idx_ga_pages_domain_period
-            ON google_analytics_pages(domain, period_start, period_end);
-        CREATE INDEX IF NOT EXISTS idx_ga_sources_domain_period
-            ON google_analytics_sources(domain, period_start, period_end);
-        CREATE INDEX IF NOT EXISTS idx_ga_events_domain_period
-            ON google_analytics_events(domain, period_start, period_end);
-        CREATE INDEX IF NOT EXISTS idx_ga_devices_domain_date
-            ON google_analytics_devices(domain, date);
-
         CREATE TABLE IF NOT EXISTS uptime_checks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             domain TEXT NOT NULL,
@@ -463,7 +389,6 @@ internal static class Migrations
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('crux', 'crux', 'disconnected');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('pagespeed', 'pagespeed', 'disconnected');
         INSERT OR IGNORE INTO connections (id, source, status) VALUES ('bing', 'bing_webmaster', 'disconnected');
-        INSERT OR IGNORE INTO connections (id, source, status) VALUES ('ga4', 'google_analytics', 'disconnected');
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
             VALUES ('https://finnvek.com/', 'https://finnvek.com', 'home', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO performance_urls (url, origin, source, enabled, created_at)
@@ -472,25 +397,26 @@ internal static class Migrations
             VALUES ('https://finnvek.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
         INSERT OR IGNORE INTO bing_sites (site_url, source, enabled, discovered_at)
             VALUES ('https://knittoolsapp.com/', 'manual', 1, strftime('%Y-%m-%dT%H:%M:%S', 'now'));
-        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '7');
+        INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '11');
         """;
 
     public static void RunAll(SqliteConnection connection)
     {
+        var version = GetUserVersion(connection);
+        if (version < 0) throw new InvalidOperationException("The database schema version is invalid.");
+        if (version == 0) version = GetMetaSchemaVersion(connection);
+        if (version > CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException("The database schema is newer than this application supports.");
+        }
         ExecuteBatch(connection, "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
         ExecuteBatch(connection, SchemaSql);
-        RunPendingMigrations(connection);
+        RunPendingMigrations(connection, version);
         ExecuteBatch(connection, DefaultConnectionsSql);
     }
 
-    private static void RunPendingMigrations(SqliteConnection connection)
+    private static void RunPendingMigrations(SqliteConnection connection, int version)
     {
-        var version = GetUserVersion(connection);
-        if (version == 0)
-        {
-            version = GetMetaSchemaVersion(connection);
-        }
-
         if (version < 2)
         {
             RunV2Migration(connection);
@@ -516,9 +442,19 @@ internal static class Migrations
             RunV6Migration(connection);
         }
 
-        if (version < 7)
+        if (version < 8)
         {
-            RunV7Migration(connection);
+            RunV8Migration(connection);
+        }
+
+        if (version < 9)
+        {
+            RunV9Migration(connection);
+        }
+
+        if (version < 11)
+        {
+            RunV11Migration(connection);
         }
 
         SetSchemaVersion(connection, CurrentSchemaVersion);
@@ -558,7 +494,7 @@ internal static class Migrations
                     transaction);
             }
 
-            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            SetSchemaVersion(connection, 2, transaction);
             transaction.Commit();
         }
         catch
@@ -615,7 +551,7 @@ internal static class Migrations
                 """,
                 transaction);
 
-            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            SetSchemaVersion(connection, 3, transaction);
             transaction.Commit();
         }
         catch
@@ -626,7 +562,7 @@ internal static class Migrations
     }
 
     private static void RunV4Migration(SqliteConnection connection)
-        => SetSchemaVersion(connection, CurrentSchemaVersion);
+        => SetSchemaVersion(connection, 4);
 
     private static void RunV5Migration(SqliteConnection connection)
     {
@@ -653,7 +589,7 @@ internal static class Migrations
                 """,
                 transaction);
 
-            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            SetSchemaVersion(connection, 5, transaction);
             transaction.Commit();
         }
         catch
@@ -671,85 +607,6 @@ internal static class Migrations
             ExecuteBatch(
                 connection,
                 """
-                CREATE TABLE IF NOT EXISTS google_analytics_daily (
-                    domain TEXT NOT NULL,
-                    property_id TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    active_users INTEGER NOT NULL DEFAULT 0,
-                    sessions INTEGER NOT NULL DEFAULT 0,
-                    page_views INTEGER NOT NULL DEFAULT 0,
-                    engaged_sessions INTEGER NOT NULL DEFAULT 0,
-                    event_count INTEGER NOT NULL DEFAULT 0,
-                    engagement_rate REAL NOT NULL DEFAULT 0,
-                    fetched_at TEXT NOT NULL,
-                    PRIMARY KEY (domain, property_id, date)
-                );
-
-                CREATE TABLE IF NOT EXISTS google_analytics_pages (
-                    domain TEXT NOT NULL,
-                    property_id TEXT NOT NULL,
-                    period_start TEXT NOT NULL,
-                    period_end TEXT NOT NULL,
-                    page_path TEXT NOT NULL,
-                    active_users INTEGER NOT NULL DEFAULT 0,
-                    sessions INTEGER NOT NULL DEFAULT 0,
-                    page_views INTEGER NOT NULL DEFAULT 0,
-                    engaged_sessions INTEGER NOT NULL DEFAULT 0,
-                    engagement_rate REAL NOT NULL DEFAULT 0,
-                    fetched_at TEXT NOT NULL,
-                    PRIMARY KEY (domain, property_id, period_start, period_end, page_path)
-                );
-
-                CREATE TABLE IF NOT EXISTS google_analytics_sources (
-                    domain TEXT NOT NULL,
-                    property_id TEXT NOT NULL,
-                    period_start TEXT NOT NULL,
-                    period_end TEXT NOT NULL,
-                    source_medium TEXT NOT NULL,
-                    sessions INTEGER NOT NULL DEFAULT 0,
-                    active_users INTEGER NOT NULL DEFAULT 0,
-                    key_events INTEGER NOT NULL DEFAULT 0,
-                    fetched_at TEXT NOT NULL,
-                    PRIMARY KEY (domain, property_id, period_start, period_end, source_medium)
-                );
-
-                CREATE TABLE IF NOT EXISTS google_analytics_events (
-                    domain TEXT NOT NULL,
-                    property_id TEXT NOT NULL,
-                    period_start TEXT NOT NULL,
-                    period_end TEXT NOT NULL,
-                    event_name TEXT NOT NULL,
-                    event_count INTEGER NOT NULL DEFAULT 0,
-                    key_events INTEGER NOT NULL DEFAULT 0,
-                    fetched_at TEXT NOT NULL,
-                    PRIMARY KEY (domain, property_id, period_start, period_end, event_name)
-                );
-
-                CREATE TABLE IF NOT EXISTS google_analytics_devices (
-                    domain TEXT NOT NULL,
-                    property_id TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    device_category TEXT NOT NULL,
-                    sessions INTEGER NOT NULL DEFAULT 0,
-                    active_users INTEGER NOT NULL DEFAULT 0,
-                    fetched_at TEXT NOT NULL,
-                    PRIMARY KEY (domain, property_id, date, device_category)
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_ga_daily_domain_date
-                    ON google_analytics_daily(domain, date);
-                CREATE INDEX IF NOT EXISTS idx_ga_pages_domain_period
-                    ON google_analytics_pages(domain, period_start, period_end);
-                CREATE INDEX IF NOT EXISTS idx_ga_sources_domain_period
-                    ON google_analytics_sources(domain, period_start, period_end);
-                CREATE INDEX IF NOT EXISTS idx_ga_events_domain_period
-                    ON google_analytics_events(domain, period_start, period_end);
-                CREATE INDEX IF NOT EXISTS idx_ga_devices_domain_date
-                    ON google_analytics_devices(domain, date);
-
-                INSERT OR IGNORE INTO connections (id, source, status)
-                    VALUES ('ga4', 'google_analytics', 'disconnected');
-
                 DELETE FROM connections WHERE id = 'youtube' OR source = 'youtube';
                 DROP TABLE IF EXISTS youtube_retention_points;
                 DROP TABLE IF EXISTS youtube_devices;
@@ -762,7 +619,7 @@ internal static class Migrations
                 """,
                 transaction);
 
-            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
+            SetSchemaVersion(connection, 6, transaction);
             transaction.Commit();
         }
         catch
@@ -772,37 +629,67 @@ internal static class Migrations
         }
     }
 
-    private static void RunV7Migration(SqliteConnection connection)
+    private static void RunV8Migration(SqliteConnection connection)
     {
         using var transaction = connection.BeginTransaction();
-        try
+        foreach (var (table, keys) in new[]
         {
-            if (TableExists(connection, transaction, "google_analytics_pages")
-                && !ColumnExists(connection, transaction, "google_analytics_pages", "engaged_sessions"))
+            ("bing_rank_traffic", "saved.site_url = old.site_url"),
+            ("bing_query_stats", "saved.site_url = old.site_url AND saved.query = old.query"),
+            ("bing_page_stats", "saved.site_url = old.site_url AND saved.page_url = old.page_url"),
+        })
+        {
+            var rows = connection.Query<(long Id, string Date)>(
+                $"SELECT rowid, date FROM {table} WHERE date LIKE '/Date(%' ORDER BY fetched_at", transaction: transaction).AsList();
+            foreach (var row in rows)
             {
-                ExecuteBatch(
-                    connection,
-                    """
-                    ALTER TABLE google_analytics_pages
-                        ADD COLUMN engaged_sessions INTEGER NOT NULL DEFAULT 0;
-
-                    UPDATE google_analytics_pages
-                    SET engaged_sessions = CAST(ROUND(sessions * engagement_rate) AS INTEGER)
-                    WHERE sessions > 0
-                      AND engagement_rate > 0
-                      AND engaged_sessions = 0;
-                    """,
-                    transaction);
+                string date;
+                try { date = BingWebmasterClient.NormalizeDate(row.Date); }
+                catch (FormatException) { continue; }
+                connection.Execute($"""
+                    DELETE FROM {table} AS old
+                    WHERE old.rowid = @id AND EXISTS (
+                        SELECT 1 FROM {table} AS saved
+                        WHERE saved.date = @date AND {keys} AND saved.fetched_at >= old.fetched_at
+                    );
+                    UPDATE OR REPLACE {table} SET date = @date WHERE rowid = @id;
+                    """, new { id = row.Id, date }, transaction);
             }
+        }
+        SetSchemaVersion(connection, 8, transaction);
+        transaction.Commit();
+    }
 
-            SetSchemaVersion(connection, CurrentSchemaVersion, transaction);
-            transaction.Commit();
-        }
-        catch
-        {
-            transaction.Rollback();
-            throw;
-        }
+    private static void RunV9Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        // Earlier breakdowns stored overlapping period totals under the fetch date.
+        // Their daily distribution is unknown; fetch them again without altering daily totals or connections.
+        ExecuteBatch(connection, """
+            DELETE FROM cloudflare_countries;
+            DELETE FROM cloudflare_pages;
+            DELETE FROM web_analytics_referrers;
+            DELETE FROM web_analytics_pages;
+            DELETE FROM web_analytics_countries;
+            """, transaction);
+        SetSchemaVersion(connection, 9, transaction);
+        transaction.Commit();
+    }
+
+    private static void RunV11Migration(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        ExecuteBatch(connection, """
+            DELETE FROM connections WHERE id = 'ga4' OR source = 'google_analytics';
+            DROP TABLE IF EXISTS google_analytics_daily;
+            DROP TABLE IF EXISTS google_analytics_active_users;
+            DROP TABLE IF EXISTS google_analytics_pages;
+            DROP TABLE IF EXISTS google_analytics_sources;
+            DROP TABLE IF EXISTS google_analytics_events;
+            DROP TABLE IF EXISTS google_analytics_devices;
+            """, transaction);
+        SetSchemaVersion(connection, 11, transaction);
+        transaction.Commit();
     }
 
     private static int GetUserVersion(SqliteConnection connection)
@@ -814,9 +701,16 @@ internal static class Migrations
 
     private static int GetMetaSchemaVersion(SqliteConnection connection)
     {
+        if (connection.ExecuteScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'") == 0) return 0;
         using var cmd = connection.CreateCommand();
         cmd.CommandText = "SELECT value FROM meta WHERE key = 'schema_version'";
-        return int.TryParse(cmd.ExecuteScalar()?.ToString(), out var version) ? version : 0;
+        var value = cmd.ExecuteScalar();
+        if (value is null) return 0;
+        if (!int.TryParse(value.ToString(), out var version) || version < 0)
+        {
+            throw new InvalidOperationException("The database schema version is invalid.");
+        }
+        return version;
     }
 
     private static void SetSchemaVersion(SqliteConnection connection, int version, SqliteTransaction? transaction = null)

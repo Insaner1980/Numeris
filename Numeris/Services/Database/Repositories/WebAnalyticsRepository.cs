@@ -122,7 +122,7 @@ public sealed class WebAnalyticsRepository
 
     public Task SaveSitesAsync(IReadOnlyCollection<WebAnalyticsSite> sites, string discoveredAt)
     {
-        return _db.WriteAsync(connection =>
+        return _db.WriteTransactionAsync((connection, transaction) =>
         {
             foreach (var site in sites)
             {
@@ -132,7 +132,7 @@ public sealed class WebAnalyticsRepository
                     VALUES (@domain, @siteTag, @discoveredAt)
                     ON CONFLICT(domain) DO UPDATE SET site_tag = excluded.site_tag
                     """,
-                    new { domain = site.Host, siteTag = site.SiteTag, discoveredAt });
+                    new { domain = site.Host, siteTag = site.SiteTag, discoveredAt }, transaction);
             }
         });
     }
@@ -145,11 +145,11 @@ public sealed class WebAnalyticsRepository
         });
     }
 
-    public Task<long> UpsertRollupAsync(string domain, string rollupDate, WebAnalyticsRollup rollup, string fetchedAt)
+    public async Task<long> UpsertRollupAsync(string domain, string rollupDate, WebAnalyticsRollup rollup, string fetchedAt)
     {
-        return _db.WriteAsync(connection =>
+        long records = 0;
+        await _db.WriteTransactionAsync((connection, transaction) =>
         {
-            long records = 0;
             foreach (var d in rollup.Daily)
             {
                 connection.Execute(
@@ -161,12 +161,12 @@ public sealed class WebAnalyticsRepository
                         page_views = excluded.page_views,
                         fetched_at = excluded.fetched_at
                     """,
-                    new { domain, date = d.Date, visits = d.Visits, pageViews = d.PageViews, fetchedAt });
+                    new { domain, date = d.Date, visits = d.Visits, pageViews = d.PageViews, fetchedAt }, transaction);
                 records++;
             }
 
-            connection.Execute("DELETE FROM web_analytics_referrers WHERE domain = @domain AND date = @date",
-                new { domain, date = rollupDate });
+            connection.Execute("DELETE FROM web_analytics_referrers WHERE domain = @domain AND date >= @start AND date <= @end",
+                new { domain, start = rollup.StartDate, end = rollupDate }, transaction);
             foreach (var r in rollup.Referrers)
             {
                 connection.Execute(
@@ -175,12 +175,12 @@ public sealed class WebAnalyticsRepository
                     VALUES (@domain, @date, @referrer, @visits)
                     ON CONFLICT(domain, date, referrer) DO UPDATE SET visits = excluded.visits
                     """,
-                    new { domain, date = rollupDate, referrer = r.Key, visits = r.Visits });
+                    new { domain, date = r.Date, referrer = r.Key, visits = r.Visits }, transaction);
                 records++;
             }
 
-            connection.Execute("DELETE FROM web_analytics_pages WHERE domain = @domain AND date = @date",
-                new { domain, date = rollupDate });
+            connection.Execute("DELETE FROM web_analytics_pages WHERE domain = @domain AND date >= @start AND date <= @end",
+                new { domain, start = rollup.StartDate, end = rollupDate }, transaction);
             foreach (var p in rollup.Pages)
             {
                 connection.Execute(
@@ -189,12 +189,12 @@ public sealed class WebAnalyticsRepository
                     VALUES (@domain, @date, @path, @pageViews)
                     ON CONFLICT(domain, date, path) DO UPDATE SET page_views = excluded.page_views
                     """,
-                    new { domain, date = rollupDate, path = p.Path, pageViews = p.PageViews });
+                    new { domain, date = p.Date, path = p.Path, pageViews = p.PageViews }, transaction);
                 records++;
             }
 
-            connection.Execute("DELETE FROM web_analytics_countries WHERE domain = @domain AND date = @date",
-                new { domain, date = rollupDate });
+            connection.Execute("DELETE FROM web_analytics_countries WHERE domain = @domain AND date >= @start AND date <= @end",
+                new { domain, start = rollup.StartDate, end = rollupDate }, transaction);
             foreach (var c in rollup.Countries)
             {
                 connection.Execute(
@@ -203,11 +203,11 @@ public sealed class WebAnalyticsRepository
                     VALUES (@domain, @date, @country, @visits)
                     ON CONFLICT(domain, date, country) DO UPDATE SET visits = excluded.visits
                     """,
-                    new { domain, date = rollupDate, country = c.Key, visits = c.Visits });
+                    new { domain, date = c.Date, country = c.Key, visits = c.Visits }, transaction);
                 records++;
             }
 
-            return records;
-        });
+        }).ConfigureAwait(false);
+        return records;
     }
 }

@@ -12,6 +12,8 @@ namespace Numeris.Services.Sync;
 
 public sealed class WebAnalyticsSyncService
 {
+    private const string TimestampFormat = "yyyy-MM-ddTHH:mm:ssZ";
+
     private readonly CloudflareRumClient _client;
     private readonly WebAnalyticsRepository _webAnalyticsRepo;
     private readonly CredentialVault _vault;
@@ -67,13 +69,13 @@ public sealed class WebAnalyticsSyncService
 
     private Task SaveSitesAsync(IReadOnlyCollection<WebAnalyticsSite> sites)
     {
-        var nowStr = _connectionsRepo.FormatNow();
+        var nowStr = ConnectionsRepository.FormatNow();
         return _webAnalyticsRepo.SaveSitesAsync(sites, nowStr);
     }
 
     public async Task<SyncResult> SyncAccountAsync(string accountId, int days)
     {
-        days = Math.Clamp(days, 1, 365);
+        days = Math.Clamp(days, 1, 90);
         var token = _vault.GetWebAnalyticsToken(accountId)
             ?? throw new InvalidOperationException("No API token saved for this account");
 
@@ -88,9 +90,9 @@ public sealed class WebAnalyticsSyncService
         var startDate = endDate.AddDays(-(days - 1));
         var sinceDate = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var untilDate = endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var sinceIso = startDate.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-        var untilIso = endDate.ToDateTime(new TimeOnly(23, 59, 59)).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-        var nowStr = _connectionsRepo.FormatNow();
+        var sinceIso = startDate.ToDateTime(TimeOnly.MinValue).ToString(TimestampFormat, CultureInfo.InvariantCulture);
+        var untilIso = endDate.ToDateTime(new TimeOnly(23, 59, 59)).ToString(TimestampFormat, CultureInfo.InvariantCulture);
+        var nowStr = ConnectionsRepository.FormatNow();
 
         long records = 0;
         long days_total = 0;
@@ -145,8 +147,8 @@ public sealed class WebAnalyticsSyncService
         var today = DateOnly.FromDateTime(DateTime.Today);
         var sinceDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var untilDate = sinceDate;
-        var sinceIso = today.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
-        var untilIso = today.ToDateTime(new TimeOnly(23, 59, 59)).ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+        var sinceIso = today.ToDateTime(TimeOnly.MinValue).ToString(TimestampFormat, CultureInfo.InvariantCulture);
+        var untilIso = today.ToDateTime(new TimeOnly(23, 59, 59)).ToString(TimestampFormat, CultureInfo.InvariantCulture);
 
         try
         {

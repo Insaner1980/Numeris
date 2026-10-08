@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -28,15 +29,24 @@ public sealed class LegacyDataMigrationService
         PropertyNameCaseInsensitive = true,
     };
 
+    private const string ImportedConnectionSql = """
+        INSERT INTO connections (id, source, status, config, last_sync)
+        VALUES (@id, @source, @status, @json, NULL)
+        ON CONFLICT(id) DO UPDATE SET
+            status = CASE
+                WHEN connections.status = 'connected' THEN connections.status
+                ELSE excluded.status
+            END,
+            config = excluded.config
+        """;
+
     private readonly SqliteDatabase _db;
     private readonly CredentialVault _vault;
-    private readonly ConnectionsRepository _connectionsRepo;
 
-    public LegacyDataMigrationService(SqliteDatabase db, CredentialVault vault, ConnectionsRepository connectionsRepo)
+    public LegacyDataMigrationService(SqliteDatabase db, CredentialVault vault)
     {
         _db = db;
         _vault = vault;
-        _connectionsRepo = connectionsRepo;
     }
 
     public async Task ImportAllAsync()
@@ -84,25 +94,21 @@ public sealed class LegacyDataMigrationService
             }
         }
 
-        await UpsertImportedConnectionAsync(
-            "wa",
-            "web_analytics",
-            NormalizeStatus(source.Status),
-            new WebAnalyticsConnectionConfig
+        var nowStr = ConnectionsRepository.FormatNow();
+        await _db.WriteTransactionAsync((connection, transaction) =>
+        {
+            connection.Execute(ImportedConnectionSql, new
             {
-                AccountId = source.AccountId,
-                LastValidatedAt = source.LastValidatedAt ?? _connectionsRepo.FormatNow(),
-                ImportSource = ImportSource.ConfigTag,
-            }).ConfigureAwait(false);
-
-        if (source.Sites.Count == 0)
-        {
-            return;
-        }
-
-        var nowStr = _connectionsRepo.FormatNow();
-        await _db.WriteAsync(connection =>
-        {
+                id = "wa",
+                source = "web_analytics",
+                status = NormalizeStatus(source.Status),
+                json = JsonSerializer.Serialize(new WebAnalyticsConnectionConfig
+                {
+                    AccountId = source.AccountId,
+                    LastValidatedAt = source.LastValidatedAt ?? nowStr,
+                    ImportSource = ImportSource.ConfigTag,
+                }, JsonOptions),
+            }, transaction);
             foreach (var site in source.Sites)
             {
                 connection.Execute(
@@ -115,10 +121,10 @@ public sealed class LegacyDataMigrationService
                     """,
                     new
                     {
-                        domain = site.Domain,
+                        domain = SiteIdentity.NormalizeDomain(site.Domain),
                         siteTag = site.SiteTag,
                         discoveredAt = string.IsNullOrWhiteSpace(site.DiscoveredAt) ? nowStr : site.DiscoveredAt,
-                    });
+                    }, transaction);
             }
         }).ConfigureAwait(false);
     }
@@ -132,12 +138,13 @@ public sealed class LegacyDataMigrationService
                 continue;
             }
 
-            var domain = source.Domain.Trim().ToLowerInvariant();
+            var legacyDomain = source.Domain.Trim().ToLowerInvariant();
+            var domain = SiteIdentity.NormalizeDomain(legacyDomain);
             if (string.IsNullOrWhiteSpace(_vault.GetCloudflareToken(domain)))
             {
                 var apiToken = FirstNonBlank(
                     LegacyCredentialReader.ReadKeyringPassword(
-                        $"cloudflare:{domain}",
+                        $"cloudflare:{legacyDomain}",
                         ImportSource.CredentialService),
                     source.ApiToken);
                 if (!string.IsNullOrWhiteSpace(apiToken))
@@ -216,33 +223,37 @@ public sealed class LegacyDataMigrationService
         }.ToString());
         connection.Open();
 
+        if (!HasColumns(connection, "connections", "id", "status", "config")) return null;
+
         var row = connection.QueryFirstOrDefault<LegacyConnectionRow>(
             "SELECT status AS Status, config AS Config FROM connections WHERE id = 'wa'");
         var configJson = row?.Config;
-        if (string.IsNullOrWhiteSpace(configJson))
+        if (row is null || string.IsNullOrWhiteSpace(configJson))
         {
             return null;
         }
 
-        var config = JsonSerializer.Deserialize<LegacyWebAnalyticsConfig>(configJson, JsonOptions);
+        var config = ReadLegacyConfig<LegacyWebAnalyticsConfig>(configJson);
         if (config is null || string.IsNullOrWhiteSpace(config.AccountId))
         {
             return null;
         }
 
-        var sites = connection.Query<LegacyWebAnalyticsSite>(
+        var sites = HasColumns(connection, "web_analytics_sites", "domain", "site_tag", "discovered_at")
+            ? connection.Query<LegacyWebAnalyticsSite>(
             """
             SELECT domain AS Domain, site_tag AS SiteTag, discovered_at AS DiscoveredAt
             FROM web_analytics_sites
             WHERE domain IS NOT NULL AND site_tag IS NOT NULL
             ORDER BY domain
-            """).AsList();
+            """).AsList()
+            : new List<LegacyWebAnalyticsSite>();
 
         return new LegacyWebAnalyticsImport
         {
             AccountId = config.AccountId.Trim(),
             ApiToken = config.ApiToken?.Trim() ?? "",
-            Status = row?.Status ?? "configured",
+            Status = row.Status ?? "configured",
             LastValidatedAt = config.LastValidatedAt,
             Sites = sites,
         };
@@ -251,6 +262,7 @@ public sealed class LegacyDataMigrationService
     private static List<LegacyCloudflareImport> ReadCloudflareSourceConnections(string sourceDbPath)
     {
         using var connection = OpenSourceConnection(sourceDbPath);
+        if (!HasColumns(connection, "connections", "id", "source", "status", "config")) return new();
         var rows = connection.Query<LegacyConnectionRow>(
             """
             SELECT status AS Status, config AS Config
@@ -267,7 +279,7 @@ public sealed class LegacyDataMigrationService
                 continue;
             }
 
-            var config = JsonSerializer.Deserialize<LegacyCloudflareConfig>(row.Config, JsonOptions);
+            var config = ReadLegacyConfig<LegacyCloudflareConfig>(row.Config);
             if (config is null)
             {
                 continue;
@@ -288,6 +300,7 @@ public sealed class LegacyDataMigrationService
     private static LegacySearchConsoleImport? ReadSearchConsoleSource(string sourceDbPath)
     {
         using var connection = OpenSourceConnection(sourceDbPath);
+        if (!HasColumns(connection, "connections", "id", "status", "config")) return null;
         var row = connection.QueryFirstOrDefault<LegacyConnectionRow>(
             "SELECT status AS Status, config AS Config FROM connections WHERE id = 'sc'");
         if (string.IsNullOrWhiteSpace(row?.Config))
@@ -295,7 +308,7 @@ public sealed class LegacyDataMigrationService
             return null;
         }
 
-        var config = JsonSerializer.Deserialize<LegacySearchConsoleConfig>(row.Config, JsonOptions);
+        var config = ReadLegacyConfig<LegacySearchConsoleConfig>(row.Config);
         if (config is null || string.IsNullOrWhiteSpace(config.ClientId))
         {
             return null;
@@ -307,7 +320,7 @@ public sealed class LegacyDataMigrationService
             ClientSecret = config.ClientSecret,
             RefreshToken = config.RefreshToken,
             LastValidatedAt = config.LastValidatedAt,
-            Sites = config.Sites,
+            Sites = config.Sites ?? new(),
             Status = row.Status,
         };
     }
@@ -317,19 +330,21 @@ public sealed class LegacyDataMigrationService
         var json = JsonSerializer.Serialize(config, JsonOptions);
         return _db.WriteAsync(connection =>
         {
-            connection.Execute(
-                """
-                INSERT INTO connections (id, source, status, config, last_sync)
-                VALUES (@id, @source, @status, @json, NULL)
-                ON CONFLICT(id) DO UPDATE SET
-                    status = CASE
-                        WHEN connections.status = 'connected' THEN connections.status
-                        ELSE excluded.status
-                    END,
-                    config = excluded.config
-                """,
-                new { id, source, status, json });
+            connection.Execute(ImportedConnectionSql, new { id, source, status, json });
         });
+    }
+
+    private static bool HasColumns(SqliteConnection connection, string table, params string[] required)
+    {
+        var columns = connection.Query<string>("SELECT name FROM pragma_table_info(@table)", new { table })
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return required.All(columns.Contains);
+    }
+
+    private static T? ReadLegacyConfig<T>(string json) where T : class
+    {
+        try { return JsonSerializer.Deserialize<T>(json, JsonOptions); }
+        catch (JsonException) { return null; }
     }
 
     private static SqliteConnection OpenSourceConnection(string sourceDbPath)
@@ -356,19 +371,11 @@ public sealed class LegacyDataMigrationService
     }
 
     private static string NormalizeStatus(string? status)
-        => string.IsNullOrWhiteSpace(status) || status == "mock" ? "configured" : status.Trim();
+        => string.IsNullOrWhiteSpace(status) || string.Equals(status.Trim(), "mock", StringComparison.OrdinalIgnoreCase)
+            ? "configured" : status.Trim();
 
     private static string? FirstNonBlank(params string?[] values)
-    {
-        foreach (var value in values)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value.Trim();
-            }
-        }
-        return null;
-    }
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
     private sealed class LegacyAppSource
     {

@@ -14,6 +14,7 @@ namespace Numeris.ViewModels.Sources;
 public partial class WebAnalyticsSourceViewModel : ObservableObject
 {
     private readonly ConnectionsRepository _connectionsRepo;
+    private int _loadVersion;
     private readonly CredentialVault _vault;
     private readonly WebAnalyticsSyncService _sync;
 
@@ -43,17 +44,22 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        Connection = await _connectionsRepo.GetWebAnalyticsAsync();
+        var loadVersion = ++_loadVersion;
+        var connection = await _connectionsRepo.GetWebAnalyticsAsync();
+        var sites = await _sync.ListSavedSitesAsync();
+        if (loadVersion != _loadVersion) return;
+        Connection = connection;
         if (Connection is { AccountId.Length: > 0 })
         {
             NewAccountId = Connection.AccountId;
         }
-        await LoadSitesAsync();
+        ReplaceSites(sites);
     }
 
     [RelayCommand]
     public async Task SaveAsync()
     {
+        if (IsBusy) return;
         if (string.IsNullOrWhiteSpace(NewAccountId)) { StatusMessage = "Account ID is required"; return; }
         IsBusy = true;
         StatusMessage = "Saving...";
@@ -74,7 +80,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
                 new WebAnalyticsConnectionConfig
                 {
                     AccountId = accountId,
-                    LastValidatedAt = _connectionsRepo.FormatNow(),
+                    LastValidatedAt = ConnectionsRepository.FormatNow(),
                 },
                 "configured");
             await LoadAsync();
@@ -94,6 +100,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task DiscoverSitesAsync()
     {
+        if (IsBusy) return;
         if (Connection is null || !Connection.HasToken)
         {
             StatusMessage = "Save credentials first";
@@ -104,7 +111,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
         try
         {
             var sites = await _sync.DiscoverSitesAsync(Connection.AccountId);
-            ReplaceSites(sites);
+            await LoadSitesAsync();
             StatusMessage = $"Found {sites.Count} site(s)";
         }
         catch (Exception ex)
@@ -124,6 +131,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task TestAsync()
     {
+        if (IsBusy) return;
         if (Connection is null || string.IsNullOrWhiteSpace(Connection.AccountId))
         {
             StatusMessage = "Save credentials first";
@@ -137,6 +145,10 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
             var result = await _sync.TestAccountAsync(Connection.AccountId);
             StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
         }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Action failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
         finally
         {
             IsBusy = false;
@@ -146,6 +158,7 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task AddSiteAsync()
     {
+        if (IsBusy) return;
         IsBusy = true;
         StatusMessage = "Saving site tag...";
         try
@@ -169,23 +182,49 @@ public partial class WebAnalyticsSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task DeleteSiteAsync(WebAnalyticsSite? site)
     {
-        if (site is null) return;
-        var sites = await _sync.DeleteSiteAsync(site.Host);
-        ReplaceSites(sites);
-        StatusMessage = $"Removed {site.Host}";
+        if (IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            if (site is null) return;
+            var sites = await _sync.DeleteSiteAsync(site.Host);
+            ReplaceSites(sites);
+            StatusMessage = $"Removed {site.Host}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
     public async Task DeleteAsync()
     {
-        if (Connection is null) return;
-        if (!string.IsNullOrEmpty(Connection.AccountId))
+        if (IsBusy) return;
+        IsBusy = true;
+        try
         {
-            _vault.DeleteWebAnalyticsToken(Connection.AccountId);
+            if (Connection is null) return;
+            if (!string.IsNullOrEmpty(Connection.AccountId))
+            {
+                _vault.DeleteWebAnalyticsToken(Connection.AccountId);
+            }
+            await _connectionsRepo.DeleteWebAnalyticsAsync();
+            await LoadAsync();
+            StatusMessage = "Removed";
         }
-        await _connectionsRepo.DeleteWebAnalyticsAsync();
-        await LoadAsync();
-        StatusMessage = "Removed";
+        catch (Exception ex)
+        {
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task LoadSitesAsync()

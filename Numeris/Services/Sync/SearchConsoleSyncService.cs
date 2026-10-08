@@ -13,6 +13,8 @@ namespace Numeris.Services.Sync;
 
 public sealed class SearchConsoleSyncService
 {
+    private const string DateFormat = "yyyy-MM-dd";
+
     private readonly SearchConsoleClient _client;
     private readonly GoogleOAuthClient _oauthClient;
     private readonly SearchConsoleRepository _searchConsoleRepo;
@@ -49,21 +51,23 @@ public sealed class SearchConsoleSyncService
 
         var endDate = DateOnly.FromDateTime(DateTime.Today);
         var startDate = endDate.AddDays(-(days - 1));
-        var startStr = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var endStr = endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var nowStr = _connectionsRepo.FormatNow();
+        var startStr = startDate.ToString(DateFormat, CultureInfo.InvariantCulture);
+        var endStr = endDate.ToString(DateFormat, CultureInfo.InvariantCulture);
+        var nowStr = ConnectionsRepository.FormatNow();
 
         long records = 0;
-        var domainsToSync = new[] { Domains.KnitTools, Domains.Finnvek };
+        var matchedProperty = false;
+        var domainsToSync = await _connectionsRepo.ListConfiguredDomainsAsync().ConfigureAwait(false);
         var pqEnd = endDate;
         var pqStart = endDate.AddDays(-27);
-        var pqStartStr = pqStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var pqEndStr = pqEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var pqStartStr = pqStart.ToString(DateFormat, CultureInfo.InvariantCulture);
+        var pqEndStr = pqEnd.ToString(DateFormat, CultureInfo.InvariantCulture);
 
         foreach (var domain in domainsToSync)
         {
             var property = SearchConsoleClient.PropertyForDomain(sites, domain);
             if (property is null) continue;
+            matchedProperty = true;
 
             foreach (var kind in new[] { SearchQueryKind.Daily, SearchQueryKind.Query, SearchQueryKind.Page, SearchQueryKind.Country, SearchQueryKind.Device })
             {
@@ -75,6 +79,11 @@ public sealed class SearchConsoleSyncService
 
             var pqRows = await _client.QueryAsync(accessToken, property, pqStartStr, pqEndStr, SearchQueryKind.PageQuery, 5000).ConfigureAwait(false);
             records += await _searchConsoleRepo.ReplacePageQueryRowsAsync(domain, pqStartStr, pqEndStr, pqRows).ConfigureAwait(false);
+        }
+
+        if (!matchedProperty)
+        {
+            throw new InvalidOperationException("No authorized Search Console properties match the configured domains");
         }
 
         await _connectionsRepo.UpdateSearchConsoleLastSyncAsync(clientId, nowStr, "connected").ConfigureAwait(false);

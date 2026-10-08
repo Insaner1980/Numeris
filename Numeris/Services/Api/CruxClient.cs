@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -12,12 +13,15 @@ public sealed class CruxClient
 {
     private const string HistoryEndpoint = "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _http;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new NullableDoubleJsonConverter() },
     };
+
+    public CruxClient(HttpClient? http = null) => _http = http ?? Http;
 
     public async Task<CruxHistoryResponse> QueryHistoryAsync(string apiKey, string targetType, string target, string? formFactor)
     {
@@ -27,7 +31,7 @@ public sealed class CruxClient
 
         var url = $"{HistoryEndpoint}?key={Uri.EscapeDataString(apiKey.Trim())}";
         using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-        using var response = await Http.PostAsync(url, content).ConfigureAwait(false);
+        using var response = await _http.PostAsync(url, content).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -36,6 +40,7 @@ public sealed class CruxClient
 
         var parsed = JsonSerializer.Deserialize<CruxHistoryResponse>(body, JsonOptions)
             ?? throw new InvalidOperationException("Could not parse CrUX response");
+        if (parsed.Record is null) throw new InvalidOperationException("CrUX response contained no record");
         parsed.RawJson = body;
         return parsed;
     }
@@ -54,8 +59,10 @@ public sealed class CruxClient
             {
                 JsonTokenType.Number => reader.GetDouble(),
                 JsonTokenType.String when reader.GetString()?.Equals("NaN", StringComparison.OrdinalIgnoreCase) == true => null,
+                JsonTokenType.String when double.TryParse(reader.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+                    && double.IsFinite(value) => value,
                 JsonTokenType.Null => null,
-                _ => throw new JsonException("Expected number, null or NaN"),
+                _ => throw new JsonException("Expected number, numeric string, null or NaN"),
             };
 
         public override void Write(Utf8JsonWriter writer, double? value, JsonSerializerOptions options)

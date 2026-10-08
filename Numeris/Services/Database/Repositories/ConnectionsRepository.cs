@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Dapper;
+using Numeris.Helpers;
 using Numeris.Models;
 using Numeris.Services.Secrets;
 
@@ -12,6 +13,9 @@ namespace Numeris.Services.Database.Repositories;
 
 public sealed class ConnectionsRepository
 {
+    private const string ConnectedStatus = "connected";
+    private const string DisconnectedStatus = "disconnected";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -26,6 +30,35 @@ public sealed class ConnectionsRepository
         _db = db;
         _vault = vault;
     }
+
+    public Task<List<string>> ListConfiguredDomainsAsync()
+        => _db.ReadAsync(connection =>
+        {
+            var values = connection.Query<string>(
+                """
+                SELECT json_extract(config, '$.domain') AS domain
+                FROM connections WHERE json_valid(config)
+                UNION
+                SELECT value FROM connections,
+                    json_each(CASE WHEN json_valid(config) THEN config ELSE '{}' END, '$.sites')
+                WHERE connections.source = 'search_console' AND json_each.type = 'text'
+                UNION SELECT origin FROM performance_urls WHERE enabled = 1
+                UNION SELECT site_url FROM bing_sites WHERE enabled = 1
+                UNION SELECT domain FROM web_analytics_sites
+                ORDER BY domain
+                """);
+            var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var value in values)
+            {
+                if (string.IsNullOrWhiteSpace(value)) continue;
+                var site = value.StartsWith("sc-domain:", StringComparison.OrdinalIgnoreCase)
+                    ? value["sc-domain:".Length..]
+                    : value;
+                try { domains.Add(SiteIdentity.NormalizeDomain(site)); }
+                catch (ArgumentException) { /* Ignore malformed legacy site metadata when building selectable domains. */ }
+            }
+            return domains.OrderBy(domain => domain, StringComparer.Ordinal).ToList();
+        });
 
     public Task<List<CloudflareConnectionInfo>> ListCloudflareConnectionsAsync()
     {
@@ -58,7 +91,7 @@ public sealed class ConnectionsRepository
                         LastValidatedAt = cfg.LastValidatedAt,
                     });
                 }
-                catch
+                catch (Exception ex) when (ex is JsonException or ArgumentException)
                 {
                     // skip malformed entries
                 }
@@ -83,7 +116,7 @@ public sealed class ConnectionsRepository
         });
     }
 
-    public Task UpdateCloudflareLastSyncAsync(string domain, string lastSync, string status = "connected")
+    public Task UpdateCloudflareLastSyncAsync(string domain, string lastSync, string status = ConnectedStatus)
     {
         return _db.WriteAsync(connection =>
         {
@@ -115,7 +148,7 @@ public sealed class ConnectionsRepository
         });
     }
 
-    public string FormatNow() => DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+    public static string FormatNow() => DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
     public Task<WebAnalyticsConnectionInfo?> GetWebAnalyticsAsync()
     {
@@ -130,14 +163,14 @@ public sealed class ConnectionsRepository
             if (!string.IsNullOrEmpty(row.Config))
             {
                 try { cfg = JsonSerializer.Deserialize<WebAnalyticsConnectionConfig>(row.Config, JsonOptions); }
-                catch { }
+                catch (JsonException) { /* Corrupt legacy metadata is shown as an unconfigured connection. */ }
             }
             return (WebAnalyticsConnectionInfo?)new WebAnalyticsConnectionInfo
             {
                 Id = "wa",
                 AccountId = cfg?.AccountId ?? "",
                 HasToken = !string.IsNullOrEmpty(_vault.GetWebAnalyticsToken(cfg?.AccountId ?? "")),
-                Status = row.Status ?? "disconnected",
+                Status = row.Status ?? DisconnectedStatus,
                 LastSync = row.LastSync,
             };
         });
@@ -158,7 +191,7 @@ public sealed class ConnectionsRepository
         });
     }
 
-    public Task UpdateWebAnalyticsLastSyncAsync(string accountId, string lastSync, string status = "connected")
+    public Task UpdateWebAnalyticsLastSyncAsync(string accountId, string lastSync, string status = ConnectedStatus)
     {
         return _db.WriteAsync(connection =>
         {
@@ -186,7 +219,7 @@ public sealed class ConnectionsRepository
             if (!string.IsNullOrEmpty(row.Config))
             {
                 try { cfg = JsonSerializer.Deserialize<SearchConsoleConnectionConfig>(row.Config, JsonOptions); }
-                catch { }
+                catch (JsonException) { /* Corrupt legacy metadata is shown as an unconfigured connection. */ }
             }
             var clientId = cfg?.ClientId ?? "";
             return (SearchConsoleConnectionInfo?)new SearchConsoleConnectionInfo
@@ -195,7 +228,7 @@ public sealed class ConnectionsRepository
                 ClientId = clientId,
                 HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleClientSecret(clientId)),
                 HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetSearchConsoleRefreshToken(clientId)),
-                Status = row.Status ?? "disconnected",
+                Status = row.Status ?? DisconnectedStatus,
                 LastSync = row.LastSync,
             };
         });
@@ -210,13 +243,20 @@ public sealed class ConnectionsRepository
                 """
                 INSERT INTO connections (id, source, status, config, last_sync)
                 VALUES ('sc', 'search_console', @status, @json, NULL)
-                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
+                ON CONFLICT(id) DO UPDATE SET status = excluded.status,
+                    config = CASE WHEN json_valid(connections.config) THEN
+                        CASE WHEN json_extract(connections.config, '$.clientId') = @clientId
+                            AND json_type(connections.config, '$.sites') = 'array'
+                            AND json_array_length(@json, '$.sites') = 0
+                        THEN json_set(excluded.config, '$.sites', json(json_extract(connections.config, '$.sites')))
+                        ELSE excluded.config END
+                    ELSE excluded.config END
                 """,
-                new { status, json });
+                new { status, json, clientId = config.ClientId });
         });
     }
 
-    public Task UpdateSearchConsoleLastSyncAsync(string clientId, string lastSync, string status = "connected")
+    public Task UpdateSearchConsoleLastSyncAsync(string clientId, string lastSync, string status = ConnectedStatus)
     {
         return _db.WriteAsync(connection =>
         {
@@ -234,72 +274,6 @@ public sealed class ConnectionsRepository
         });
     }
 
-    public Task<GoogleAnalyticsConnectionInfo?> GetGoogleAnalyticsAsync()
-    {
-        return _db.ReadAsync(connection =>
-        {
-            var row = connection.QueryFirstOrDefault<(string Status, string? Config, string? LastSync)>(
-                "SELECT status AS Status, config AS Config, last_sync AS LastSync FROM connections WHERE id = 'ga4'");
-            GoogleAnalyticsConnectionConfig? cfg = null;
-            if (!string.IsNullOrEmpty(row.Config))
-            {
-                try { cfg = JsonSerializer.Deserialize<GoogleAnalyticsConnectionConfig>(row.Config, JsonOptions); }
-                catch { }
-            }
-
-            var clientId = cfg?.ClientId ?? "";
-            return (GoogleAnalyticsConnectionInfo?)new GoogleAnalyticsConnectionInfo
-            {
-                Id = "ga4",
-                Domain = cfg?.Domain ?? "",
-                PropertyId = cfg?.PropertyId ?? "",
-                ClientId = clientId,
-                HasClientSecret = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetGoogleAnalyticsClientSecret(clientId)),
-                HasRefreshToken = !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(_vault.GetGoogleAnalyticsRefreshToken(clientId)),
-                Status = row.Status ?? "disconnected",
-                LastSync = row.LastSync,
-            };
-        });
-    }
-
-    public Task UpsertGoogleAnalyticsAsync(GoogleAnalyticsConnectionConfig config, string status)
-    {
-        return _db.WriteAsync(connection =>
-        {
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            connection.Execute(
-                """
-                INSERT INTO connections (id, source, status, config, last_sync)
-                VALUES ('ga4', 'google_analytics', @status, @json, NULL)
-                ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
-                """,
-                new { status, json });
-        });
-    }
-
-    public Task UpdateGoogleAnalyticsLastSyncAsync(GoogleAnalyticsConnectionConfig config, string lastSync, string status = "connected")
-    {
-        return _db.WriteAsync(connection =>
-        {
-            var json = JsonSerializer.Serialize(config, JsonOptions);
-            connection.Execute(
-                """
-                UPDATE connections
-                SET status = @status, config = @json, last_sync = @lastSync
-                WHERE id = 'ga4'
-                """,
-                new { status, json, lastSync });
-        });
-    }
-
-    public Task DeleteGoogleAnalyticsAsync()
-    {
-        return _db.WriteAsync(connection =>
-        {
-            connection.Execute("UPDATE connections SET status = 'disconnected', config = NULL, last_sync = NULL WHERE id = 'ga4'");
-        });
-    }
-
     public Task<PerformanceConnectionInfo?> GetPerformanceAsync()
     {
         return _db.ReadAsync(connection =>
@@ -310,14 +284,19 @@ public sealed class ConnectionsRepository
                 FROM connections
                 WHERE id IN ('perf', 'crux', 'pagespeed')
                 """).AsList();
-            var connected = rows.Exists(r => r.Status == "connected");
+            var connected = rows.Exists(r => r.Status == ConnectedStatus);
             var configured = rows.Exists(r => r.Status == "configured");
             return (PerformanceConnectionInfo?)new PerformanceConnectionInfo
             {
                 Id = "perf",
                 HasCruxApiKey = !string.IsNullOrEmpty(_vault.GetCruxApiKey()),
                 HasPageSpeedApiKey = !string.IsNullOrEmpty(_vault.GetPageSpeedApiKey()),
-                Status = connected ? "connected" : configured ? "configured" : "disconnected",
+                Status = (connected, configured) switch
+                {
+                    (true, _) => ConnectedStatus,
+                    (_, true) => "configured",
+                    _ => DisconnectedStatus,
+                },
                 LastSync = rows.Select(r => r.LastSync).Where(v => !string.IsNullOrWhiteSpace(v)).OrderByDescending(v => v).FirstOrDefault(),
             };
         });
@@ -325,22 +304,22 @@ public sealed class ConnectionsRepository
 
     public Task UpsertPerformanceAsync(PerformanceConnectionConfig config, string status)
     {
-        return _db.WriteAsync(connection =>
+        return _db.WriteTransactionAsync((connection, transaction) =>
         {
             var json = JsonSerializer.Serialize(config, JsonOptions);
-            UpsertSingletonConnection(connection, "perf", "performance", status, json);
+            UpsertSingletonConnection(connection, "perf", "performance", status, json, transaction);
             if (!string.IsNullOrWhiteSpace(_vault.GetCruxApiKey()))
             {
-                UpsertSingletonConnection(connection, "crux", "crux", status, json);
+                UpsertSingletonConnection(connection, "crux", "crux", status, json, transaction);
             }
             if (!string.IsNullOrWhiteSpace(_vault.GetPageSpeedApiKey()))
             {
-                UpsertSingletonConnection(connection, "pagespeed", "pagespeed", status, json);
+                UpsertSingletonConnection(connection, "pagespeed", "pagespeed", status, json, transaction);
             }
         });
     }
 
-    public Task UpdatePerformanceLastSyncAsync(string lastSync, string status = "connected")
+    public Task UpdatePerformanceLastSyncAsync(string lastSync, string status = ConnectedStatus)
     {
         return _db.WriteAsync(connection =>
         {
@@ -362,7 +341,7 @@ public sealed class ConnectionsRepository
         });
     }
 
-    private static void UpsertSingletonConnection(Microsoft.Data.Sqlite.SqliteConnection connection, string id, string source, string status, string json)
+    private static void UpsertSingletonConnection(Microsoft.Data.Sqlite.SqliteConnection connection, string id, string source, string status, string json, Microsoft.Data.Sqlite.SqliteTransaction? transaction = null)
     {
         connection.Execute(
             """
@@ -370,7 +349,7 @@ public sealed class ConnectionsRepository
             VALUES (@id, @source, @status, @json, NULL)
             ON CONFLICT(id) DO UPDATE SET status = excluded.status, config = excluded.config
             """,
-            new { id, source, status, json });
+            new { id, source, status, json }, transaction);
     }
 
     public Task DeletePerformanceAsync()
@@ -392,14 +371,14 @@ public sealed class ConnectionsRepository
             if (!string.IsNullOrEmpty(row.Config))
             {
                 try { cfg = JsonSerializer.Deserialize<BingConnectionConfig>(row.Config, JsonOptions); }
-                catch { }
+                catch (JsonException) { /* Corrupt legacy metadata is shown as an unconfigured connection. */ }
             }
             return (BingConnectionInfo?)new BingConnectionInfo
             {
                 Id = "bing",
                 HasApiKey = !string.IsNullOrEmpty(_vault.GetBingApiKey()),
                 Sites = cfg?.Sites ?? new List<string>(),
-                Status = row.Status ?? "disconnected",
+                Status = row.Status ?? DisconnectedStatus,
                 LastSync = row.LastSync,
             };
         });
@@ -420,7 +399,7 @@ public sealed class ConnectionsRepository
         });
     }
 
-    public Task UpdateBingLastSyncAsync(string lastSync, string status = "connected")
+    public Task UpdateBingLastSyncAsync(string lastSync, string status = ConnectedStatus)
     {
         return _db.WriteAsync(connection =>
         {

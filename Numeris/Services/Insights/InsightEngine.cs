@@ -6,10 +6,12 @@ using Numeris.Models;
 
 namespace Numeris.Services.Insights;
 
-public sealed class InsightEngine
+public static class InsightEngine
 {
+    private const string GoogleNextStep = "Open Google Search and review Queries, Pages, and Indexing.";
+    private const string CloudflareNextStep = "Open Cloudflare and review Traffic, Cache, or Status Codes.";
+
     private const int MaxInsightRows = 4;
-    private const double TrafficIncreaseThreshold = 0.25;
     private const double FlatTrafficTolerance = 0.05;
     private const double GoogleImpressionIncreaseThreshold = 0.25;
     private const double DecliningPageRatioThreshold = 0.25;
@@ -25,19 +27,16 @@ public sealed class InsightEngine
     private const long ServerErrorCountThreshold = 10;
     private const double ClientErrorShareThreshold = 0.05;
     private const long BingImpressionMinimum = 50;
-    private const double EngagementTrafficIncreaseThreshold = 0.25;
-    private const double EngagementRateDropThreshold = 0.10;
     private const double CacheHitDropThreshold = 0.15;
     private const double WeakCacheHitRatioThreshold = 0.50;
     private const double ThreatIncreaseThreshold = 0.50;
     private const long ThreatMinimum = 10;
 
-    public IReadOnlyList<InsightCard> Generate(InsightMetrics metrics)
+    public static IReadOnlyList<InsightCard> Generate(InsightMetrics metrics)
     {
         var cards = new List<InsightCard>();
 
         AddIfPresent(cards, DataStale(metrics));
-        AddIfPresent(cards, TrafficMismatch(metrics));
         AddIfPresent(cards, GoogleVisibilityWithoutClicks(metrics));
         AddIfPresent(cards, DecliningPage(metrics));
         AddIfPresent(cards, NewSearchQueries(metrics));
@@ -46,7 +45,6 @@ public sealed class InsightEngine
         AddIfPresent(cards, IndexingDataMissing(metrics));
         AddIfPresent(cards, HttpErrors(metrics));
         AddIfPresent(cards, BingVisibilityWithoutClicks(metrics));
-        AddIfPresent(cards, EngagementGap(metrics));
         AddIfPresent(cards, CacheEfficiency(metrics));
         AddIfPresent(cards, ThreatSpike(metrics));
 
@@ -57,10 +55,10 @@ public sealed class InsightEngine
             .ToList();
     }
 
-    public string GetEmptyStateText(InsightMetrics metrics)
+    public static string GetEmptyStateText(InsightMetrics metrics)
     {
         return metrics.Freshness.HasConnectedSources && HasAnyData(metrics)
-            ? "All connected sources look consistent for this period."
+            ? "No insight rules were triggered by the stored data for this period."
             : "Connect or refresh sources to generate insights.";
     }
 
@@ -80,26 +78,6 @@ public sealed class InsightEngine
             10);
     }
 
-    private static InsightCard? TrafficMismatch(InsightMetrics metrics)
-    {
-        if (!HasWindow(metrics.CloudflareVisitors)
-            || !HasWindow(metrics.Ga4Users)
-            || metrics.CloudflareVisitors.Current < 50
-            || !IsUp(metrics.CloudflareVisitors, TrafficIncreaseThreshold)
-            || !IsFlat(metrics.Ga4Users, FlatTrafficTolerance))
-        {
-            return null;
-        }
-
-        return new InsightCard(
-            "Traffic looks inconsistent",
-            "Cloudflare recorded more visitors, but Analytics users stayed almost the same. This can happen with bots, cached or static requests, or tracking gaps.",
-            $"Cloudflare visitors increased by {PositiveRatio(metrics.CloudflareVisitors)}, while Analytics users changed by {ChangedRatio(metrics.Ga4Users)}.",
-            "Open Cloudflare and review Traffic, Cache, or Status Codes.",
-            InsightSeverity.Warning,
-            30);
-    }
-
     private static InsightCard? GoogleVisibilityWithoutClicks(InsightMetrics metrics)
     {
         if (!HasWindow(metrics.GoogleImpressions)
@@ -115,7 +93,7 @@ public sealed class InsightEngine
             "People see your pages, but do not click",
             "Google impressions are rising, but clicks are not. Your result may need a better title, snippet, or ranking position.",
             $"Google impressions increased by {PositiveRatio(metrics.GoogleImpressions)}, while clicks changed by {ChangedRatio(metrics.GoogleClicks)}.",
-            "Open Google Search and review Queries, Pages, and Indexing.",
+            GoogleNextStep,
             InsightSeverity.Warning,
             40);
     }
@@ -140,7 +118,7 @@ public sealed class InsightEngine
             "A previously useful page is losing search traffic",
             "One page that used to bring Google clicks is now bringing fewer clicks.",
             $"{ShortPage(page.Page)} changed from {page.PreviousClicks.ToString(CultureInfo.InvariantCulture)} to {page.CurrentClicks.ToString(CultureInfo.InvariantCulture)} Google clicks.",
-            "Open Google Search and review Queries, Pages, and Indexing.",
+            GoogleNextStep,
             InsightSeverity.Warning,
             45);
     }
@@ -156,7 +134,7 @@ public sealed class InsightEngine
             "New search queries are bringing traffic",
             "Google is sending clicks from queries that were not visible in the previous period.",
             $"{metrics.NewSearchQueryCount.ToString(CultureInfo.InvariantCulture)} new queries brought Google clicks in this period.",
-            "Open Google Search and review Queries, Pages, and Indexing.",
+            GoogleNextStep,
             InsightSeverity.Info,
             120);
     }
@@ -166,7 +144,8 @@ public sealed class InsightEngine
         var mobileDemandGrowing = IsUp(metrics.GoogleMobileClicks, MobileDemandIncreaseThreshold)
             || IsUp(metrics.GoogleMobileImpressions, MobileDemandIncreaseThreshold);
         var mobilePerformanceWeak = IsDown(metrics.PageSpeedMobileScore, PageSpeedDropThreshold)
-            || (metrics.PageSpeedMobileScore.Current > 0 && metrics.PageSpeedMobileScore.Current < WeakMobileScoreThreshold);
+            || (metrics.PageSpeedMobileScore.HasCurrent && metrics.PageSpeedMobileScore.Current > 0
+                && metrics.PageSpeedMobileScore.Current < WeakMobileScoreThreshold);
 
         if (!mobileDemandGrowing || !mobilePerformanceWeak)
         {
@@ -200,7 +179,7 @@ public sealed class InsightEngine
             "Some sitemap pages may not be indexed",
             "Numeris found sitemap URLs that do not currently have a passing Google URL Inspection result.",
             $"{indexing.IndexedUrls.ToString(CultureInfo.InvariantCulture)} of {indexing.InspectedUrls.ToString(CultureInfo.InvariantCulture)} inspected sitemap URLs are indexed.",
-            "Open Google Search and review Queries, Pages, and Indexing.",
+            GoogleNextStep,
             InsightSeverity.Warning,
             25);
     }
@@ -217,7 +196,7 @@ public sealed class InsightEngine
             "Indexing data is missing",
             "Numeris knows about sitemap URLs, but they have not been inspected through Google URL Inspection yet.",
             $"{indexing.ActiveSitemapUrls.ToString(CultureInfo.InvariantCulture)} active sitemap URLs have no inspection result yet.",
-            "Open Google Search and review Queries, Pages, and Indexing.",
+            GoogleNextStep,
             InsightSeverity.Info,
             90);
     }
@@ -237,7 +216,7 @@ public sealed class InsightEngine
                 "Some visitors may be hitting errors",
                 "Cloudflare recorded HTTP error responses during this period.",
                 $"Server error responses were {Percent(status.ServerErrorShare)} of Cloudflare requests.",
-                "Open Cloudflare and review Traffic, Cache, or Status Codes.",
+                CloudflareNextStep,
                 InsightSeverity.Critical,
                 5);
         }
@@ -248,7 +227,7 @@ public sealed class InsightEngine
                 "Some visitors may be hitting errors",
                 "Cloudflare recorded HTTP error responses during this period.",
                 $"Client error responses were {Percent(status.ClientErrorShare)} of Cloudflare requests.",
-                "Open Cloudflare and review Traffic, Cache, or Status Codes.",
+                CloudflareNextStep,
                 InsightSeverity.Warning,
                 55);
         }
@@ -258,7 +237,8 @@ public sealed class InsightEngine
 
     private static InsightCard? BingVisibilityWithoutClicks(InsightMetrics metrics)
     {
-        if (metrics.BingImpressions.Current < BingImpressionMinimum || metrics.BingClicks.Current != 0)
+        if (!metrics.BingImpressions.HasCurrent || !metrics.BingClicks.HasCurrent
+            || metrics.BingImpressions.Current < BingImpressionMinimum || metrics.BingClicks.Current != 0)
         {
             return null;
         }
@@ -270,28 +250,6 @@ public sealed class InsightEngine
             "Open Bing and review Queries, Pages, and Crawl.",
             InsightSeverity.Info,
             130);
-    }
-
-    private static InsightCard? EngagementGap(InsightMetrics metrics)
-    {
-        var trafficGrowing = IsUp(metrics.Ga4Users, EngagementTrafficIncreaseThreshold);
-        var engagementDown = HasWindow(metrics.Ga4EngagementRate)
-            && IsDown(metrics.Ga4EngagementRate, EngagementRateDropThreshold);
-        var keyEventsNotImproving = HasWindow(metrics.Ga4KeyEvents)
-            && (IsDown(metrics.Ga4KeyEvents) || IsFlat(metrics.Ga4KeyEvents, FlatTrafficTolerance));
-
-        if (!trafficGrowing || (!engagementDown && !keyEventsNotImproving))
-        {
-            return null;
-        }
-
-        return new InsightCard(
-            "More visitors are not becoming more engaged",
-            "Analytics traffic is growing, but engagement or key events are not improving with it.",
-            $"Analytics users changed by {ChangedRatio(metrics.Ga4Users)}, engagement changed by {ChangedRatio(metrics.Ga4EngagementRate)}, and key events changed by {ChangedRatio(metrics.Ga4KeyEvents)}.",
-            "Open Analytics and review Pages, Acquisition, Events, and Devices.",
-            InsightSeverity.Warning,
-            60);
     }
 
     private static InsightCard? CacheEfficiency(InsightMetrics metrics)
@@ -307,7 +265,7 @@ public sealed class InsightEngine
             "Caching may be less effective",
             "Cloudflare is serving fewer requests from cache than before.",
             $"Cache hit ratio changed by {ChangedRatio(metrics.CloudflareCacheHitRatio)} and is now {Percent(metrics.CloudflareCacheHitRatio.Current)}.",
-            "Open Cloudflare and review Traffic, Cache, or Status Codes.",
+            CloudflareNextStep,
             InsightSeverity.Warning,
             70);
     }
@@ -325,7 +283,7 @@ public sealed class InsightEngine
             "Cloudflare is blocking more suspicious traffic",
             "Threat events increased during this period.",
             $"Cloudflare threat events changed from {Number(metrics.CloudflareThreats.Previous)} to {Number(metrics.CloudflareThreats.Current)}.",
-            "Open Cloudflare and review Traffic, Cache, or Status Codes.",
+            CloudflareNextStep,
             InsightSeverity.Warning,
             20);
     }
@@ -335,7 +293,6 @@ public sealed class InsightEngine
         return new[]
             {
                 metrics.CloudflareVisitors,
-                metrics.Ga4Users,
                 metrics.GoogleImpressions,
                 metrics.GoogleClicks,
                 metrics.GoogleMobileClicks,
@@ -343,17 +300,15 @@ public sealed class InsightEngine
                 metrics.PageSpeedMobileScore,
                 metrics.BingImpressions,
                 metrics.BingClicks,
-                metrics.Ga4EngagementRate,
-                metrics.Ga4KeyEvents,
                 metrics.CloudflareCacheHitRatio,
                 metrics.CloudflareThreats,
             }
-            .Any(HasWindow)
+            .Any(metric => metric.HasCurrent || metric.HasPrevious)
             || metrics.HttpStatus.TotalRequests > 0
             || metrics.Indexing.ActiveSitemapUrls > 0;
     }
 
-    private static void AddIfPresent(ICollection<InsightCard> cards, InsightCard? card)
+    private static void AddIfPresent(List<InsightCard> cards, InsightCard? card)
     {
         if (card is not null)
         {
@@ -362,7 +317,8 @@ public sealed class InsightEngine
     }
 
     private static bool HasWindow(MetricWindow metric)
-        => metric.Current > 0.0 || metric.Previous > 0.0;
+        => metric.HasCurrent && metric.HasPrevious && metric.HasComparison
+            && (metric.Current > 0.0 || metric.Previous > 0.0);
 
     private static bool IsUp(MetricWindow metric, double threshold)
         => HasWindow(metric) && Trend.Classify(metric, upThreshold: threshold) == TrendState.Up;
@@ -377,9 +333,11 @@ public sealed class InsightEngine
         => Trend.FormatRatio(Trend.ChangeRatio(metric)).TrimStart('+');
 
     private static string ChangedRatio(MetricWindow metric)
-        => metric.Previous == 0.0 && metric.Current > 0.0
-            ? "new activity"
-            : Trend.FormatRatio(Trend.ChangeRatio(metric));
+    {
+        if (!metric.HasCurrent || !metric.HasPrevious || !metric.HasComparison) return "not available";
+        if (metric.Previous == 0.0 && metric.Current > 0.0) return "new activity";
+        return Trend.FormatRatio(Trend.ChangeRatio(metric));
+    }
 
     private static string Percent(double ratio)
         => (ratio * 100.0).ToString("0.0", CultureInfo.InvariantCulture) + "%";

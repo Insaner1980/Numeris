@@ -32,6 +32,8 @@ public sealed partial class PerformancePage : Page
         BuildChart(ref _cruxChart, CruxChartHost);
         BuildBarChart(ref _pageSpeedChart, PageSpeedChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
@@ -45,12 +47,14 @@ public sealed partial class PerformancePage : Page
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyAllChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -111,6 +115,11 @@ public sealed partial class PerformancePage : Page
         PageSpeedPanel.Visibility = tag == "pagespeed" ? Visibility.Visible : Visibility.Collapsed;
         UrlsPanel.Visibility = tag == "urls" ? Visibility.Visible : Visibility.Collapsed;
         ViewModel.ActiveTab = tag;
+    }
+
+    private void PageScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ReportContent.Height = Math.Max(e.NewSize.Height, ReportContent.MinHeight);
     }
 
     private void DomainCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

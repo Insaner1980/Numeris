@@ -86,7 +86,7 @@ function Add-CheckResult {
     }) | Out-Null
 }
 
-function Write-CheckSummary {
+function Show-CheckSummary {
     Write-Host ""
     Write-Host "lint-check summary"
     Write-Host "Root: $script:RepoRoot"
@@ -172,5 +172,5 @@ $code = Invoke-LoggedCommand `
 Add-CheckResult -Name "lint" -ReportName "lint.txt" -ExitCode $code -SkipReason $skip
 if ($code -ne 0) { $exitCode = $code }
 
-Write-CheckSummary
+Show-CheckSummary
 exit $exitCode

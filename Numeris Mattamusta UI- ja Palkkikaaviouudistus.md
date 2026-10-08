@@ -94,7 +94,6 @@ Korvaa `PeriodCombo` ainakin näillä sivuilla:
 - `DashboardPage`
 - `CloudflarePage`
 - `SearchConsolePage`
-- `GoogleAnalyticsPage`
 - `BingPage`
 - `PerformancePage`
 - `HealthPage`
@@ -214,7 +213,6 @@ Hyväksyntä:
 
 Sovella yhteisiä muutoksia ilman isoa toiminnallista refaktoria:
 - `SearchConsolePage`: Devices-kaavio voidaan muuttaa grouped mattapalkiksi; overview jää line/mixed chartiksi jos se on selkeämpi.
-- `GoogleAnalyticsPage`: Overview tai Devices käyttää mattapalkkia, acquisition/source-listat `HorizontalBars`.
 - `BingPage`: traffic trend voi käyttää mattapalkkia.
 - `PerformancePage`: PageSpeed score trend voi olla palkki; CrUX vitals voi pysyä omassa visualisoinnissaan jos palkki ei sovi mittariin.
 - `HealthPage`: incidents/status countit voivat käyttää mattapalkkia; response time voi pysyä line chartina.
@@ -287,7 +285,6 @@ Visuaalinen tarkistus:
   - Cloudflare Security
   - Cloudflare Status codes
   - Search Console Devices
-  - Google Analytics Overview
   - Bing
   - Performance
   - Health

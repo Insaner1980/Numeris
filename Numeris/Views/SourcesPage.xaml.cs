@@ -20,7 +20,7 @@ public sealed partial class SourcesPage : Page
 
     private async void TestCfButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.Cloudflare.NewToken = CfTokenBox.Password;
         await ViewModel.Cloudflare.TestAsync();
     }
 
@@ -34,9 +34,9 @@ public sealed partial class SourcesPage : Page
 
     private async void SaveCfButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.Cloudflare.NewToken = CfTokenBox.Password;
         await ViewModel.Cloudflare.SaveAsync();
-        CfTokenBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.Cloudflare.NewToken)) CfTokenBox.Password = "";
     }
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
@@ -49,9 +49,9 @@ public sealed partial class SourcesPage : Page
 
     private async void SaveWaButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.WebAnalytics.NewToken = WaTokenBox.Password;
         await ViewModel.WebAnalytics.SaveAsync();
-        WaTokenBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.WebAnalytics.NewToken)) WaTokenBox.Password = "";
     }
 
     private async void DiscoverWaButton_Click(object sender, RoutedEventArgs e)
@@ -76,9 +76,9 @@ public sealed partial class SourcesPage : Page
 
     private async void SaveScButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.SearchConsole.NewClientSecret = ScClientSecretBox.Password;
         await ViewModel.SearchConsole.SaveAsync();
-        ScClientSecretBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.SearchConsole.NewClientSecret)) ScClientSecretBox.Password = "";
     }
 
     private async void ConnectScButton_Click(object sender, RoutedEventArgs e)
@@ -92,10 +92,11 @@ public sealed partial class SourcesPage : Page
 
     private async void SavePerformanceButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.Performance.NewCruxApiKey = CruxApiKeyBox.Password;
+        ViewModel.Performance.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
         await ViewModel.Performance.SaveAsync();
-        CruxApiKeyBox.Password = "";
-        PageSpeedApiKeyBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.Performance.NewCruxApiKey)) CruxApiKeyBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.Performance.NewPageSpeedApiKey)) PageSpeedApiKeyBox.Password = "";
     }
 
     private async void AddPerformanceUrlButton_Click(object sender, RoutedEventArgs e)
@@ -122,30 +123,11 @@ public sealed partial class SourcesPage : Page
         PageSpeedApiKeyBox.Password = "";
     }
 
-    private async void SaveGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
-    {
-        SyncPasswordBoxesToViewModel();
-        await ViewModel.GoogleAnalytics.SaveAsync();
-        GoogleAnalyticsClientSecretBox.Password = "";
-    }
-
-    private async void ConnectGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.GoogleAnalytics.ConnectAsync();
-
-    private async void TestGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
-        => await ViewModel.GoogleAnalytics.TestAsync();
-
-    private async void DeleteGoogleAnalyticsButton_Click(object sender, RoutedEventArgs e)
-    {
-        await ViewModel.GoogleAnalytics.DeleteAsync();
-        GoogleAnalyticsClientSecretBox.Password = "";
-    }
-
     private async void SaveBingButton_Click(object sender, RoutedEventArgs e)
     {
-        SyncPasswordBoxesToViewModel();
+        ViewModel.Bing.NewApiKey = BingApiKeyBox.Password;
         await ViewModel.Bing.SaveAsync();
-        BingApiKeyBox.Password = "";
+        if (string.IsNullOrEmpty(ViewModel.Bing.NewApiKey)) BingApiKeyBox.Password = "";
     }
 
     private async void AddBingSiteButton_Click(object sender, RoutedEventArgs e)
@@ -168,14 +150,4 @@ public sealed partial class SourcesPage : Page
         BingApiKeyBox.Password = "";
     }
 
-    private void SyncPasswordBoxesToViewModel()
-    {
-        ViewModel.Cloudflare.NewToken = CfTokenBox.Password;
-        ViewModel.WebAnalytics.NewToken = WaTokenBox.Password;
-        ViewModel.SearchConsole.NewClientSecret = ScClientSecretBox.Password;
-        ViewModel.Performance.NewCruxApiKey = CruxApiKeyBox.Password;
-        ViewModel.Performance.NewPageSpeedApiKey = PageSpeedApiKeyBox.Password;
-        ViewModel.GoogleAnalytics.NewClientSecret = GoogleAnalyticsClientSecretBox.Password;
-        ViewModel.Bing.NewApiKey = BingApiKeyBox.Password;
-    }
 }
