@@ -113,6 +113,41 @@ internal static partial class NativeUiRegressionTests
             var loading = model.GetType().GetProperty("IsLoading");
             Require(loading is null || !(bool)loading.GetValue(model)!, type.Name + " must finish loading");
 
+            if (page is CloudflarePage)
+            {
+                var chartHost = (Border)page.FindName("TrafficChartHost");
+                var trafficChart = ((Grid)chartHost.Child).Children.OfType<LiveChartsCore.SkiaSharpView.WinUI.CartesianChart>().Single();
+                Require(trafficChart.Series.Count() > 1 && trafficChart.LegendPosition == LiveChartsCore.Measure.LegendPosition.Bottom,
+                    "The native traffic chart must expose a legend for its multiple series");
+                var originalSize = window.AppWindow.Size;
+                foreach (var width in new[] { 900, 1400, 900 })
+                {
+                    window.AppWindow.Resize(new Windows.Graphics.SizeInt32((int)Math.Ceiling(width * page.XamlRoot.RasterizationScale), originalSize.Height));
+                    await Task.Delay(100);
+                    foreach (var name in new[] { "TopCountriesCard", "TopPagesCard", "WaReferrersCard", "WaPagesCard", "WaCountriesCard" })
+                    {
+                        var card = (FrameworkElement)page.FindName(name);
+                        Require(Grid.GetColumnSpan(card) == (width < 1180 ? (name.StartsWith("Wa", StringComparison.Ordinal) ? 3 : 2) : 1),
+                            "Cloudflare cards must fill the narrow layout and restore separate columns in the wide layout");
+                    }
+                }
+                window.AppWindow.Resize(originalSize);
+            }
+            if (page is HealthPage)
+            {
+                var originalSize = window.AppWindow.Size;
+                var scroll = (ScrollViewer)page.FindName("HealthContentScrollViewer");
+                var list = (ListView)page.FindName("SitemapUrlsList");
+                foreach (var height in new[] { 650, 850 })
+                {
+                    window.AppWindow.Resize(new Windows.Graphics.SizeInt32(originalSize.Width, height));
+                    await Task.Delay(100);
+                    Require(list.MaxHeight > 0 && Math.Abs(list.MaxHeight - scroll.ActualHeight) < 0.5,
+                        "Sitemap rows must retain a positive viewport bound after each native window resize");
+                }
+                window.AppWindow.Resize(originalSize);
+            }
+
             if (page.FindName("TabBar") is SelectorBar tabs)
             {
                 foreach (var tab in tabs.Items)

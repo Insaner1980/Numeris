@@ -198,12 +198,36 @@ internal static class OAuthRegressionTests
 
     public static void RejectsMalformedAndOversizedCallbackRequests()
     {
-        ExpectRejectedRequest("GET /oauth2callback?code=test-code&state=test-state INVALID\r\n", "");
-        ExpectRejectedRequest("GET /oauth2callback?code=test-code&state=test-state&padding=" + new string('a', 9000) + " HTTP/1.1\r\n", "");
+        ExpectBrokenRequestRecovery("GET /oauth2callback?code=test-code&state=test-state INVALID\r\n", "");
+        ExpectBrokenRequestRecovery("GET /oauth2callback?code=test-code&state=test-state&padding=" + new string('a', 9000) + " HTTP/1.1\r\n", "");
         var headers = new StringBuilder();
         for (var i = 0; i < 110; i++) headers.Append("X-Test: a\r\n");
-        ExpectRejectedRequest("GET /oauth2callback?code=test-code&state=test-state HTTP/1.1\r\n", headers.ToString());
-        ExpectRejectedRequest("GET /oauth2callback?code=test-code&state=test-state HTTP/1.1\r\n", "X-Test: " + new string('a', 9000) + "\r\n");
+        ExpectBrokenRequestRecovery("GET /oauth2callback?code=test-code&state=test-state HTTP/1.1\r\n", headers.ToString());
+        ExpectBrokenRequestRecovery("GET /oauth2callback?code=test-code&state=test-state HTTP/1.1\r\n", "X-Test: " + new string('a', 9000) + "\r\n");
+        ExpectBrokenRequestRecovery("GET /oauth2callback", "", incomplete: true);
+    }
+
+    private static void ExpectBrokenRequestRecovery(string requestLine, string headers, bool incomplete = false)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var receive = typeof(GoogleOAuthFlow).GetMethod("ReceiveCallbackAsync", BindingFlags.Static | BindingFlags.NonPublic)!;
+            var pending = (Task<string>)receive.Invoke(null, new object[] { listener, "test-state", cancellation.Token })!;
+            using var probe = new TcpClient();
+            probe.Connect(IPAddress.Loopback, port);
+            var request = incomplete ? requestLine : requestLine + $"Host: 127.0.0.1:{port}\r\n" + headers + "\r\n";
+            probe.GetStream().Write(Encoding.ASCII.GetBytes(request));
+            using var peer = new TcpClient();
+            peer.Connect(IPAddress.Loopback, port);
+            peer.GetStream().Write(Encoding.ASCII.GetBytes($"GET /oauth2callback?code=following-code&state=test-state HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n"));
+            Require(pending.GetAwaiter().GetResult() == "following-code",
+                "A malformed, oversized or stalled connection must leave the following valid callback available");
+        }
+        finally { listener.Stop(); }
     }
 
     private static void ExpectRejectedRequest(string requestLine, string headers)

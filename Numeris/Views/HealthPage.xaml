@@ -120,6 +120,7 @@
         </Border>
 
         <ScrollViewer x:Name="HealthContentScrollViewer" Grid.Row="1"
+                      SizeChanged="HealthContentScrollViewer_SizeChanged"
                       Padding="{StaticResource PageScrollContentPadding}"
                       HorizontalScrollBarVisibility="Auto"
                       HorizontalScrollMode="Enabled"
@@ -326,7 +327,7 @@
                     </Grid>
                 </Border>
                 <ListView Grid.Row="1"
-                          MaxHeight="{Binding ActualHeight, ElementName=HealthContentScrollViewer}"
+                          x:Name="SitemapUrlsList"
                           ItemsSource="{x:Bind ViewModel.SitemapUrls, Mode=OneWay}"
                           Style="{StaticResource DataListViewStyle}">
                     <ListView.Header>

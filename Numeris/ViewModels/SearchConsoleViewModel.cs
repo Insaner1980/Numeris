@@ -133,7 +133,7 @@ public sealed partial class SearchConsoleViewModel : ObservableObject, IDisposab
                 }
                 catch (Exception ex)
                 {
-                    result.Errors += urls.Count(url => url.Domain == site && url.RemovedAt is null);
+                    result.Errors += Math.Max(1, urls.Count(url => url.Domain == site && url.RemovedAt is null));
                     result.FirstError ??= ApiErrorMessage.Sanitize(ex);
                 }
             }

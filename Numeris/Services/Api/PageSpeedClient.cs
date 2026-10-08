@@ -42,7 +42,7 @@ public sealed class PageSpeedClient
             if (result.TryGetProperty("runtimeError", out var runtimeError)
                 && runtimeError.ValueKind != JsonValueKind.Null)
             {
-                throw new InvalidOperationException("PageSpeed Lighthouse run failed");
+                throw new PageSpeedRunException();
             }
             _ = AnalysisTimestamp(document.RootElement);
         }

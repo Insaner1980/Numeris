@@ -81,6 +81,39 @@ internal static class LegacyImportRegressionTests
         Require((string)Read("NormalizeStatus", "connected")! == "connected", "Connected status must remain connected");
     }
 
+    public static void SkipsInvalidDomainsWithoutDiscardingValidImports()
+    {
+        WithSource("""
+            CREATE TABLE connections (id TEXT, source TEXT, status TEXT, config TEXT);
+            CREATE TABLE web_analytics_sites (domain TEXT, site_tag TEXT, discovered_at TEXT);
+            INSERT INTO connections VALUES ('wa','web_analytics','connected','{"account_id":"account"}');
+            INSERT INTO connections VALUES ('bad','cloudflare','configured','{"domain":"-bad.example","zone_id":"bad-zone"}');
+            INSERT INTO connections VALUES ('good','cloudflare','connected','{"domain":"VALID.EXAMPLE","zone_id":"valid-zone"}');
+            INSERT INTO web_analytics_sites VALUES ('-bad.example','bad-tag','2026-01-02'), ('VALID.EXAMPLE','valid-tag','2026-01-02');
+            """, path =>
+        {
+            using var database = (Numeris.Services.Database.SqliteDatabase)typeof(DatabaseReviewRegressionTests)
+                .GetMethod("CreateDatabase", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!;
+            var vault = CredentialVaultRegressionTests.CreateWritableVault();
+            vault.SetWebAnalyticsToken("account", "synthetic-token");
+            vault.SetCloudflareToken("valid.example", "synthetic-token");
+            var migration = new LegacyDataMigrationService(database, vault);
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                foreach (var method in new[] { "ImportWebAnalyticsAsync", "ImportCloudflareAsync" })
+                {
+                    var import = typeof(LegacyDataMigrationService).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic,
+                        null, new[] { typeof(string) }, null)!;
+                    ((System.Threading.Tasks.Task)import.Invoke(migration, new object[] { path })!).GetAwaiter().GetResult();
+                }
+            }
+            Require(database.ReadAsync(connection => connection.ExecuteScalar<int>("SELECT COUNT(*) FROM connections WHERE id='wa' OR id='cloudflare:valid.example'"))
+                .GetAwaiter().GetResult() == 2, "Valid account and Cloudflare rows must survive invalid neighbors and repeated import");
+            Require(database.ReadAsync(connection => connection.ExecuteScalar<string>("SELECT domain FROM web_analytics_sites"))
+                .GetAwaiter().GetResult() == "valid.example", "Only valid normalized site mappings must be imported");
+        });
+    }
+
     private static object? Read(string name, string path)
     {
         try { return typeof(LegacyDataMigrationService).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[] { path }); }

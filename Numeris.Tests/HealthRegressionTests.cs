@@ -196,6 +196,13 @@ internal static class HealthRegressionTests
         Require(viewModel.IndexingDetailText.Contains("all URLs", StringComparison.Ordinal)
             && viewModel.RefreshSeverity == Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error,
             "Failed authorization must be visible without dropping the other site's rows");
+        typeof(ShellViewModel).GetField("<SelectedDomain>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(shell, "empty.example");
+        viewModel.InspectIndexingAsync().GetAwaiter().GetResult();
+        Require(viewModel.RefreshSeverity == Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error
+            && viewModel.RefreshStatusMessage.Contains("Inspection failed", StringComparison.Ordinal)
+            && !viewModel.IndexingDetailText.StartsWith("Checked 0", StringComparison.Ordinal),
+            "A site-level failure must remain visible even without stored sitemap URLs");
     }
 
     public static void DoesNotCountBingFailuresAsSavedData()

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 [CmdletBinding()]
 param(
@@ -20,7 +20,16 @@ function Invoke-DotNetCommand {
         [string]$ReportPath
     )
 
-    & dotnet @Arguments 2>&1 |
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $commandOutput = & dotnet @Arguments 2>&1
+        $commandExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    $commandOutput |
         ForEach-Object {
             # Keep credentials out of console output and the saved report.
             $line = [string]$_
@@ -31,8 +40,8 @@ function Invoke-DotNetCommand {
         } |
         Tee-Object -FilePath $ReportPath -Append |
         Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet-komento epäonnistui (exit $LASTEXITCODE)."
+    if ($commandExitCode -ne 0) {
+        throw "dotnet-komento epäonnistui (exit $commandExitCode)."
     }
 }
 

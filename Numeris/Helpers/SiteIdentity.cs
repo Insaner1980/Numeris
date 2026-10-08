@@ -87,9 +87,7 @@ public sealed partial record SiteIdentity(string Domain, string OriginUrl, strin
         }
         foreach (var key in HttpUtility.ParseQueryString(uri.Query).AllKeys)
         {
-            var name = key?.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).ToLowerInvariant();
-            if (name is "apikey" or "key" or "accesstoken" or "refreshtoken" or "idtoken" or "token"
-                or "clientsecret" or "secret" or "password" or "authorization" or "code")
+            if (SecretQueryNames.IsSecret(key))
             {
                 throw new ArgumentException("Target URLs must not contain secret query parameters", nameof(value));
             }

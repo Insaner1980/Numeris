@@ -138,7 +138,7 @@ public static class ChartTheme
     public static CartesianChart StyleChartForBars(CartesianChart chart)
     {
         chart.Background = GetBrush("TransparentLayerBrush");
-        chart.LegendPosition = LegendPosition.Hidden;
+        chart.LegendPosition = LegendPosition.Bottom;
         chart.LegendTextPaint = new SolidColorPaint(ChartPalette.AxisText);
         chart.LegendTextSize = 13;
         chart.TooltipPosition = TooltipPosition.Top;

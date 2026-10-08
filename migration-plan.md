@@ -2,7 +2,7 @@
 
 ## Summary
 
-Tavoite on saada Numeriksen tärkeimmät toiminnot luotettavasti toimimaan ennen ulkonäön hiomista: live-integraatiot, vanhan Numerisn tunnusten migraatio, synkronoinnit, asetusten pysyvyys ja packaged/unpackaged-ajon smoke testit.
+Tavoite on saada Numeriksen tärkeimmät toiminnot luotettavasti toimimaan ennen ulkonäön hiomista: live-integraatiot, vanhan Numeriksen (Tauri) tunnusten migraatio, synkronoinnit, asetusten pysyvyys ja packaged/unpackaged-ajon smoke testit.
 
 Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma on kirjattu tiedostoon `CORE-COMPLETION-PLAN.md`. Jäljellä on automatisoidun build/test-loopin vihreänä pitäminen, live-smoke-testit käyttäjän paikallisilla tunnuksilla sekä packaged/unpackaged-ajon Visual Studio -varmistus. UI-polish, brändiassetit ja hienommat layoutit jätetään viimeiseksi.
 
@@ -21,13 +21,13 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 ### 1. Lukitse nykyinen Web Analytics -korjaus
 
 - Viimeistele ja committoi nykyiset muutokset: Numeris Web Analytics -migraatio, manuaalinen site tag mapping, tarkempi GraphQL-virheviesti ja PasswordBox-tokenin eksplisiittinen lukeminen.
-- Varmista, että Numeris käynnistyessään tuo Numerisn `numeris.db`:stä:
+- Varmista, että Uusi Numeris käynnistyessään tuo vanhan Numeriksen (Tauri) `numeris.db`:stä:
   - Web Analytics account id
   - Web Analytics API token
   - `web_analytics_sites` domain/site_tag mappingit
 - Päivitä Sources-tekstit niin, ettei käyttäjää ohjata pakollisesti `Discover sites` -polkuun. `Sync` on ensisijainen, `Discover sites` on valinnainen debug/discovery-toiminto.
 
-### 2. Laajenna Numeris -> Numeris credential-migraatio kaikkiin integraatioihin
+### 2. Laajenna Vanha Numeris (Tauri) -> Numeris (WinUI) credential-migraatio kaikkiin integraatioihin
 
 - Lisää sama migraatiomalli Cloudflare-zone-yhteyksille:
   - domain
@@ -40,7 +40,7 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
   - refresh token jos Numeris tallensi sen
   - tallennetut site/property-valinnat jos niitä löytyy Numeris-configista
 - Tokenit tallennetaan aina Numeriksen `CredentialVault`iin, ei lähdekoodiin eikä SQLite-configiin uutena plain text -arvona.
-- Migraatio saa lukea Numerisn vanhan plain text fallback-tokenin, koska Tauri käytti sitä jo. Numeris käyttää sitä vain ensimmäisenä siirtolähteenä ja siirtää arvon omaan vaultiin.
+- Migraatio saa lukea vanhan Numeriksen (Tauri) plain text fallback-tokenin, koska Tauri käytti sitä jo. Fallbackia luetaan vain, jos Numeriksen vault-tunnus ja legacy Credential Manager -tunnus puuttuvat, ja löydetty arvo siirretään Numeriksen vaultiin.
 - Migraatio on idempotentti: käynnistyksen toistaminen ei duplikoi rivejä eikä tyhjennä toimivia mappingeja.
 
 ### 3. Lisää integraatioiden diagnostiset testipolut
@@ -63,7 +63,7 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 - Cloudflare, Web Analytics ja Search Console syncit päivittävät `connections.last_sync` ja `connections.status` vain onnistuneen synkin jälkeen.
 - Päivitä Web Analyticsin nykyinen virhe `"No sites discovered yet — press Discover sites first"` muotoon, joka ohjaa migroituun/manuaaliseen site tagiin.
 - Tarkista kaikki Dapper-parametrit, joissa SQL käyttää snake_case/lowercase-parametreja, ja varmista eksplisiittiset nimet.
-- Tarkista päivämäärärajaukset Numerisa vasten: 7d/30d/90d/all eivät saa hakea eri rangea Numeriksessa kuin Taurissa.
+- Vertaa päivämäärärajauksia vanhaan Numeris (Tauri) -sovellukseen: 7d/30d/90d/all eivät saa hakea eri rangea Numeriksessa kuin Taurissa.
 
 ### 5. Lisää asetusten pysyvyys ilman UI-polishia
 
@@ -91,7 +91,7 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 - Commit 5: MVVMTK0045-korjaukset tai erillinen teknisen velan commit.
 - Commit 6: smoke test -korjaukset packaged/unpackaged-ajolle.
 
-### 8. Lisää uudet live-lähteet Numerisn ulkopuolelta
+### 8. Lisää uudet live-lähteet vanhan Numeriksen (Tauri) ulkopuolelta
 
 - Lisää Web Performance -lähde, joka yhdistää CrUX Report API:n ja PageSpeed Insights API:n:
   - yksi CrUX API key `CredentialVault`iin
@@ -123,7 +123,7 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 - Migration:
   - käynnistä Numeris ilman manuaalista tokenin syöttöä
   - Web Analytics account id ja `knittoolsapp.com` site tag näkyvät Sourcesissa
-  - Sync käyttää Numerisn migroitua tokenia
+  - Sync käyttää legacy-tuonnissa Numeriksen vaultiin siirrettyä tokenia
 - Cloudflare:
   - Test Cloudflare onnistuu olemassa olevalla domain/zone/token-yhdistelmällä
   - Sync kirjoittaa `cloudflare_traffic` ja `cloudflare_status_codes` rivejä
@@ -145,6 +145,6 @@ Nykytila: core-toteutus on pääosin valmis ja root-tason viimeistelysuunnitelma
 ## Assumptions
 
 - Ulkonäkö, brändiassetit, animaatiot, spacing ja viimeistelty layout tehdään vasta core-toiminnallisuuden jälkeen.
-- Salaisuuksia ei kovakoodata lähdekoodiin eikä commitata. "Valmiiksi koodissa" toteutetaan automaattisena paikallisena migraationa Numerisn olemassa olevista tiedoista.
+- Salaisuuksia ei kovakoodata lähdekoodiin eikä commitata. "Valmiiksi koodissa" toteutetaan automaattisena paikallisena migraationa vanhan Numeriksen (Tauri) olemassa olevista tiedoista.
 - Cloudflaren nykyisten virallisten docsien mukaan GraphQL Analytics API tarvitsee `Account -> Account Analytics -> Read`; RUM site discovery on eri asia ja voi vaatia eri oikeuden.
-- Jos Numerisn vanhasta credentialista löytyy toimiva token, Numeris käyttää sitä ensisijaisena totuutena tällä koneella.
+- Numeriksen olemassa olevia vault-tunnuksia ei korvata legacy-tuonnissa. Puuttuva tunnus luetaan ensin vanhan Numeriksen (Tauri) Credential Manager -kohteesta ja vasta sitten vanhasta plain text fallbackista.

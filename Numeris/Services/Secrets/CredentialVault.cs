@@ -113,7 +113,8 @@ public sealed class CredentialVault
         System.Collections.Generic.IReadOnlyList<PasswordCredential> credentials;
         try { credentials = Vault.RetrieveAll(); }
         catch (Exception ex) when (ex.HResult == ElementNotFound) { return; }
-        foreach (var credential in credentials.Where(credential => credential.Resource is "Numeris.GoogleAnalytics.ClientSecret" or "Numeris.GoogleAnalytics.RefreshToken"))
+        foreach (var credential in credentials.Where(credential => credential.Resource is "Numeris.GoogleAnalytics.ClientSecret" or "Numeris.GoogleAnalytics.RefreshToken"
+            or "Numeris.YouTube.ClientSecret" or "Numeris.YouTube.RefreshToken"))
         {
             Vault.Remove(credential);
         }

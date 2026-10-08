@@ -1,5 +1,9 @@
 # Numeris-muisti
 
+## Nykyinen tausta (2026-10-09)
+
+Shell kayttaa MicaBackdropia ja yhta mattaa AppBackgroundBrush-taustaa (AppBackgroundColor #151419). AppBackdrop.webp-lataus, bitmap-kerros, scrim, AppBackdropOpacity ja AppBackdropScrimColor on poistettu. Alla olevat bitmap-taustaa kuvaavat merkinnat ovat historiallisia ja tama nykytilan merkinta korvaa ne. Nakyma- ja taustatokeneiden yksi totuus on Numeris/Themes/Tokens.xaml.
+
 ## 2026-05-06
 
 - `LegacyDataMigrationService` hoitaa kaynnistyksen yleisen legacy-tuonnin Cloudflarelle, Web Analyticsille ja Search Consolelle.
@@ -60,7 +64,7 @@
 - YouTube-raportoinnin view-laskurit erotettiin API-lahteen mukaan. Public views ja videolistan Views tulevat jatkossa YouTube Data API:n `statistics.viewCount`-arvoista (`youtube_channels.view_count`, `youtube_videos.view_count`), koska YouTube Analytics API:n `views` voi olla uusilla kanavilla viiveellinen ja aliraportoida tuoreita julkaisuja. Analytics API ja `youtube_daily`/`youtube_video_stats` jaavat edelleen watch time-, average duration/percentage- ja muut periodimittarit.
 - YouTube geography-, traffic-, devices- ja retention-kyselyt hakevat ensin exact periodin ja sen puuttuessa viimeisimman syncatun periodin, joka kattaa valitun UI-periodin. Tämä estää tyhjat breakdown-tabit tilanteessa, jossa Sources-sivun Sync on ajettu 90 paivalle mutta raporttisivulla on valittuna 7 tai 30 paivaa.
 - Sources-sivulla YouTube siirrettiin omaksi provider-kortikseen Cloudflare-, Google- ja Bing-korttien rinnalle. `YouTubeSourceViewModel` sailyy lahdekohtaisena ViewModelina ja voi edelleen kayttaa Search Consolen Google OAuth -client secretia oletuksena.
-- Live-syncin kaynnistys siirrettiin Sources-sivulta raporttisivujen ylaoikean refresh-painikkeen vastuulle. `CloudflareViewModel`, `SearchConsoleViewModel`, `BingViewModel`, `PerformanceViewModel` ja `YouTubeViewModel` ajavat ennen reloadia oman lahteensa `SyncConfiguredAsync`-polun tallennetulla konfiguraatiolla; Cloudflare-sivu paivittaa samalla Zone Analyticsin ja Web Analyticsin. Sources-sivu ei nayta enaa erillisia Sync-painikkeita, vaan se on yhteyksien, testauksen ja kohdelistojen hallintaa varten.
+- Live-syncin kaynnistys siirrettiin Sources-sivulta raporttisivujen ylaoikean refresh-painikkeen vastuulle. `CloudflareViewModel`, `SearchConsoleViewModel`, `BingViewModel`, `PerformanceViewModel` ja `YouTubeViewModel` ajavat ennen reloadia oman lahteensa `SyncConfiguredAsync`-polun tallennetulla konfiguraatiolla; Cloudflare-sivun refresh paivittaa vain ActiveTab-valinnan lahteen: Web Analytics -tabilla Web Analyticsin, muilla tabeilla Zone Analyticsin. Web Analyticsilla on oma yhteys ja tabi. Sources-sivu ei nayta enaa erillisia Sync-painikkeita, vaan se on yhteyksien, testauksen ja kohdelistojen hallintaa varten.
 - Cloudflare Traffic -tabin top countries ja top pages korjattiin käyttämään oikeaa live-dataflow'ta. `CloudflareGraphqlClient` hakee breakdownit `httpRequestsAdaptiveGroups`-kyselyilla, `cloudflare_pages` lisattiin skeemaversiossa 5 ja `CloudflareRepository.UpsertTrafficAsync` kirjoittaa daily-, status-, country- ja page-rivit yhtena transaktiona.
 
 ## 2026-06-04

@@ -77,6 +77,7 @@ Run("Encoded query secret names are redacted", RawPolicyRegressionTests.RedactsE
 Run("Unrecognized error bodies preserve HTTP classification", RawPolicyRegressionTests.NonObjectErrorBodiesPreserveHttpClassification);
 Run("Uptime error persistence sanitizes secrets", RawPolicyRegressionTests.UptimePersistenceSanitizesErrorText);
 Run("Raw redaction preserves analytics and exact character thresholds", RawPolicyRegressionTests.TraversalAndBoundsPreserveValidAnalytics);
+Run("Legacy import skips invalid domains and preserves valid neighboring rows", LegacyImportRegressionTests.SkipsInvalidDomainsWithoutDiscardingValidImports);
 
 Run("OAuth expires while an accepted callback is incomplete", OAuthRegressionTests.TimesOutWithIncompleteCallback);
 Run("OAuth accepts a valid callback before token exchange", OAuthRegressionTests.AcceptsValidCallback);
@@ -886,6 +887,9 @@ Run("legacy credential reader falls back to renamed credential targets", () =>
                 {
                     "web_analytics:account." + oldProductName,
                     oldTarget,
+                    "cloudflare:example.com.au." + oldProductName,
+                    "cloudflare:example.com.evil." + oldProductName,
+                    "cloudflare:example.com.",
                     currentTarget,
                 },
             }))
@@ -894,6 +898,11 @@ Run("legacy credential reader falls back to renamed credential targets", () =>
     Equal("2", candidates.Count.ToString());
     Equal(currentTarget, candidates[0]);
     Equal(oldTarget, candidates[1]);
+    var client = "test-client.apps.googleusercontent.com";
+    var clientCandidates = ((IEnumerable<string>)orderMethod.Invoke(null,
+        new object[] { client, "Numeris", new[] { client + "." + oldProductName, client + ".evil." + oldProductName } })!).ToList();
+    Equal("2", clientCandidates.Count.ToString());
+    Equal(client + "." + oldProductName, clientCandidates[1]);
     Contains(legacyCredentials, "CredEnumerate");
     NotContains(legacyCredentials, oldProductName);
 });

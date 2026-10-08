@@ -63,19 +63,35 @@ public sealed class GoogleOAuthFlow
             using var tcpClient = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
             using var stream = tcpClient.GetStream();
             using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
-            var requestLine = await ReadCallbackLineAsync(reader, cancellationToken).ConfigureAwait(false);
-            var parts = ParseRequestLine(requestLine);
-
-            var host = await ReadCallbackHostAsync(reader, cancellationToken).ConfigureAwait(false);
-
-            var queryStart = parts[1].IndexOf('?');
-            var path = queryStart >= 0 ? parts[1][..queryStart] : parts[1];
-            var isCallback = parts[0] == "GET" && path == "/oauth2callback"
-                && (string.Equals(host, $"127.0.0.1:{port}", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(host, $"localhost:{port}", StringComparison.OrdinalIgnoreCase));
-            var parsed = HttpUtility.ParseQueryString(queryStart >= 0 ? parts[1][(queryStart + 1)..] : "");
-            var code = parsed["code"] ?? "";
-            var error = ValidateCallback(isCallback, parsed, expectedState, code);
+            using var connectionTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            connectionTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+            bool isCallback;
+            string code;
+            string? error;
+            try
+            {
+                var requestLine = await ReadCallbackLineAsync(reader, connectionTimeout.Token).ConfigureAwait(false);
+                var parts = ParseRequestLine(requestLine);
+                var host = await ReadCallbackHostAsync(reader, connectionTimeout.Token).ConfigureAwait(false);
+                var queryStart = parts[1].IndexOf('?');
+                var path = queryStart >= 0 ? parts[1][..queryStart] : parts[1];
+                isCallback = parts[0] == "GET" && path == "/oauth2callback"
+                    && (string.Equals(host, $"127.0.0.1:{port}", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(host, $"localhost:{port}", StringComparison.OrdinalIgnoreCase));
+                var parsed = HttpUtility.ParseQueryString(queryStart >= 0 ? parts[1][(queryStart + 1)..] : "");
+                code = parsed["code"] ?? "";
+                error = ValidateCallback(isCallback, parsed, expectedState, code);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                continue;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                isCallback = false;
+                code = "";
+                error = "Malformed OAuth callback request";
+            }
 
             var message = error is null ? "Authorization response received. Return to Numeris to finish." : "Authorization did not complete. Return to Numeris to try again.";
             var responseBody = $"<html><body style='font-family:sans-serif;text-align:center;padding-top:80px'><h1>Numeris</h1><p>{message}</p></body></html>";
@@ -83,8 +99,13 @@ public sealed class GoogleOAuthFlow
             var responseBytes = Encoding.UTF8.GetBytes(
                 $"HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\n" +
                 $"Content-Length: {Encoding.UTF8.GetByteCount(responseBody)}\r\nConnection: close\r\n\r\n" + responseBody);
-            await stream.WriteAsync(responseBytes, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await stream.WriteAsync(responseBytes, connectionTimeout.Token).ConfigureAwait(false);
+                await stream.FlushAsync(connectionTimeout.Token).ConfigureAwait(false);
+            }
+            catch (IOException) { }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
 
             if (!isCallback) continue;
             if (error is not null) throw new InvalidOperationException(error);

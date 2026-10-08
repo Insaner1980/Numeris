@@ -31,6 +31,7 @@ internal static partial class LegacyCredentialReader
         var ordered = new List<string> { currentTargetName };
 
         ordered.AddRange(targetNames.Where(targetName => targetName.StartsWith(legacyPrefix, StringComparison.Ordinal)
+            && targetName.Length > legacyPrefix.Length && targetName.IndexOf('.', legacyPrefix.Length) < 0
             && !string.Equals(targetName, currentTargetName, StringComparison.Ordinal)));
 
         return ordered;

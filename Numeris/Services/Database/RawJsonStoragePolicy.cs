@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Numeris.Helpers;
 
 namespace Numeris.Services.Database;
 
@@ -102,8 +103,7 @@ public static partial class RawJsonStoragePolicy
     {
         var redacted = QuerySecretRegex().Replace(value, match =>
         {
-            var name = Uri.UnescapeDataString(match.Groups[2].Value).Replace("_", "").Replace("-", "").ToLowerInvariant();
-            return name is "apikey" or "key" or "accesstoken" or "refreshtoken" or "idtoken" or "token" or "clientsecret" or "secret" or "password" or "code"
+            return SecretQueryNames.IsSecret(match.Groups[2].Value)
                 ? $"{match.Groups[1].Value}{match.Groups[2].Value}={RedactedSecret}" : match.Value;
         });
         return BearerSecretRegex().Replace(redacted, match => $"{match.Groups[1].Value}{RedactedSecret}");

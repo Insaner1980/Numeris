@@ -111,6 +111,10 @@ public sealed class LegacyDataMigrationService
             }, transaction);
             foreach (var site in source.Sites)
             {
+                if (string.IsNullOrWhiteSpace(site.Domain)) continue;
+                string domain;
+                try { domain = SiteIdentity.NormalizeDomain(site.Domain); }
+                catch (ArgumentException) { continue; }
                 connection.Execute(
                     """
                     INSERT INTO web_analytics_sites (domain, site_tag, discovered_at)
@@ -121,7 +125,7 @@ public sealed class LegacyDataMigrationService
                     """,
                     new
                     {
-                        domain = SiteIdentity.NormalizeDomain(site.Domain),
+                        domain,
                         siteTag = site.SiteTag,
                         discoveredAt = string.IsNullOrWhiteSpace(site.DiscoveredAt) ? nowStr : site.DiscoveredAt,
                     }, transaction);
@@ -139,7 +143,9 @@ public sealed class LegacyDataMigrationService
             }
 
             var legacyDomain = source.Domain.Trim().ToLowerInvariant();
-            var domain = SiteIdentity.NormalizeDomain(legacyDomain);
+            string domain;
+            try { domain = SiteIdentity.NormalizeDomain(legacyDomain); }
+            catch (ArgumentException) { continue; }
             if (string.IsNullOrWhiteSpace(_vault.GetCloudflareToken(domain)))
             {
                 var apiToken = FirstNonBlank(

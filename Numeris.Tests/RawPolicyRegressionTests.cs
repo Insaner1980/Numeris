@@ -21,6 +21,18 @@ internal static class RawPolicyRegressionTests
 
     public static void RedactsEncodedAndRepeatedSecretQueryNames()
     {
+        foreach (var name in new[] { "key", "api_key", "access-token", "refresh_token", "id_token", "token", "client-secret", "secret", "password", "authorization", "code", "%63ode", "%61uthorization" })
+        {
+            var url = $"https://test.example/?{name}=synthetic-secret&q=public";
+            Require(!ApiErrorMessage.Sanitize(url)!.Contains("synthetic-secret", StringComparison.Ordinal),
+                "UI errors must hide every recognized secret query name");
+            var raw = RawJsonStoragePolicy.TrimRawJson(JsonSerializer.Serialize(new { url }));
+            Require(!raw.Contains("synthetic-secret", StringComparison.Ordinal) && raw.Contains("q=public", StringComparison.Ordinal),
+                "Stored URLs must use the same secret query policy and preserve ordinary query values");
+            try { Numeris.Helpers.SiteIdentity.NormalizeHttpsPageUrl(url); }
+            catch (ArgumentException) { continue; }
+            throw new InvalidOperationException("Page targets must reject the same secret query names");
+        }
         var input = JsonSerializer.Serialize(new { url = "https://test.example/?api%5Fkey=synthetic-first&%61ccess_token=synthetic-second&key=synthetic-third&q=public" });
         var stored = RawJsonStoragePolicy.TrimRawJson(input);
         Require(!stored.Contains("synthetic-", StringComparison.Ordinal) && stored.Contains("q=public", StringComparison.Ordinal),

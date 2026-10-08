@@ -179,6 +179,10 @@ public sealed class PerformanceSyncService
                 {
                     result.PageSpeedErrors++;
                 }
+                catch (PageSpeedRunException)
+                {
+                    result.PageSpeedErrors++;
+                }
                 catch (HttpRequestException)
                 {
                     result.PageSpeedErrors++;

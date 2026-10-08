@@ -28,8 +28,32 @@ internal static partial class PerformanceReviewRegressionTests
 
     public static void RejectsPageSpeedRuntimeErrorsWithoutReplacingHistory()
     {
-        AssertRejectedPageSpeedResponse(PageSpeedJson.Replace("\"lighthouseVersion\":\"synthetic\",",
-            "\"runtimeError\":{\"code\":\"NO_FCP\",\"message\":\"Synthetic failure\"},\"lighthouseVersion\":\"synthetic\","), "Lighthouse");
+        using var database = CreateDatabase();
+        var repository = new PerformanceRepository(database);
+        repository.AddUrlAsync(TargetUrl).GetAwaiter().GetResult();
+        repository.AddUrlAsync("https://z-other.example/").GetAwaiter().GetResult();
+        SeedStoredData(repository);
+        var calls = 0;
+        using var http = new HttpClient(new SyntheticHandler(request =>
+        {
+            calls++;
+            var json = QueryValues(request, "url").Single() == TargetUrl
+                ? PageSpeedJson.Replace("\"lighthouseVersion\":\"synthetic\",",
+                    "\"runtimeError\":{\"code\":\"NO_FCP\",\"message\":\"Synthetic failure\"},\"lighthouseVersion\":\"synthetic\",")
+                : PageSpeedJson;
+            return Response(HttpStatusCode.OK, json);
+        }));
+        var vault = CreateVault(crux: false, pageSpeed: true);
+        var connections = new ConnectionsRepository(database, vault);
+        var sync = new PerformanceSyncService(new CruxClient(), new PageSpeedClient(http), repository, connections, vault);
+        Require(!sync.TestPageSpeedAsync().GetAwaiter().GetResult().Ok, "A failed Lighthouse run must fail the source test");
+        var result = sync.SyncConfiguredAsync().GetAwaiter().GetResult()!;
+        Require(calls == 5 && result.PageSpeedErrors == 2 && result.PageSpeedRuns == 2,
+            "Runtime errors must count per strategy, avoid retries, and allow later URLs to finish");
+        Require(repository.GetLatestPageSpeedRunsAsync("test.example").GetAwaiter().GetResult()
+            .Single().AnalysisUtc == "2026-08-28T12:00:00Z", "Failed runs must preserve prior history");
+        Require(!string.IsNullOrEmpty(connections.GetPerformanceAsync().GetAwaiter().GetResult()!.LastSync),
+            "Completed partial sync must reach retention and the last-sync update");
     }
 
     public static void RejectsInvalidPageSpeedAnalysisTimesWithoutReplacingHistory()

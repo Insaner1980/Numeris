@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Numeris.Helpers;
 
 namespace Numeris.Services.Api;
 
@@ -44,8 +45,7 @@ public static partial class ApiErrorMessage
 
         var sanitized = SecretQueryRegex().Replace(message.Trim(), match =>
         {
-            var name = Uri.UnescapeDataString(match.Groups[1].Value).Replace("_", "").Replace("-", "").ToLowerInvariant();
-            return name is "key" or "apikey" or "accesstoken" or "refreshtoken" or "clientsecret" or "idtoken" or "token" or "secret" or "password"
+            return SecretQueryNames.IsSecret(match.Groups[1].Value)
                 ? $"{match.Groups[1].Value}=<redacted>" : match.Value;
         });
         sanitized = BearerRegex().Replace(sanitized, "$1<redacted>");

@@ -54,6 +54,9 @@ public sealed partial class HealthPage : Page
         ViewModel.Dispose();
     }
 
+    private void HealthContentScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+        => SitemapUrlsList.MaxHeight = e.NewSize.Height;
+
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
