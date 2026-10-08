@@ -34,7 +34,7 @@ Kysy nämä seuraavassa chatissä laajaa koodikatselmusta varten. Tarkoitus on l
 ## Turvallisuus
 
 18. Tarkista `CredentialVault`-käyttö. Poistetaanko, korvataanko ja luetaanko salaisuudet oikein packaged- ja unpackaged-ajossa?
-19. Onko vanhan Pulse-datan migraatio turvallinen, idempotentti ja riittävän varovainen plain text -fallbackien kanssa?
+19. Onko vanhan Numeris-datan migraatio turvallinen, idempotentti ja riittävän varovainen plain text -fallbackien kanssa?
 20. Onko Bing/Google/Cloudflare-virheiden raw-vastauksissa salaisuuksia, joita ei pitäisi tallentaa?
 
 ## Testit ja ylläpidettävyys

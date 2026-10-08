@@ -4,7 +4,7 @@
   </Configurations>
   <Project Path="Numeris/Numeris.csproj">
     <Platform Project="x64" />
-    <Deploy />
+    <Deploy Solution="Release|*" />
   </Project>
   <Project Path="Numeris.Tests/Numeris.Tests.csproj" />
 </Solution>

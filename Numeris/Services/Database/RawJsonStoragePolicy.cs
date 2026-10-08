@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Numeris.Helpers;
 
 namespace Numeris.Services.Database;
 
@@ -35,7 +36,7 @@ public static partial class RawJsonStoragePolicy
         }
         catch (JsonException)
         {
-            return RedactSecretText(value);
+            return JsonSerializer.Serialize(new { invalidJson = true, originalChars = value.Length });
         }
     }
 
@@ -100,7 +101,11 @@ public static partial class RawJsonStoragePolicy
 
     private static string RedactSecretText(string value)
     {
-        var redacted = QuerySecretRegex().Replace(value, match => $"{match.Groups[1].Value}{RedactedSecret}");
+        var redacted = QuerySecretRegex().Replace(value, match =>
+        {
+            return SecretQueryNames.IsSecret(match.Groups[2].Value)
+                ? $"{match.Groups[1].Value}{match.Groups[2].Value}={RedactedSecret}" : match.Value;
+        });
         return BearerSecretRegex().Replace(redacted, match => $"{match.Groups[1].Value}{RedactedSecret}");
     }
 
@@ -120,7 +125,7 @@ public static partial class RawJsonStoragePolicy
         });
     }
 
-    [GeneratedRegex(@"([?&](?:api[_-]?key|key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|password|code)=)[^&\s""']+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"([?&])([^=&\s""']+)=([^&\s""']*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex QuerySecretRegex();
 
     [GeneratedRegex(@"(Bearer\s+)[A-Za-z0-9._~+/=-]+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

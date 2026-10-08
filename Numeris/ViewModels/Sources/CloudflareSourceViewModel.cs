@@ -15,9 +15,11 @@ namespace Numeris.ViewModels.Sources;
 public partial class CloudflareSourceViewModel : ObservableObject
 {
     private readonly ConnectionsRepository _connectionsRepo;
+    private int _loadVersion;
     private readonly CredentialVault _vault;
     private readonly CloudflareGraphqlClient _client;
     private readonly CloudflareSyncService _sync;
+    private readonly ShellViewModel _shell;
 
     [ObservableProperty] public partial ObservableCollection<CloudflareConnectionInfo> Connections { get; set; } = new();
     [ObservableProperty] public partial string NewDomain { get; set; } = "";
@@ -27,18 +29,19 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     public bool CanRun => !IsBusy;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
-    [ObservableProperty] public partial int SyncDays { get; set; } = 90;
 
     public CloudflareSourceViewModel(
         ConnectionsRepository connectionsRepo,
         CredentialVault vault,
         CloudflareGraphqlClient client,
-        CloudflareSyncService sync)
+        CloudflareSyncService sync,
+        ShellViewModel shell)
     {
         _connectionsRepo = connectionsRepo;
         _vault = vault;
         _client = client;
         _sync = sync;
+        _shell = shell;
     }
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanRun));
@@ -46,7 +49,10 @@ public partial class CloudflareSourceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
+        var loadVersion = ++_loadVersion;
         var list = await _connectionsRepo.ListCloudflareConnectionsAsync();
+        await _shell.RefreshAvailableDomainsAsync();
+        if (loadVersion != _loadVersion) return;
         Connections.Clear();
         foreach (var c in list) Connections.Add(c);
     }
@@ -54,6 +60,7 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task TestAsync()
     {
+        if (IsBusy) return;
         if (!ValidateInputs(requireToken: true)) return;
         IsBusy = true;
         StatusMessage = "Testing connection...";
@@ -76,6 +83,7 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task TestSavedAsync(CloudflareConnectionInfo? info)
     {
+        if (IsBusy) return;
         if (info is null) return;
         IsBusy = true;
         StatusMessage = $"Testing {info.Domain}...";
@@ -83,6 +91,10 @@ public partial class CloudflareSourceViewModel : ObservableObject
         {
             var result = await _sync.TestDomainAsync(info.Domain, info.ZoneId);
             StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Action failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
@@ -93,6 +105,7 @@ public partial class CloudflareSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task SaveAsync()
     {
+        if (IsBusy) return;
         if (!ValidateInputs(requireToken: false)) return;
         IsBusy = true;
         StatusMessage = "Saving...";
@@ -116,13 +129,13 @@ public partial class CloudflareSourceViewModel : ObservableObject
                 {
                     Domain = domain,
                     ZoneId = zoneId,
-                    LastValidatedAt = _connectionsRepo.FormatNow(),
+                    LastValidatedAt = ConnectionsRepository.FormatNow(),
                 },
                 "configured");
             await LoadAsync();
 
             NewToken = "";
-            StatusMessage = $"Saved {domain}. Press Sync to fetch live data.";
+            StatusMessage = $"Saved {domain}. Use Cloudflare page refresh to fetch live data.";
         }
         catch (Exception ex)
         {
@@ -135,35 +148,26 @@ public partial class CloudflareSourceViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public async Task SyncAsync(CloudflareConnectionInfo? info)
+    public async Task DeleteAsync(CloudflareConnectionInfo? info)
     {
-        if (info is null) return;
+        if (IsBusy) return;
         IsBusy = true;
-        StatusMessage = $"Syncing {info.Domain}...";
         try
         {
-            var result = await _sync.SyncDomainAsync(info.Domain, info.ZoneId, SyncDays);
-            StatusMessage = $"Synced {result.DaysSynced} days, {result.RecordsUpserted} rows";
+            if (info is null) return;
+            await _connectionsRepo.DeleteCloudflareAsync(info.Domain);
+            _vault.DeleteCloudflareToken(info.Domain);
             await LoadAsync();
+            StatusMessage = $"Removed {info.Domain}";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
             IsBusy = false;
         }
-    }
-
-    [RelayCommand]
-    public async Task DeleteAsync(CloudflareConnectionInfo? info)
-    {
-        if (info is null) return;
-        await _connectionsRepo.DeleteCloudflareAsync(info.Domain);
-        _vault.DeleteCloudflareToken(info.Domain);
-        await LoadAsync();
-        StatusMessage = $"Removed {info.Domain}";
     }
 
     private bool ValidateInputs(bool requireToken)

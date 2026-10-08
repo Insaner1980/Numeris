@@ -2,7 +2,7 @@
 
 ## Summary
 
-This plan turns the current Numeris core migration work into a verified, committable milestone. Most product work is already implemented: legacy Pulse import, source-specific Sources view models, Test/Sync actions, settings persistence, MVVM Toolkit partial properties, CrUX/PageSpeed/Bing integrations, bounded raw JSON storage, and architecture documentation updates.
+This plan turns the current Numeris core migration work into a verified, committable milestone. Most product work is already implemented: legacy Numeris import, source-specific Sources view models, Test/Sync actions, settings persistence, MVVM Toolkit partial properties, CrUX/PageSpeed/Bing integrations, bounded raw JSON storage, and architecture documentation updates.
 
 The remaining work is verification and hardening: keep the local build/test loop green, sanitize all UI-facing integration errors, verify the implemented architecture against the codebase, run live/manual smoke tests with local credentials, then commit the work in coherent batches.
 
@@ -10,7 +10,7 @@ The remaining work is verification and hardening: keep the local build/test loop
 
 | Area | Done | Needs verification | Remaining |
 | --- | --- | --- | --- |
-| Legacy import | `LegacyDataMigrationService` imports Web Analytics, Cloudflare, and Search Console from the Pulse database and legacy Windows credentials. | Run against the user's real `%AppData%\com.finnvek.pulse\pulse.db`. | None known after live smoke testing. |
+| Legacy import | `LegacyDataMigrationService` imports Web Analytics, Cloudflare, and Search Console from the Numeris database and legacy Windows credentials. | Run against the user's real `%AppData%\com.finnvek.numeris\numeris.db`. | None known after live smoke testing. |
 | Secrets | New and imported tokens use `CredentialVault`; delete paths remove vault entries. | Confirm with real migrated credentials that existing Numeris secrets are preserved. | None known. |
 | Sources UX | Sources behavior is split into source-specific view models with Save/Test/Sync/Delete paths. | Click through all source panels in the app. | Only manual UI smoke testing remains. |
 | Sync services | Sync services orchestrate API calls and repositories; repositories own SQLite writes. | Run test harness and live syncs. | None known. |
@@ -35,7 +35,7 @@ The remaining work is verification and hardening: keep the local build/test loop
    - Preserve differentiated messages for missing local secrets, missing site tags/properties, unauthorized upstream responses, mismatches, and successful empty datasets.
 
 3. Verify implemented architecture.
-   - Confirm legacy import reads Pulse config centrally through `LegacyAppSource`.
+   - Confirm legacy import reads Numeris config centrally through `LegacyAppSource`.
    - Confirm imported secrets are copied only into `CredentialVault`.
    - Confirm Web Analytics sync uses saved `web_analytics_sites` and does not require Discover.
    - Confirm `connections.status` and `connections.last_sync` update after successful sync only.
@@ -49,7 +49,7 @@ The remaining work is verification and hardening: keep the local build/test loop
 
 5. Run manual/live smoke tests.
    - Do not run `lint-check`, `lc`, `security-check`, or `sc`; the user runs those scripts.
-   - Launch Numeris with the user's local Pulse data and confirm imported Web Analytics account/site tags, Cloudflare domain/zone rows, and Search Console client/token state.
+   - Launch Numeris with the user's local Numeris data and confirm imported Web Analytics account/site tags, Cloudflare domain/zone rows, and Search Console client/token state.
    - From Sources, test and sync Cloudflare, Web Analytics, Search Console, CrUX, PageSpeed, and Bing.
    - Restart the app and confirm selected period, selected domain, and last page are restored.
    - In Visual Studio, smoke-test both packaged and unpackaged launch paths.

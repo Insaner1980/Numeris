@@ -20,7 +20,7 @@ public sealed class SummaryRepository
         return _db.ReadAsync(connection =>
         {
             var endDate = DateOnly.FromDateTime(DateTime.Today);
-            var startDate = endDate.AddDays(-days);
+            var startDate = endDate.AddDays(-(days - 1));
             var prevStart = startDate.AddDays(-days);
 
             string s(DateOnly d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -31,23 +31,28 @@ public sealed class SummaryRepository
             var cloudflareWhere = SummaryDomainWhereClause(domainOrAll, "domain");
             var searchConsoleWhere = SummaryDomainWhereClause(domainOrAll, "site_url");
 
-            var visitorsTotal = ScalarLong(connection,
+            var visitors = connection.QuerySingle<(long Total, int Days, string? LatestDate)>(
                 $"""
-                SELECT COALESCE(SUM(unique_visitors), 0) FROM cloudflare_traffic
+                SELECT COALESCE(SUM(unique_visitors), 0) AS Total,
+                       COUNT(DISTINCT date) AS Days, MAX(date) AS LatestDate
+                FROM cloudflare_traffic
                 WHERE date >= @a AND date <= @b
                   {cloudflareWhere}
                 """,
                 ToParameters(("@a", startStr), ("@b", endStr), ("@domain", summaryDomain)));
-            var visitorsPrev = ScalarLong(connection,
+            var visitorsPrev = connection.QuerySingle<(long Total, int Days)>(
                 $"""
-                SELECT COALESCE(SUM(unique_visitors), 0) FROM cloudflare_traffic
+                SELECT COALESCE(SUM(unique_visitors), 0) AS Total, COUNT(DISTINCT date) AS Days
+                FROM cloudflare_traffic
                 WHERE date >= @a AND date < @b
                   {cloudflareWhere}
                 """,
                 ToParameters(("@a", prevStartStr), ("@b", startStr), ("@domain", summaryDomain)));
 
             var clicksSql = """
-                SELECT COALESCE(SUM(clicks), 0) FROM search_console
+                SELECT COALESCE(SUM(clicks), 0) AS Total,
+                       COUNT(DISTINCT date) AS Days, MAX(date) AS LatestDate
+                FROM search_console
                 WHERE (kind = 'daily' OR NOT EXISTS (
                     SELECT 1 FROM search_console
                     WHERE kind = 'daily'
@@ -56,10 +61,15 @@ public sealed class SummaryRepository
                   AND date >= $a AND date {0} $b
                   {1}
                 """;
-            var clicksTotal = ScalarLong(connection, string.Format(clicksSql, "<=", searchConsoleWhere),
+            var clicks = connection.QuerySingle<(long Total, int Days, string? LatestDate)>(string.Format(clicksSql, "<=", searchConsoleWhere),
                 ToParameters(("$a", startStr), ("$b", endStr), ("@domain", summaryDomain)));
-            var clicksPrev = ScalarLong(connection, string.Format(clicksSql, "<", searchConsoleWhere),
+            var clicksPrev = connection.QuerySingle<(long Total, int Days, string? LatestDate)>(string.Format(clicksSql, "<", searchConsoleWhere),
                 ToParameters(("$a", prevStartStr), ("$b", startStr), ("@domain", summaryDomain)));
+            var coverageParameters = ToParameters(("@start", startStr), ("@end", endStr), ("@prevStart", prevStartStr),
+                ("@domain", summaryDomain), ("@days", days));
+            var visitorsComplete = HasCompleteSitePeriods(connection, "cloudflare_traffic", "domain", cloudflareWhere, coverageParameters);
+            var clicksComplete = HasCompleteSitePeriods(connection, "search_console", "site_url",
+                $"AND (kind = 'daily' OR NOT EXISTS (SELECT 1 FROM search_console WHERE kind = 'daily' {searchConsoleWhere})) {searchConsoleWhere}", coverageParameters);
 
             var installsTotal = ScalarLong(connection,
                 "SELECT COALESCE(SUM(installs), 0) FROM play_installs WHERE date >= $a AND date <= $b",
@@ -93,10 +103,14 @@ public sealed class SummaryRepository
 
             return new SummaryData
             {
-                VisitorsTotal = visitorsTotal,
-                VisitorsChangePct = PctChange(visitorsPrev, visitorsTotal),
-                ClicksTotal = clicksTotal,
-                ClicksChangePct = PctChange(clicksPrev, clicksTotal),
+                VisitorsTotal = visitors.Total,
+                VisitorsDays = visitors.Days,
+                VisitorsLatestDate = visitors.LatestDate ?? "",
+                VisitorsChangePct = CompletePeriodChange(visitorsPrev.Total, visitors.Total, visitorsPrev.Days, visitors.Days, days, visitorsComplete),
+                ClicksTotal = clicks.Total,
+                ClicksDays = clicks.Days,
+                ClicksLatestDate = clicks.LatestDate ?? "",
+                ClicksChangePct = CompletePeriodChange(clicksPrev.Total, clicks.Total, clicksPrev.Days, clicks.Days, days, clicksComplete),
                 InstallsTotal = installsTotal,
                 InstallsChangePct = PctChange(installsPrev, installsTotal),
                 RevenueTotal = Math.Round(revenueTotal * 100.0) / 100.0,
@@ -117,13 +131,14 @@ public sealed class SummaryRepository
             var filter = BingSiteFilter(domainOrAll);
             var currentSql = $"""
                 SELECT COALESCE(SUM(clicks), 0) AS Clicks,
-                       COALESCE(SUM(impressions), 0) AS Impressions
+                       COALESCE(SUM(impressions), 0) AS Impressions,
+                       COUNT(DISTINCT date) AS Days, MAX(date) AS LatestDate
                 FROM bing_rank_traffic
                 WHERE date >= @start AND date <= @end
                   {filter.WhereClause}
                 """;
             var previousSql = $"""
-                SELECT COALESCE(SUM(clicks), 0)
+                SELECT COALESCE(SUM(clicks), 0) AS Clicks, COUNT(DISTINCT date) AS Days
                 FROM bing_rank_traffic
                 WHERE date >= @prevStart AND date < @start
                   {filter.WhereClause}
@@ -131,15 +146,19 @@ public sealed class SummaryRepository
             filter.Parameters.Add("start", startStr);
             filter.Parameters.Add("end", endStr);
             filter.Parameters.Add("prevStart", prevStartStr);
+            filter.Parameters.Add("days", days);
 
-            var current = connection.QuerySingle<(long Clicks, long Impressions)>(currentSql, filter.Parameters);
-            var previous = ScalarLong(connection, previousSql, filter.Parameters);
+            var current = connection.QuerySingle<(long Clicks, long Impressions, int Days, string? LatestDate)>(currentSql, filter.Parameters);
+            var previous = connection.QuerySingle<(long Clicks, int Days)>(previousSql, filter.Parameters);
             return new BingOverviewSummary
             {
                 Clicks = current.Clicks,
-                PreviousClicks = previous,
+                PreviousClicks = previous.Clicks,
                 Impressions = current.Impressions,
-                ClicksChangePct = PctChange(previous, current.Clicks),
+                Days = current.Days,
+                LatestDate = current.LatestDate ?? "",
+                ClicksChangePct = CompletePeriodChange(previous.Clicks, current.Clicks, previous.Days, current.Days, days,
+                    HasCompleteSitePeriods(connection, "bing_rank_traffic", "site_url", filter.WhereClause, filter.Parameters)),
             };
         });
     }
@@ -172,10 +191,10 @@ public sealed class SummaryRepository
             }
 
             var statuses = rows.Select(row => PerformanceRepository.CruxStatus(row.Metric, row.P75)).ToList();
-            var status = statuses.Contains("Fail", StringComparer.Ordinal) ? "Fail"
-                : statuses.Contains("Warn", StringComparer.Ordinal) ? "Warn"
-                : statuses.Contains("Pass", StringComparer.Ordinal) ? "Pass"
-                : "No data";
+            var status = "No data";
+            if (statuses.Contains("Fail", StringComparer.Ordinal)) status = "Fail";
+            else if (statuses.Contains("Warn", StringComparer.Ordinal)) status = "Warn";
+            else if (statuses.Contains("Pass", StringComparer.Ordinal)) status = "Pass";
             return new WebVitalsOverviewSummary
             {
                 Status = status,
@@ -209,15 +228,12 @@ public sealed class SummaryRepository
                 """
                 SELECT COALESCE(MAX(last_sync), '')
                 FROM connections
-                WHERE id IN ('cf', 'sc', 'bing', 'perf', 'crux', 'pagespeed')
+                WHERE id IN ('cf', 'sc', 'bing', 'perf', 'crux', 'pagespeed') OR source = 'cloudflare'
                 """) ?? "");
     }
 
     private static long ScalarLong(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
         => connection.ExecuteScalar<long>(sql, ToParameters(parameters));
-
-    private static long ScalarLong(SqliteConnection connection, string sql, DynamicParameters parameters)
-        => connection.ExecuteScalar<long>(sql, parameters);
 
     private static double ScalarDouble(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
         => connection.ExecuteScalar<double>(sql, ToParameters(parameters));
@@ -247,10 +263,29 @@ public sealed class SummaryRepository
         return Math.Round(((current - prev) / prev) * 1000.0) / 10.0;
     }
 
+    private static double? CompletePeriodChange(long previous, long current, int previousDays, int currentDays, int days, bool completeSites)
+        => completeSites && previousDays == days && currentDays == days && previous > 0
+            ? PctChange(previous, current) : null;
+
+    private static bool HasCompleteSitePeriods(SqliteConnection connection, string table, string identity,
+        string filter, DynamicParameters parameters)
+        => connection.ExecuteScalar<bool>(
+            $"""
+            SELECT COUNT(*) > 0 AND MIN(CurrentDays) = @days AND MIN(PreviousDays) = @days
+            FROM (
+                SELECT COUNT(DISTINCT CASE WHEN date >= @start THEN date END) AS CurrentDays,
+                       COUNT(DISTINCT CASE WHEN date < @start THEN date END) AS PreviousDays
+                FROM {table}
+                WHERE date >= @prevStart AND date <= @end
+                  {filter}
+                GROUP BY {identity}
+            )
+            """, parameters);
+
     private static (string Start, string End, string PreviousStart) DateWindow(int days)
     {
         var endDate = DateOnly.FromDateTime(DateTime.Today);
-        var startDate = endDate.AddDays(-days);
+        var startDate = endDate.AddDays(-(days - 1));
         var prevStart = startDate.AddDays(-days);
         string s(DateOnly d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         return (s(startDate), s(endDate), s(prevStart));
@@ -265,7 +300,7 @@ public sealed class SummaryRepository
         }
 
         parameters.Add("siteUrl", SiteIdentity.NormalizeHomePageUrl(domainOrAll));
-        return ("AND site_url = @siteUrl", parameters);
+        return ("AND site_url LIKE @siteUrl || '%'", parameters);
     }
 
     private static string NormalizeSummaryDomain(string domainOrAll)

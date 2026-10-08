@@ -127,23 +127,23 @@ public sealed class CloudflareRepository
         return _db.ReadAsync(connection =>
         {
             var totalSql = domain == "all"
-                ? "SELECT COALESCE(SUM(pageviews), 1) FROM cloudflare_traffic WHERE date >= @start AND date <= @end"
-                : "SELECT COALESCE(SUM(pageviews), 1) FROM cloudflare_traffic WHERE domain = @domain AND date >= @start AND date <= @end";
+                ? "SELECT COALESCE(SUM(requests), 1) FROM cloudflare_pages WHERE date >= @start AND date <= @end"
+                : "SELECT COALESCE(SUM(requests), 1) FROM cloudflare_pages WHERE domain = @domain AND date >= @start AND date <= @end";
             var total = connection.ExecuteScalar<long>(totalSql, new { domain, start, end });
             if (total <= 0) total = 1;
 
             var sql = domain == "all"
                 ? """
-                  SELECT top_path AS Path, SUM(pageviews) AS Pageviews
-                  FROM cloudflare_traffic
-                  WHERE date >= @start AND date <= @end AND top_path IS NOT NULL
-                  GROUP BY top_path ORDER BY Pageviews DESC LIMIT 10
+                  SELECT path AS Path, SUM(requests) AS Pageviews
+                  FROM cloudflare_pages
+                  WHERE date >= @start AND date <= @end
+                  GROUP BY path ORDER BY Pageviews DESC LIMIT 10
                   """
                 : """
-                  SELECT top_path AS Path, SUM(pageviews) AS Pageviews
-                  FROM cloudflare_traffic
-                  WHERE domain = @domain AND date >= @start AND date <= @end AND top_path IS NOT NULL
-                  GROUP BY top_path ORDER BY Pageviews DESC LIMIT 10
+                  SELECT path AS Path, SUM(requests) AS Pageviews
+                  FROM cloudflare_pages
+                  WHERE domain = @domain AND date >= @start AND date <= @end
+                  GROUP BY path ORDER BY Pageviews DESC LIMIT 10
                   """;
             var rows = new List<PageData>(connection.Query<PageData>(sql, new { domain, start, end }));
             foreach (var row in rows)
@@ -175,11 +175,11 @@ public sealed class CloudflareRepository
         });
     }
 
-    public Task<long> UpsertTrafficAsync(string domain, CloudflareTrafficResult traffic, string fetchedAt)
+    public async Task<long> UpsertTrafficAsync(string domain, CloudflareTrafficResult traffic, string fetchedAt)
     {
-        return _db.WriteAsync(connection =>
+        long count = 0;
+        await _db.WriteTransactionAsync((connection, transaction) =>
         {
-            long count = 0;
             foreach (var row in traffic.Daily)
             {
                 connection.Execute(
@@ -211,7 +211,8 @@ public sealed class CloudflareRepository
                         totalBytes = row.TotalBytes,
                         threats = row.Threats,
                         fetchedAt,
-                    });
+                    },
+                    transaction);
                 count++;
             }
 
@@ -223,10 +224,49 @@ public sealed class CloudflareRepository
                     VALUES (@domain, @date, @statusCode, @requests)
                     ON CONFLICT(domain, date, status_code) DO UPDATE SET requests = excluded.requests
                     """,
-                    new { domain, date = s.Date, statusCode = s.StatusCode, requests = s.Requests });
+                    new { domain, date = s.Date, statusCode = s.StatusCode, requests = s.Requests },
+                    transaction);
                 count++;
             }
-            return count;
-        });
+
+            if (!string.IsNullOrWhiteSpace(traffic.BreakdownDate))
+            {
+                connection.Execute(
+                    "DELETE FROM cloudflare_countries WHERE domain = @domain AND date >= @start AND date <= @end",
+                    new { domain, start = traffic.BreakdownStartDate, end = traffic.BreakdownDate },
+                    transaction);
+                connection.Execute(
+                    "DELETE FROM cloudflare_pages WHERE domain = @domain AND date >= @start AND date <= @end",
+                    new { domain, start = traffic.BreakdownStartDate, end = traffic.BreakdownDate },
+                    transaction);
+            }
+
+            foreach (var c in traffic.Countries)
+            {
+                connection.Execute(
+                    """
+                    INSERT INTO cloudflare_countries (domain, date, country, visitors)
+                    VALUES (@domain, @date, @country, @value)
+                    ON CONFLICT(domain, date, country) DO UPDATE SET visitors = excluded.visitors
+                    """,
+                    new { domain, date = c.Date, country = c.Country, value = c.Value },
+                    transaction);
+                count++;
+            }
+
+            foreach (var p in traffic.Pages)
+            {
+                connection.Execute(
+                    """
+                    INSERT INTO cloudflare_pages (domain, date, path, requests)
+                    VALUES (@domain, @date, @path, @value)
+                    ON CONFLICT(domain, date, path) DO UPDATE SET requests = excluded.requests
+                    """,
+                    new { domain, date = p.Date, path = p.Path, value = p.Value },
+                    transaction);
+                count++;
+            }
+        }).ConfigureAwait(false);
+        return count;
     }
 }

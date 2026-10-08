@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -36,27 +37,27 @@ public sealed class CloudflareRumClient
                 count
               }
               referrers: rumPageloadEventsAdaptiveGroups(
-                limit: 100
+                limit: 10000
                 filter: { siteTag: $siteTag, datetime_geq: $since, datetime_leq: $until, bot: 0 }
                 orderBy: [sum_visits_DESC]
               ) {
-                dimensions { refererHost }
+                dimensions { date refererHost }
                 sum { visits }
               }
               pages: rumPageloadEventsAdaptiveGroups(
-                limit: 100
+                limit: 10000
                 filter: { siteTag: $siteTag, datetime_geq: $since, datetime_leq: $until, bot: 0 }
                 orderBy: [count_DESC]
               ) {
-                dimensions { requestPath }
+                dimensions { date requestPath }
                 count
               }
               countries: rumPageloadEventsAdaptiveGroups(
-                limit: 100
+                limit: 10000
                 filter: { siteTag: $siteTag, datetime_geq: $since, datetime_leq: $until, bot: 0 }
                 orderBy: [sum_visits_DESC]
               ) {
-                dimensions { countryName }
+                dimensions { date countryName }
                 sum { visits }
               }
             }
@@ -71,28 +72,36 @@ public sealed class CloudflareRumClient
     };
 
     private static readonly HttpClient Http = new();
+    private readonly HttpClient _http;
+
+    public CloudflareRumClient(HttpClient? http = null) => _http = http ?? Http;
 
     public async Task<List<WebAnalyticsSite>> ListSitesAsync(string apiToken, string accountId)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/accounts/{accountId.Trim()}/rum/site_info/list");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
-        using var response = await Http.SendAsync(req).ConfigureAwait(false);
+        using var response = await _http.SendAsync(req).ConfigureAwait(false);
         var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         SiteInfoListResponse? body = null;
-        try { body = JsonSerializer.Deserialize<SiteInfoListResponse>(rawBody, JsonOptions); } catch { }
+        try { body = JsonSerializer.Deserialize<SiteInfoListResponse>(rawBody, JsonOptions); } catch (JsonException) { /* A malformed provider response is reported below without exposing its raw body. */ }
 
         if (!response.IsSuccessStatusCode || body is null || !body.Success)
         {
             var apiMsg = body?.Errors?.Count > 0 ? body.Errors[0].Message : "(no error message)";
             var apiCode = body?.Errors?.Count > 0 ? $" code={body.Errors[0].Code}" : "";
-            throw new InvalidOperationException(
-                $"Cloudflare RUM site list HTTP {(int)response.StatusCode}: {apiMsg}{apiCode}. " +
+            throw new ApiRequestException("Cloudflare Web Analytics", "rum.site_info.list", response.StatusCode,
+                $"{ApiErrorMessage.Sanitize(apiMsg)}{apiCode}. " +
                 "RUM site discovery requires 'Account Settings: Read' for this account. " +
                 "GraphQL sync uses 'Account Analytics: Read', so you can add site tags manually and sync without discovery.");
         }
 
+        return ParseSites(body);
+    }
+
+    private static List<WebAnalyticsSite> ParseSites(SiteInfoListResponse body)
+    {
         var result = new List<WebAnalyticsSite>();
         foreach (var site in body.Result ?? new())
         {
@@ -100,7 +109,7 @@ public sealed class CloudflareRumClient
             var host = site.Rules?
                 .Select(r => r.Host)
                 .FirstOrDefault(h => !string.IsNullOrWhiteSpace(h))
-                ?? site.Ruleset?.ZoneName;
+                ?? (!string.IsNullOrWhiteSpace(site.Host) ? site.Host : site.Ruleset?.ZoneName);
             if (string.IsNullOrWhiteSpace(host)) continue;
             result.Add(new WebAnalyticsSite
             {
@@ -138,17 +147,24 @@ public sealed class CloudflareRumClient
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", NormalizeBearerToken(apiToken));
 
-        using var response = await Http.SendAsync(req).ConfigureAwait(false);
+        using var response = await _http.SendAsync(req).ConfigureAwait(false);
         var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-        GraphqlResponse? graphql = null;
-        try { graphql = JsonSerializer.Deserialize<GraphqlResponse>(rawBody, JsonOptions); } catch { }
 
         if (!response.IsSuccessStatusCode)
         {
+            GraphqlResponse? graphql = null;
+            try { graphql = JsonSerializer.Deserialize<GraphqlResponse>(rawBody, JsonOptions); } catch (JsonException) { /* A malformed provider response is reported below without exposing its raw body. */ }
             var msg = graphql?.Errors?.Count > 0 ? graphql.Errors[0].Message : "(no error message)";
-            throw new InvalidOperationException($"Cloudflare Web Analytics GraphQL HTTP {(int)response.StatusCode}: {msg}");
+            throw new ApiRequestException("Cloudflare Web Analytics", "graphql", response.StatusCode, ApiErrorMessage.Sanitize(msg));
         }
+
+        return ParseRollupResponse(rawBody, sinceDate);
+    }
+
+    private static WebAnalyticsRollup ParseRollupResponse(string rawBody, string sinceDate)
+    {
+        GraphqlResponse? graphql = null;
+        try { graphql = JsonSerializer.Deserialize<GraphqlResponse>(rawBody, JsonOptions); } catch (JsonException) { /* A malformed provider response is reported below without exposing its raw body. */ }
 
         if (graphql is null)
         {
@@ -157,49 +173,52 @@ public sealed class CloudflareRumClient
 
         if (graphql.Errors is { Count: > 0 } errs)
         {
-            throw new InvalidOperationException(errs[0].Message);
+            throw new InvalidOperationException(ApiErrorMessage.Sanitize(errs[0].Message));
         }
-        var account = graphql.Data?.Viewer?.Accounts?.FirstOrDefault();
-        if (account is null)
+        var accounts = graphql.Data?.Viewer?.Accounts;
+        if (accounts is not { Count: 1 } || accounts[0] is null)
         {
-            throw new InvalidOperationException("Cloudflare did not return data for this account");
+            throw new InvalidOperationException("Cloudflare did not return one analytics account");
+        }
+        var account = accounts[0];
+        if (account.Daily is null || account.Referrers is null || account.Pages is null || account.Countries is null)
+        {
+            throw new InvalidOperationException("Cloudflare returned incomplete Web Analytics groups");
         }
 
-        var rollupDate = untilDate;
-
-        var result = new WebAnalyticsRollup();
-        foreach (var d in account.Daily ?? new())
+        var result = new WebAnalyticsRollup { StartDate = sinceDate };
+        foreach (var d in account.Daily)
         {
             result.Daily.Add(new WebAnalyticsDailyRow
             {
-                Date = d.Dimensions?.Date ?? "",
+                Date = ProviderDate(d.Dimensions?.Date),
                 Visits = d.Sum?.Visits ?? 0,
                 PageViews = d.Count,
             });
         }
-        foreach (var r in account.Referrers ?? new())
+        foreach (var r in account.Referrers)
         {
             result.Referrers.Add(new WebAnalyticsCategoryRow
             {
-                Date = rollupDate,
+                Date = ProviderDate(r.Dimensions?.Date),
                 Key = r.Dimensions?.RefererHost ?? "",
                 Visits = r.Sum?.Visits ?? 0,
             });
         }
-        foreach (var p in account.Pages ?? new())
+        foreach (var p in account.Pages)
         {
             result.Pages.Add(new WebAnalyticsPathRow
             {
-                Date = rollupDate,
+                Date = ProviderDate(p.Dimensions?.Date),
                 Path = p.Dimensions?.RequestPath ?? "",
                 PageViews = p.Count,
             });
         }
-        foreach (var c in account.Countries ?? new())
+        foreach (var c in account.Countries)
         {
             result.Countries.Add(new WebAnalyticsCategoryRow
             {
-                Date = rollupDate,
+                Date = ProviderDate(c.Dimensions?.Date),
                 Key = c.Dimensions?.CountryName ?? "",
                 Visits = c.Sum?.Visits ?? 0,
             });
@@ -207,67 +226,89 @@ public sealed class CloudflareRumClient
         return result;
     }
 
+    private static string ProviderDate(string? date)
+    {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+        {
+            throw new InvalidOperationException("Cloudflare returned an invalid Web Analytics date");
+        }
+        return date;
+    }
+
     private sealed class SiteInfoListResponse
     {
-        public bool Success { get; set; }
-        public List<SiteInfo>? Result { get; set; }
-        public List<ApiError>? Errors { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public bool Success { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<SiteInfo>? Result { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<ApiError>? Errors { get; set; }
     }
     private sealed class ApiError
     {
         public string Message { get; set; } = "";
-        public int Code { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public int Code { get; set; }
     }
     private sealed class SiteInfo
     {
         [JsonPropertyName("site_tag")] public string? SiteTag { get; set; }
-        public List<RumRule>? Rules { get; set; }
-        public RumRuleset? Ruleset { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public string? Host { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<RumRule>? Rules { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public RumRuleset? Ruleset { get; set; }
     }
-    private sealed class RumRule { public string? Host { get; set; } }
+    private sealed class RumRule { [System.Text.Json.Serialization.JsonInclude] public string? Host { get; set; } }
     private sealed class RumRuleset { [JsonPropertyName("zone_name")] public string? ZoneName { get; set; } }
 
     private sealed class GraphqlResponse
     {
-        public GraphqlData? Data { get; set; }
-        public List<GraphqlError>? Errors { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public GraphqlData? Data { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<GraphqlError>? Errors { get; set; }
     }
     private sealed class GraphqlError { public string Message { get; set; } = ""; }
-    private sealed class GraphqlData { public GraphqlViewer? Viewer { get; set; } }
-    private sealed class GraphqlViewer { public List<GraphqlAccount>? Accounts { get; set; } }
+    private sealed class GraphqlData { [System.Text.Json.Serialization.JsonInclude] public GraphqlViewer? Viewer { get; set; } }
+    private sealed class GraphqlViewer { [System.Text.Json.Serialization.JsonInclude] public List<GraphqlAccount>? Accounts { get; set; } }
     private sealed class GraphqlAccount
     {
-        public List<DailyGroup>? Daily { get; set; }
-        public List<ReferrerGroup>? Referrers { get; set; }
-        public List<PageGroup>? Pages { get; set; }
-        public List<CountryGroup>? Countries { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<DailyGroup>? Daily { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<ReferrerGroup>? Referrers { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<PageGroup>? Pages { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public List<CountryGroup>? Countries { get; set; }
     }
     private sealed class DailyGroup
     {
-        public DailyDimensions? Dimensions { get; set; }
-        public VisitsSum? Sum { get; set; }
-        public long Count { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public DailyDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public VisitsSum? Sum { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Count { get; set; }
     }
     private sealed class DailyDimensions { public string Date { get; set; } = ""; }
-    private sealed class VisitsSum { public long Visits { get; set; } }
+    private sealed class VisitsSum { [System.Text.Json.Serialization.JsonInclude] public long Visits { get; set; } }
     private sealed class ReferrerGroup
     {
-        public ReferrerDimensions? Dimensions { get; set; }
-        public VisitsSum? Sum { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public ReferrerDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public VisitsSum? Sum { get; set; }
     }
-    private sealed class ReferrerDimensions { public string RefererHost { get; set; } = ""; }
+    private sealed class ReferrerDimensions
+    {
+        public string Date { get; set; } = "";
+        public string RefererHost { get; set; } = "";
+    }
     private sealed class PageGroup
     {
-        public PageDimensions? Dimensions { get; set; }
-        public long Count { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public PageDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public long Count { get; set; }
     }
-    private sealed class PageDimensions { public string RequestPath { get; set; } = ""; }
+    private sealed class PageDimensions
+    {
+        public string Date { get; set; } = "";
+        public string RequestPath { get; set; } = "";
+    }
     private sealed class CountryGroup
     {
-        public CountryDimensions? Dimensions { get; set; }
-        public VisitsSum? Sum { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public CountryDimensions? Dimensions { get; set; }
+        [System.Text.Json.Serialization.JsonInclude] public VisitsSum? Sum { get; set; }
     }
-    private sealed class CountryDimensions { public string CountryName { get; set; } = ""; }
+    private sealed class CountryDimensions
+    {
+        public string Date { get; set; } = "";
+        public string CountryName { get; set; } = "";
+    }
 
     private static string NormalizeBearerToken(string token)
     {
@@ -287,6 +328,7 @@ public sealed class WebAnalyticsSite
 
 public sealed class WebAnalyticsRollup
 {
+    public string StartDate { get; set; } = "";
     public List<WebAnalyticsDailyRow> Daily { get; set; } = new();
     public List<WebAnalyticsCategoryRow> Referrers { get; set; } = new();
     public List<WebAnalyticsPathRow> Pages { get; set; } = new();

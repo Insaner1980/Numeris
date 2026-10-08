@@ -9,22 +9,30 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
-using LiveChartsCore.SkiaSharpView.Painting;
+using Microsoft.UI.Xaml.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
 using Numeris.Themes;
-using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
-public partial class BingViewModel : ObservableObject, IDisposable
+public sealed partial class BingViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly BingRepository _bingRepo;
+    private readonly BingWebmasterSyncService _sync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    public bool CanRefresh => !IsLoading;
+    [ObservableProperty] public partial bool IsRefreshing { get; set; }
+    [ObservableProperty] public partial string RefreshStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial InfoBarSeverity RefreshSeverity { get; set; } = InfoBarSeverity.Informational;
+    public bool CanRefresh => !IsLoading && !IsRefreshing;
+    public bool HasRefreshStatusMessage => !string.IsNullOrWhiteSpace(RefreshStatusMessage);
     [ObservableProperty] public partial string ActiveTab { get; set; } = "overview";
     [ObservableProperty] public partial string QuerySortBy { get; set; } = "clicks";
     [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
@@ -38,30 +46,52 @@ public partial class BingViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial ObservableCollection<BingRawMethodSummary> CrawlSummaries { get; set; } = new();
     [ObservableProperty] public partial ObservableCollection<BingRawItem> CrawlIssues { get; set; } = new();
 
-    public BingViewModel(ShellViewModel shell, BingRepository bingRepo)
+    public BingViewModel(ShellViewModel shell, BingRepository bingRepo, BingWebmasterSyncService sync)
     {
         _shell = shell;
         _bingRepo = bingRepo;
+        _sync = sync;
         _shell.PropertyChanged += OnShellChanged;
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnRefreshStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasRefreshStatusMessage));
 
-    public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
+    public void Dispose()
+    {
+        _disposed = true;
+        _loadVersion++;
+        _shell.PropertyChanged -= OnShellChanged;
+    }
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ShellViewModel.SelectedPeriod) or nameof(ShellViewModel.SelectedDomain))
         {
-            _ = LoadAsync();
+            _ = LoadFromShellAsync();
         }
     }
 
-    partial void OnQuerySortByChanged(string value) => _ = ReloadQueriesAsync();
+    partial void OnQuerySortByChanged(string value) => _ = LoadFromShellAsync();
+
+    private async Task LoadFromShellAsync()
+    {
+        var loadVersion = _loadVersion + 1;
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Load failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
+        }
+    }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
@@ -77,6 +107,7 @@ public partial class BingViewModel : ObservableObject, IDisposable
             var issuesTask = _bingRepo.GetCrawlIssueItemsAsync(siteUrl, 50);
 
             await Task.WhenAll(trafficTask, queriesTask, pagesTask, summariesTask, issuesTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
             var traffic = await trafficTask;
             BuildTraffic(traffic);
@@ -87,16 +118,45 @@ public partial class BingViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
         }
     }
 
-    private async Task ReloadQueriesAsync()
+    [RelayCommand]
+    public async Task RefreshAsync()
     {
-        var range = _shell.SelectedPeriod.ToDateRange();
-        var start = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var end = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        ReplaceCollection(Queries, await _bingRepo.GetQueriesAsync(SelectedBingSiteUrl(), start, end, QuerySortBy, 100));
+        if (!CanRefresh)
+        {
+            return;
+        }
+
+        IsRefreshing = true;
+        RefreshSeverity = InfoBarSeverity.Informational;
+        RefreshStatusMessage = "Refreshing Bing data for all configured sites...";
+        try
+        {
+            var result = await _sync.SyncConfiguredAsync();
+            if (result is null)
+            {
+                RefreshSeverity = InfoBarSeverity.Warning;
+                RefreshStatusMessage = "Configure Bing in Sources first.";
+                return;
+            }
+            await LoadAsync();
+            RefreshSeverity = result.SitesSynced == 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
+            RefreshStatusMessage = result.SitesSynced == 0
+                ? "No active Bing sites. Add a site in Sources first."
+                : $"Updated {result.SitesSynced} site(s): {result.RankRows} traffic rows, {result.QueryRows} queries and {result.PageRows} pages.";
+        }
+        catch (Exception ex)
+        {
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
     }
 
     private void BuildTraffic(IReadOnlyList<BingTrafficDay> rows)
@@ -108,11 +168,11 @@ public partial class BingViewModel : ObservableObject, IDisposable
             ? $"{((double)rows.Sum(r => r.Clicks) / impressions * 100.0).ToString("0.0", CultureInfo.InvariantCulture)}%"
             : "—";
 
-        TrafficSeries = new ISeries[]
-        {
-            CreateLine("Clicks", rows.Select(r => r.Clicks).ToArray(), ChartPalette.Accent, true, 0),
-            CreateLine("Impressions", rows.Select(r => r.Impressions).ToArray(), ChartPalette.Secondary, false, 1),
-        };
+        var clicks = ChartTheme.CreateMatteColumnSeries("Clicks", rows.Select(r => r.Clicks).ToArray());
+        var impressionsSeries = ChartTheme.CreateMutedColumnSeries("Impressions", rows.Select(r => r.Impressions).ToArray());
+        impressionsSeries.ScalesYAt = 1;
+
+        TrafficSeries = new ISeries[] { clicks, impressionsSeries };
         TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = rows.Select(r => ShortDate(r.Date)).ToArray() }) };
         TrafficYAxes = new[]
         {
@@ -123,20 +183,6 @@ public partial class BingViewModel : ObservableObject, IDisposable
 
     private string SelectedBingSiteUrl()
         => _shell.SelectedDomain == "all" ? "all" : SiteIdentity.NormalizeHomePageUrl(_shell.SelectedDomain);
-
-    private static LineSeries<long> CreateLine(string name, long[] values, SKColor color, bool fill, int scalesYAt)
-        => new()
-        {
-            Name = name,
-            Values = values,
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryStroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryFill = new SolidColorPaint(color),
-            Fill = fill ? new SolidColorPaint(color.WithAlpha(40)) : null,
-            GeometrySize = 0,
-            LineSmoothness = 0.4,
-            ScalesYAt = scalesYAt,
-        };
 
     private static string ShortDate(string isoDate)
     {

@@ -19,9 +19,11 @@ using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
-public partial class HealthViewModel : ObservableObject, IDisposable
+public sealed partial class HealthViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly HealthRepository _healthRepo;
     private readonly SitemapRepository _sitemapRepo;
     private readonly UptimeClient _uptimeClient;
@@ -30,9 +32,9 @@ public partial class HealthViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial bool IsLoading { get; set; }
     [ObservableProperty] public partial bool IsCheckingUptime { get; set; }
     [ObservableProperty] public partial bool IsRefreshingSitemap { get; set; }
-    public bool CanRefresh => !IsLoading;
-    public bool CanCheckUptime => !IsCheckingUptime;
-    public bool CanRefreshSitemap => !IsRefreshingSitemap;
+    public bool CanRefresh => !IsLoading && !IsCheckingUptime && !IsRefreshingSitemap;
+    public bool CanCheckUptime => CanRefresh;
+    public bool CanRefreshSitemap => CanRefresh;
     [ObservableProperty] public partial string ActiveTab { get; set; } = "uptime";
     [ObservableProperty] public partial ObservableCollection<UptimeDomainStatus> Domains { get; set; } = new();
     [ObservableProperty] public partial ISeries[] ResponseSeries { get; set; } = Array.Empty<ISeries>();
@@ -47,7 +49,7 @@ public partial class HealthViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial string UptimeOverviewText { get; set; } = "No uptime data";
     [ObservableProperty] public partial string UptimeLastCheckedText { get; set; } = "Last check —";
     [ObservableProperty] public partial string ResponseChartSummaryText { get; set; } = "No samples";
-    [ObservableProperty] public partial string IncidentChartSummaryText { get; set; } = "No incidents";
+    [ObservableProperty] public partial string IncidentChartSummaryText { get; set; } = "No failed probes";
     public HealthViewModel(
         ShellViewModel shell,
         HealthRepository healthRepo,
@@ -63,11 +65,23 @@ public partial class HealthViewModel : ObservableObject, IDisposable
         _shell.PropertyChanged += OnShellChanged;
     }
 
-    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
-    partial void OnIsCheckingUptimeChanged(bool value) => OnPropertyChanged(nameof(CanCheckUptime));
-    partial void OnIsRefreshingSitemapChanged(bool value) => OnPropertyChanged(nameof(CanRefreshSitemap));
+    partial void OnIsLoadingChanged(bool value) => NotifyActionsChanged();
+    partial void OnIsCheckingUptimeChanged(bool value) => NotifyActionsChanged();
+    partial void OnIsRefreshingSitemapChanged(bool value) => NotifyActionsChanged();
 
-    public void Dispose() => _shell.PropertyChanged -= OnShellChanged;
+    private void NotifyActionsChanged()
+    {
+        OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(CanCheckUptime));
+        OnPropertyChanged(nameof(CanRefreshSitemap));
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _loadVersion++;
+        _shell.PropertyChanged -= OnShellChanged;
+    }
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -80,6 +94,8 @@ public partial class HealthViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
@@ -87,35 +103,42 @@ public partial class HealthViewModel : ObservableObject, IDisposable
             var startStr = range.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             var endStr = range.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             var domain = _shell.SelectedDomain;
-            var sitemapDomain = domain == "all" ? Helpers.Domains.KnitTools : domain;
-
-            var statusTask = _healthRepo.GetUptimeStatusAsync(domain);
+            var domains = domain == "all" ? _shell.AvailableDomains.Where(d => d != "all") : new[] { domain };
+            var statusTask = Task.WhenAll(domains.Select(_healthRepo.GetUptimeStatusAsync));
             var dailyTask = _healthRepo.GetUptimeDailyAsync(domain, startStr, endStr);
-            var sitemapTask = _sitemapRepo.ListUrlsAsync(sitemapDomain);
+            var sitemapTask = _sitemapRepo.ListUrlsAsync(domain);
 
             await Task.WhenAll(statusTask, dailyTask, sitemapTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
-            var statuses = await statusTask;
+            var statuses = (await statusTask).SelectMany(rows => rows).ToList();
             ReplaceCollection(Domains, statuses);
             UpdateUptimeSummary(statuses);
             BuildUptimeCharts(await dailyTask);
             ReplaceSitemap(await sitemapTask);
         }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            UptimeOverviewText = $"Load failed: {ApiErrorMessage.Sanitize(ex)}";
+            SitemapSummaryText = UptimeOverviewText;
+        }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
         }
     }
 
     [RelayCommand]
     public async Task CheckUptimeNowAsync()
     {
+        if (!CanCheckUptime) return;
         IsCheckingUptime = true;
         try
         {
             var domain = _shell.SelectedDomain;
             var domainsToCheck = domain == "all"
-                ? new[] { Helpers.Domains.KnitTools, Helpers.Domains.Finnvek }
+                ? _shell.AvailableDomains.Where(d => d != "all").ToArray()
                 : new[] { domain };
 
             foreach (var d in domainsToCheck)
@@ -126,6 +149,10 @@ public partial class HealthViewModel : ObservableObject, IDisposable
 
             await LoadAsync();
         }
+        catch (Exception ex)
+        {
+            UptimeOverviewText = $"Check failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
         finally
         {
             IsCheckingUptime = false;
@@ -135,18 +162,38 @@ public partial class HealthViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task RefreshSitemapAsync()
     {
+        if (!CanRefreshSitemap) return;
         IsRefreshingSitemap = true;
+        var domain = _shell.SelectedDomain;
         try
         {
-            var domain = _shell.SelectedDomain == "all" ? Helpers.Domains.KnitTools : _shell.SelectedDomain;
-            var liveUrls = await _sitemapClient.DiscoverUrlsAsync(domain);
-            var result = await _healthRepo.RefreshSitemapAsync(domain, liveUrls);
-            SitemapSummaryText = $"{result.TotalUrls} URLs ({result.NewUrls} new, {result.RemovedUrls} removed)";
-            ReplaceSitemap(await _sitemapRepo.ListUrlsAsync(domain));
+            var domains = domain == "all" ? _shell.AvailableDomains.Where(d => d != "all") : new[] { domain };
+            var failures = new List<string>();
+            long newUrls = 0, removedUrls = 0;
+            foreach (var site in domains)
+            {
+                try
+                {
+                    var liveUrls = await _sitemapClient.DiscoverUrlsAsync(site);
+                    var result = await _healthRepo.RefreshSitemapAsync(site, liveUrls);
+                    newUrls += result.NewUrls;
+                    removedUrls += result.RemovedUrls;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{site}: {ApiErrorMessage.Sanitize(ex)}");
+                }
+            }
+            var storedUrls = await _sitemapRepo.ListUrlsAsync(domain);
+            if (_disposed || domain != _shell.SelectedDomain) return;
+            ReplaceSitemap(storedUrls);
+            SitemapSummaryText = $"{SitemapUrls.Count} URLs ({newUrls} new, {removedUrls} removed)"
+                + (failures.Count > 0 ? $". Refresh failed: {string.Join("; ", failures)}" : "");
         }
         catch (Exception ex)
         {
-            SitemapSummaryText = $"Refresh failed: {ex.Message}";
+            if (_disposed || domain != _shell.SelectedDomain) return;
+            SitemapSummaryText = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
@@ -154,17 +201,16 @@ public partial class HealthViewModel : ObservableObject, IDisposable
         }
     }
 
+    public Task RefreshAsync() => ActiveTab == "sitemap" ? RefreshSitemapAsync() : CheckUptimeNowAsync();
+
     private void ReplaceSitemap(IReadOnlyList<SitemapUrl> urls)
     {
         var active = urls.Where(u => u.RemovedAt is null).ToList();
-        ReplaceCollection(SitemapUrls, active);
+        SitemapUrls = new(active);
         SitemapLastUpdatedText = BuildSitemapLastUpdatedText(active);
-        if (string.IsNullOrEmpty(SitemapSummaryText) || SitemapSummaryText == "—")
-        {
-            SitemapSummaryText = active.Count > 0
-                ? $"{active.Count} URLs in sitemap"
-                : "No sitemap data — press Refresh to fetch";
-        }
+        SitemapSummaryText = active.Count > 0
+            ? $"{active.Count} URLs in sitemap"
+            : "No sitemap data — press Refresh to fetch";
     }
 
     private void BuildUptimeCharts(IReadOnlyList<UptimeCheckDay> rows)
@@ -173,20 +219,21 @@ public partial class HealthViewModel : ObservableObject, IDisposable
         var labels = dates.Select(ShortDate).ToArray();
         var responseDict = rows.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.Average(r => r.AvgResponseMs));
         var incidentsDict = rows.GroupBy(r => r.Date).ToDictionary(g => g.Key, g => g.Sum(r => r.Incidents));
-        var responseValues = dates.Select(d => responseDict.TryGetValue(d, out var v) ? v : 0.0).ToArray();
+        var responseValues = dates.Select(d => responseDict.TryGetValue(d, out var v) ? v : null).ToArray();
+        var measuredValues = responseValues.Where(v => v.HasValue).Select(v => v!.Value).ToArray();
         var incidentsValues = dates.Select(d => incidentsDict.TryGetValue(d, out var v) ? v : 0L).ToArray();
-        var maxResponse = responseValues.DefaultIfEmpty(0).Max();
+        var maxResponse = measuredValues.DefaultIfEmpty(0).Max();
         var maxIncidents = incidentsValues.DefaultIfEmpty(0).Max();
-        ResponseChartSummaryText = responseValues.Length > 0
-            ? $"{Math.Round(responseValues.Average(), 0).ToString("0", CultureInfo.InvariantCulture)} ms average"
-            : "No samples";
+        ResponseChartSummaryText = measuredValues.Length > 0
+            ? $"{Math.Round(measuredValues.Average(), 0).ToString("0", CultureInfo.InvariantCulture)} ms average"
+            : "No timed samples";
         IncidentChartSummaryText = maxIncidents > 0
             ? $"{incidentsValues.Sum().ToString(CultureInfo.InvariantCulture)} total"
-            : "No incidents";
+            : "No failed probes";
 
         ResponseSeries = new ISeries[]
         {
-            new LineSeries<double>
+            new LineSeries<double?>
             {
                 Name = "Avg response (ms)",
                 Values = responseValues,
@@ -210,12 +257,7 @@ public partial class HealthViewModel : ObservableObject, IDisposable
 
         IncidentsSeries = new ISeries[]
         {
-            new ColumnSeries<long>
-            {
-                Name = "Incidents",
-                Values = incidentsValues,
-                Fill = new SolidColorPaint(ChartPalette.Secondary),
-            },
+            ChartTheme.CreateMatteColumnSeries("Failed probes", incidentsValues),
         };
         IncidentsXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         IncidentsYAxes = new[]
@@ -228,7 +270,7 @@ public partial class HealthViewModel : ObservableObject, IDisposable
         };
     }
 
-    private void UpdateUptimeSummary(IReadOnlyList<UptimeDomainStatus> statuses)
+    private void UpdateUptimeSummary(List<UptimeDomainStatus> statuses)
     {
         if (statuses.Count == 0)
         {
@@ -239,7 +281,7 @@ public partial class HealthViewModel : ObservableObject, IDisposable
 
         var incidents = statuses.Sum(status => status.Incidents);
         var upCount = statuses.Count(status => string.Equals(status.Status, "up", StringComparison.OrdinalIgnoreCase));
-        UptimeOverviewText = $"{upCount}/{statuses.Count} domains up - {incidents} incidents";
+        UptimeOverviewText = $"{upCount}/{statuses.Count} domains up - {incidents} failed probes (all samples)";
         var lastChecked = statuses
             .Select(status => ParseDateTime(status.LastCheckedAt))
             .Where(value => value is not null)

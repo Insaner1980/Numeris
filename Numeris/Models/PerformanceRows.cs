@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Numeris.Models;
 
 public sealed class CruxMetricPoint
@@ -24,6 +26,15 @@ public sealed class CruxMetricSummary
     public string Metric { get; set; } = "";
     public string LatestCollectionEnd { get; set; } = "";
     public double? P75 { get; set; }
+    public string P75Text
+    {
+        get
+        {
+            if (P75 is not double value) return "—";
+            var unit = Metric is "largest_contentful_paint" or "interaction_to_next_paint" ? " ms" : "";
+            return value.ToString(CultureInfo.CurrentCulture) + unit;
+        }
+    }
     public double? GoodDensity { get; set; }
     public double? NeedsImprovementDensity { get; set; }
     public double? PoorDensity { get; set; }
@@ -62,6 +73,8 @@ public sealed class PageSpeedLatestRun
     public string AnalysisUtc { get; set; } = "";
     public string? FinalUrl { get; set; }
     public double? PerformanceScore { get; set; }
+    public string PerformanceScoreText => PerformanceScore.HasValue
+        ? (PerformanceScore.Value * 100.0).ToString("0", CultureInfo.InvariantCulture) : "—";
     public double? AccessibilityScore { get; set; }
     public double? BestPracticesScore { get; set; }
     public double? SeoScore { get; set; }

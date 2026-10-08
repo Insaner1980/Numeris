@@ -22,7 +22,7 @@ public sealed class SearchConsoleRepository
                   SELECT date AS Date,
                          SUM(clicks) AS TotalClicks,
                          SUM(impressions) AS TotalImpressions,
-                         AVG(position) AS AvgPosition
+                         CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS AvgPosition
                   FROM search_console
                   WHERE (kind = 'daily' OR NOT EXISTS (SELECT 1 FROM search_console WHERE kind = 'daily'))
                     AND date >= @start AND date <= @end
@@ -32,7 +32,7 @@ public sealed class SearchConsoleRepository
                   SELECT date AS Date,
                          SUM(clicks) AS TotalClicks,
                          SUM(impressions) AS TotalImpressions,
-                         AVG(position) AS AvgPosition
+                         CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS AvgPosition
                   FROM search_console
                   WHERE (kind = 'daily' OR NOT EXISTS (SELECT 1 FROM search_console WHERE kind = 'daily' AND site_url = @siteUrl))
                     AND site_url = @siteUrl AND date >= @start AND date <= @end
@@ -59,8 +59,8 @@ public sealed class SearchConsoleRepository
                    SELECT query AS Query,
                           SUM(clicks) AS Clicks,
                           SUM(impressions) AS Impressions,
-                          CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
-                          AVG(position) AS Position
+                          CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0.0 END AS Ctr,
+                          CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS Position
                    FROM search_console
                    WHERE kind = 'query' AND date >= @start AND date <= @end
                    GROUP BY query ORDER BY {orderClause} LIMIT @limit
@@ -69,8 +69,8 @@ public sealed class SearchConsoleRepository
                    SELECT query AS Query,
                           SUM(clicks) AS Clicks,
                           SUM(impressions) AS Impressions,
-                          CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0 END AS Ctr,
-                          AVG(position) AS Position
+                          CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0.0 END AS Ctr,
+                          CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS Position
                    FROM search_console
                    WHERE kind = 'query' AND site_url = @siteUrl AND date >= @start AND date <= @end
                    GROUP BY query ORDER BY {orderClause} LIMIT @limit
@@ -115,8 +115,8 @@ public sealed class SearchConsoleRepository
                   SELECT date AS Date, device AS Device,
                          SUM(clicks) AS Clicks,
                          SUM(impressions) AS Impressions,
-                         AVG(ctr) AS Ctr,
-                         AVG(position) AS Position
+                         CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0.0 END AS Ctr,
+                         CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS Position
                   FROM search_devices
                   WHERE date >= @start AND date <= @end
                   GROUP BY date, device ORDER BY date, device
@@ -167,8 +167,8 @@ public sealed class SearchConsoleRepository
                     SELECT query,
                            SUM(clicks) AS clicks,
                            SUM(impressions) AS impressions,
-                           AVG(ctr) AS ctr,
-                           AVG(position) AS position
+                           CASE WHEN SUM(impressions) > 0 THEN CAST(SUM(clicks) AS REAL) / SUM(impressions) ELSE 0.0 END AS ctr,
+                           CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0.0 END AS position
                     FROM search_console
                     WHERE site_url = @siteUrl AND kind = 'query'
                       AND date BETWEEN @currentStart AND @currentEnd
@@ -232,7 +232,7 @@ public sealed class SearchConsoleRepository
         });
     }
 
-    public Task<long> ReplaceSearchAnalyticsRowsAsync(
+    public async Task<long> ReplaceSearchAnalyticsRowsAsync(
         string siteUrl,
         SearchQueryKind kind,
         IReadOnlyCollection<SearchConsoleApiRow> rows,
@@ -240,7 +240,8 @@ public sealed class SearchConsoleRepository
         string end,
         string fetchedAt)
     {
-        return _db.WriteAsync(connection =>
+        long records = 0;
+        await _db.WriteTransactionAsync((connection, transaction) =>
         {
             var kindStr = kind switch
             {
@@ -254,16 +255,15 @@ public sealed class SearchConsoleRepository
 
             connection.Execute(
                 "DELETE FROM search_console WHERE site_url = @siteUrl AND kind = @kind AND date BETWEEN @start AND @end",
-                new { siteUrl, kind = kindStr, start, end });
+                new { siteUrl, kind = kindStr, start, end }, transaction);
 
             if (kind == SearchQueryKind.Device)
             {
                 connection.Execute(
                     "DELETE FROM search_devices WHERE site_url = @siteUrl AND date BETWEEN @start AND @end",
-                    new { siteUrl, start, end });
+                    new { siteUrl, start, end }, transaction);
             }
 
-            long records = 0;
             foreach (var row in rows)
             {
                 connection.Execute(
@@ -285,7 +285,7 @@ public sealed class SearchConsoleRepository
                         position = row.Position,
                         country = row.Country,
                         fetchedAt,
-                    });
+                    }, transaction);
                 records++;
 
                 if (kind == SearchQueryKind.Device && !string.IsNullOrEmpty(row.Device))
@@ -309,27 +309,27 @@ public sealed class SearchConsoleRepository
                             impressions = row.Impressions,
                             ctr = row.Ctr,
                             position = row.Position,
-                        });
+                        }, transaction);
                 }
             }
 
-            return records;
-        });
+        }).ConfigureAwait(false);
+        return records;
     }
 
-    public Task<long> ReplacePageQueryRowsAsync(
+    public async Task<long> ReplacePageQueryRowsAsync(
         string siteUrl,
         string periodStart,
         string periodEnd,
         IReadOnlyCollection<SearchConsoleApiRow> rows)
     {
-        return _db.WriteAsync(connection =>
+        long records = 0;
+        await _db.WriteTransactionAsync((connection, transaction) =>
         {
             connection.Execute(
                 "DELETE FROM search_page_queries WHERE site_url = @siteUrl AND period_start = @periodStart AND period_end = @periodEnd",
-                new { siteUrl, periodStart, periodEnd });
+                new { siteUrl, periodStart, periodEnd }, transaction);
 
-            long records = 0;
             foreach (var row in rows.Where(r => !string.IsNullOrEmpty(r.Page)))
             {
                 connection.Execute(
@@ -349,11 +349,11 @@ public sealed class SearchConsoleRepository
                         impressions = row.Impressions,
                         ctr = row.Ctr,
                         position = row.Position,
-                    });
+                    }, transaction);
                 records++;
             }
 
-            return records;
-        });
+        }).ConfigureAwait(false);
+        return records;
     }
 }

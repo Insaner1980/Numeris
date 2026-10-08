@@ -15,6 +15,7 @@ namespace Numeris.ViewModels.Sources;
 public partial class BingSourceViewModel : ObservableObject
 {
     private readonly ConnectionsRepository _connectionsRepo;
+    private int _loadVersion;
     private readonly CredentialVault _vault;
     private readonly BingWebmasterSyncService _sync;
 
@@ -42,13 +43,19 @@ public partial class BingSourceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        Connection = await _connectionsRepo.GetBingAsync();
-        await LoadSitesAsync();
+        var loadVersion = ++_loadVersion;
+        var connection = await _connectionsRepo.GetBingAsync();
+        var sites = await _sync.ListSitesAsync();
+        if (loadVersion != _loadVersion) return;
+        Connection = connection;
+        Sites.Clear();
+        foreach (var site in sites) Sites.Add(site);
     }
 
     [RelayCommand]
     public async Task SaveAsync()
     {
+        if (IsBusy) return;
         IsBusy = true;
         StatusMessage = "Saving...";
         try
@@ -63,9 +70,9 @@ public partial class BingSourceViewModel : ObservableObject
                 return;
             }
             await SaveConfigFromSitesAsync();
-            NewApiKey = "";
             await LoadAsync();
-            StatusMessage = "Saved. Press Test or Sync.";
+            NewApiKey = "";
+            StatusMessage = "Saved. Press Test or use Bing page refresh.";
         }
         catch (Exception ex)
         {
@@ -80,6 +87,7 @@ public partial class BingSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task AddSiteAsync()
     {
+        if (IsBusy) return;
         if (string.IsNullOrWhiteSpace(NewSiteUrl))
         {
             StatusMessage = "Site URL is required";
@@ -91,7 +99,7 @@ public partial class BingSourceViewModel : ObservableObject
             await _sync.AddSiteAsync(NewSiteUrl);
             NewSiteUrl = "";
             await SaveConfigFromSitesAsync();
-            await LoadSitesAsync();
+            await LoadAsync();
             StatusMessage = "Bing site added";
         }
         catch (Exception ex)
@@ -107,22 +115,19 @@ public partial class BingSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task DeleteSiteAsync(string? siteUrl)
     {
-        if (string.IsNullOrWhiteSpace(siteUrl)) return;
-        await _sync.DeleteSiteAsync(siteUrl);
-        await SaveConfigFromSitesAsync();
-        await LoadSitesAsync();
-        StatusMessage = $"Removed {siteUrl}";
-    }
-
-    [RelayCommand]
-    public async Task TestAsync()
-    {
+        if (IsBusy) return;
         IsBusy = true;
-        StatusMessage = "Testing Bing Webmaster...";
         try
         {
-            var result = await _sync.TestAsync();
-            StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
+            if (string.IsNullOrWhiteSpace(siteUrl)) return;
+            await _sync.DeleteSiteAsync(siteUrl);
+            await SaveConfigFromSitesAsync();
+            await LoadAsync();
+            StatusMessage = $"Removed {siteUrl}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
@@ -131,19 +136,19 @@ public partial class BingSourceViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public async Task SyncAsync()
+    public async Task TestAsync()
     {
+        if (IsBusy) return;
         IsBusy = true;
-        StatusMessage = "Syncing Bing Webmaster...";
+        StatusMessage = "Testing Bing Webmaster...";
         try
         {
-            var result = await _sync.SyncAsync();
-            StatusMessage = $"Synced {result.SitesSynced} site(s), {result.RawItems} raw item(s), {result.RankRows} rank rows, {result.QueryRows} query rows, {result.PageRows} page rows";
-            await LoadAsync();
+            var result = await _sync.TestAsync();
+            StatusMessage = result.Ok ? result.Message : $"Failed: {result.Message}";
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Sync failed: {ApiErrorMessage.Sanitize(ex)}";
+            StatusMessage = $"Action failed: {ApiErrorMessage.Sanitize(ex)}";
         }
         finally
         {
@@ -154,25 +159,31 @@ public partial class BingSourceViewModel : ObservableObject
     [RelayCommand]
     public async Task DeleteAsync()
     {
-        _vault.DeleteBingApiKey();
-        await _connectionsRepo.DeleteBingAsync();
-        NewApiKey = "";
-        await LoadAsync();
-        StatusMessage = "Removed";
-    }
-
-    private async Task LoadSitesAsync()
-    {
-        var sites = await _sync.ListSitesAsync();
-        Sites.Clear();
-        foreach (var site in sites) Sites.Add(site);
+        if (IsBusy) return;
+        IsBusy = true;
+        try
+        {
+            _vault.DeleteBingApiKey();
+            await _connectionsRepo.DeleteBingAsync();
+            NewApiKey = "";
+            await LoadAsync();
+            StatusMessage = "Removed";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Remove failed: {ApiErrorMessage.Sanitize(ex)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task SaveConfigFromSitesAsync()
     {
         var sites = (await _sync.ListSitesAsync()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         await _connectionsRepo.UpsertBingAsync(
-            new BingConnectionConfig { Sites = sites, LastValidatedAt = _connectionsRepo.FormatNow() },
+            new BingConnectionConfig { Sites = sites, LastValidatedAt = ConnectionsRepository.FormatNow() },
             string.IsNullOrWhiteSpace(_vault.GetBingApiKey()) ? "disconnected" : "configured");
     }
 }

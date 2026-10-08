@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Linq;
+using System;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -30,24 +29,27 @@ public sealed partial class DashboardPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        BuildChart(ref _trafficChart, TrafficChartHost);
+        BuildBarChart(ref _trafficChart, TrafficChartHost);
         BuildChart(ref _searchChart, SearchChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         _wiringUi = false;
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -70,6 +72,13 @@ public sealed partial class DashboardPage : Page
         if (chart is not null) return;
         chart = ChartTheme.CreateCartesianChart();
         host.Child = ChartTheme.CreateChartSurface(chart);
+    }
+
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
+    {
+        if (chart is not null) return;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
     }
 
     private void ApplyChartData()
@@ -97,17 +106,14 @@ public sealed partial class DashboardPage : Page
         }
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option)
-        {
-            Shell.SelectedPeriod = option.Value;
-        }
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 }

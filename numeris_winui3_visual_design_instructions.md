@@ -6,50 +6,39 @@ Redesign Numeris as a polished native Windows 11 WinUI 3 application.
 
 The app should feel calm, clear, premium, and native to Windows 11. Do **not** make it look like a generic dark web dashboard.
 
-Use **Mica** as the native window backdrop/fallback, then draw Numeris' own branded bitmap backdrop at the shell level and build a proper Fluent/WinUI layer system on top of it.
+Use **Mica** as the native window backdrop/fallback and one matte `AppBackgroundBrush` behind navigation and page content. Build data surfaces with the shared WinUI tokens.
 
 ## Non-negotiable background decision
 
-The visible app background is `Numeris/Assets/AppBackdrop.png`, drawn once in `MainWindow` behind navigation and page content.
+The visible app background is the opaque `AppBackgroundBrush` (`#151419`) in `MainWindow`. The shell does not load a bitmap background or a scrim.
 
-The bitmap must be:
-
-- dark black/charcoal overall
-- soft glass/satin ribbon abstraction
-- linework-free, text-free, logo-free, watermark-free
-- subtly accented with honey amber, never orange-dominant
-- calm and low contrast in the main content area
-- weighted more toward the top-left and upper edge than the center-right
-
-The bitmap is decorative, not content. Always keep it subdued behind data surfaces with `AppBackdropOpacity` and `AppBackdropScrimBrush`.
-
-Use this as the base/fallback color:
+Keep the shared matte background calm and use cards and controls for readable data surfaces. Use this as the base/fallback color:
 
 ```text
-App background / Mica fallback: #444444
-RGB: 68, 68, 68
+App background / Mica fallback: #151419
+RGB: 21, 20, 25
 ```
 
-Do not replace `#444444` as the fallback color. The bitmap may be darker than the fallback, but it must be restrained enough for translucent cards, charts, and tables to stay readable.
+Keep the visible background and Mica fallback consistent with `AppBackgroundColor` in `Numeris/Themes/Tokens.xaml`.
 
 ## Mica usage
 
-Use Mica as the single native backdrop material for the app window. The visible art layer is the shell-level `AppBackdropImage` above Mica.
+Use Mica as the single native backdrop material for the app window. The visible shell uses the opaque `AppBackgroundBrush` above Mica.
 
 Important rules:
 
 - Mica is for the app backdrop, not for every card.
 - Do not apply Mica repeatedly to individual cards, charts, tables, or panels.
 - The title bar and main app shell should visually belong to the same Mica/fallback/backdrop stack.
-- Use `#444444` as the fallback color when Mica is unavailable.
+- Use `#151419` as the fallback color when Mica is unavailable.
 - Avoid acrylic/glass effects on data-heavy areas unless absolutely necessary.
 - Remove hard NavigationView content-grid borders; the shell should read as one continuous backdrop stack.
 
 Preferred direction:
 
 ```text
-Base layer: Mica with #444444 fallback
-Art layer: AppBackdrop.png with AppBackdropScrimBrush readability overlay
+Base layer: Mica with #151419 fallback
+Visible background: opaque AppBackgroundBrush (#151419)
 Navigation layer: transparent or subtly separated from backdrop
 Content layer: cards and panels with subtle contour/elevation
 ```
@@ -84,11 +73,9 @@ Avoid:
 Use these as the starting design tokens:
 
 ```text
-AppBackground: #444444
-AppBackdropOpacity: 0.72
-AppBackdropScrim: rgba(0,0,0,0.70)
-ContentLayer: rgba(0,0,0,0.15)
-NavigationLayer: rgba(0,0,0,0.07)
+AppBackground: #151419
+ContentLayer: transparent
+NavigationLayer: transparent
 
 CardBackground: rgba(255,255,255,0.14)
 CardBackgroundHover: rgba(255,255,255,0.18)
@@ -198,7 +185,7 @@ Selected navigation item:
 - no heavy filled rectangle
 - no overly bright highlight
 
-The navigation should feel integrated with the shared bitmap/Mica/fallback backdrop stack, not like a separate black sidebar.
+The navigation should feel integrated with the shared matte background and Mica fallback, not like a separate black sidebar.
 
 ## Title bar and top controls
 
@@ -225,7 +212,7 @@ Period labels must come from `PeriodOptions.All` / `Period.DisplayLabel()` so th
 
 ## Cards
 
-Cards are content surfaces on top of the shared bitmap/Mica/fallback backdrop stack.
+Cards are content surfaces on top of the shared matte background and Mica fallback.
 
 Use:
 
@@ -471,7 +458,7 @@ Use native WinUI behavior where possible instead of custom rebuilding.
 
 ## Accessibility
 
-Keep contrast readable on the dark bitmap backdrop and the #444444 fallback background.
+Keep contrast readable on the dark matte background and the #151419 fallback background.
 
 Do not rely on color alone for status.
 
@@ -486,7 +473,7 @@ Do not redesign every screen randomly.
 Work in this order:
 
 1. Create shared design tokens for colors, typography, radius, spacing, borders, and elevation.
-2. Apply Mica shell with #444444 fallback and the global AppBackdrop image layer.
+2. Apply Mica shell with #151419 fallback and the opaque AppBackgroundBrush.
 3. Redesign the app shell: title bar, navigation, top controls.
 4. Redesign Overview completely.
 5. Extract reusable components from Overview.
@@ -500,13 +487,13 @@ Work in this order:
 
 Do not create a generic dark dashboard.
 
-Build a Windows 11 WinUI 3 app using Mica as the native window backdrop/fallback, `#444444` as the base fallback gray, and `AppBackdrop.png` as the single visible branded app background.
+Build a Windows 11 WinUI 3 app using Mica as the native window backdrop/fallback, `#151419` as the base fallback gray, and the opaque `AppBackgroundBrush` as the single visible matte app background.
 
 Use Fluent-style layering:
 
 ```text
-Mica/#444444 fallback layer
-AppBackdrop image and scrim layer
+Mica/#151419 fallback layer
+opaque AppBackgroundBrush layer
 command/navigation layer
 content card layer
 flyout/dialog layer

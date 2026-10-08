@@ -1,6 +1,7 @@
 using System;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Numeris.Helpers;
 
 namespace Numeris.Services.Api;
 
@@ -19,6 +20,7 @@ public static partial class ApiErrorMessage
         {
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return "Upstream error body omitted";
             var message = TryGetString(root, "message")
                 ?? TryGetNestedErrorMessage(root)
                 ?? TryGetOAuthErrorMessage(root);
@@ -34,14 +36,18 @@ public static partial class ApiErrorMessage
     public static string Sanitize(Exception exception)
         => Sanitize(exception.Message) ?? exception.GetType().Name;
 
-    private static string? Sanitize(string? message)
+    public static string? Sanitize(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
             return null;
         }
 
-        var sanitized = SecretQueryRegex().Replace(message.Trim(), "$1=<redacted>");
+        var sanitized = SecretQueryRegex().Replace(message.Trim(), match =>
+        {
+            return SecretQueryNames.IsSecret(match.Groups[1].Value)
+                ? $"{match.Groups[1].Value}=<redacted>" : match.Value;
+        });
         sanitized = BearerRegex().Replace(sanitized, "$1<redacted>");
         sanitized = WhitespaceRegex().Replace(sanitized, " ");
         return sanitized.Length <= MaxLength ? sanitized : sanitized[..MaxLength];
@@ -86,7 +92,7 @@ public static partial class ApiErrorMessage
         };
     }
 
-    [GeneratedRegex(@"(?i)\b(key|apikey|api_key|access_token|refresh_token|client_secret)=([^&\s]+)")]
+    [GeneratedRegex(@"(?i)(?<![A-Za-z0-9_%])([A-Za-z0-9_%+-]+)=([^&\s]+)")]
     private static partial Regex SecretQueryRegex();
 
     [GeneratedRegex(@"(?i)(Bearer\s+)[A-Za-z0-9._~+/=-]+")]

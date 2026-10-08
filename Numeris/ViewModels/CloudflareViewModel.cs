@@ -9,23 +9,34 @@ using CommunityToolkit.Mvvm.Input;
 using LiveChartsCore;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
+using Microsoft.UI.Xaml.Controls;
 using Numeris.Controls;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Api;
 using Numeris.Services.Database.Repositories;
+using Numeris.Services.Sync;
 using Numeris.Themes;
 using SkiaSharp;
 
 namespace Numeris.ViewModels;
 
-public partial class CloudflareViewModel : ObservableObject, IDisposable
+public sealed partial class CloudflareViewModel : ObservableObject, IDisposable
 {
     private readonly ShellViewModel _shell;
+    private int _loadVersion;
+    private bool _disposed;
     private readonly CloudflareRepository _cfRepo;
     private readonly WebAnalyticsRepository _waRepo;
+    private readonly CloudflareSyncService _cloudflareSync;
+    private readonly WebAnalyticsSyncService _webAnalyticsSync;
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
-    public bool CanRefresh => !IsLoading;
+    [ObservableProperty] public partial bool IsRefreshing { get; set; }
+    [ObservableProperty] public partial string RefreshStatusMessage { get; set; } = "";
+    [ObservableProperty] public partial InfoBarSeverity RefreshSeverity { get; set; } = InfoBarSeverity.Informational;
+    public bool CanRefresh => !IsLoading && !IsRefreshing;
+    public bool HasRefreshStatusMessage => !string.IsNullOrWhiteSpace(RefreshStatusMessage);
     [ObservableProperty] public partial string ActiveTab { get; set; } = "traffic";
     // Traffic tab
     [ObservableProperty] public partial ISeries[] TrafficSeries { get; set; } = Array.Empty<ISeries>();
@@ -60,18 +71,29 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     [ObservableProperty] public partial List<BarRow> WaReferrers { get; set; } = new();
     [ObservableProperty] public partial List<BarRow> WaPages { get; set; } = new();
     [ObservableProperty] public partial List<BarRow> WaCountries { get; set; } = new();
-    public CloudflareViewModel(ShellViewModel shell, CloudflareRepository cfRepo, WebAnalyticsRepository waRepo)
+    public CloudflareViewModel(
+        ShellViewModel shell,
+        CloudflareRepository cfRepo,
+        WebAnalyticsRepository waRepo,
+        CloudflareSyncService cloudflareSync,
+        WebAnalyticsSyncService webAnalyticsSync)
     {
         _shell = shell;
         _cfRepo = cfRepo;
         _waRepo = waRepo;
+        _cloudflareSync = cloudflareSync;
+        _webAnalyticsSync = webAnalyticsSync;
         _shell.PropertyChanged += OnShellChanged;
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnRefreshStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasRefreshStatusMessage));
 
     public void Dispose()
     {
+        _disposed = true;
+        _loadVersion++;
         _shell.PropertyChanged -= OnShellChanged;
     }
 
@@ -79,13 +101,27 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     {
         if (e.PropertyName is nameof(ShellViewModel.SelectedPeriod) or nameof(ShellViewModel.SelectedDomain))
         {
-            _ = LoadAsync();
+            _ = LoadFromShellAsync();
+        }
+    }
+
+    private async Task LoadFromShellAsync()
+    {
+        var loadVersion = _loadVersion + 1;
+        try { await LoadAsync(); }
+        catch (Exception ex)
+        {
+            if (_disposed || loadVersion != _loadVersion) return;
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Load failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
         }
     }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        if (_disposed) return;
+        var loadVersion = ++_loadVersion;
         IsLoading = true;
         try
         {
@@ -107,6 +143,7 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
 
             await Task.WhenAll(trafficTask, countriesTask, pagesTask, cacheTask, securityTask, statusTask,
                                waDailyTask, waReferrersTask, waPagesTask, waCountriesTask);
+            if (_disposed || loadVersion != _loadVersion) return;
 
             BuildTrafficTab(await trafficTask, await countriesTask, await pagesTask);
             BuildCacheTab(await cacheTask);
@@ -116,17 +153,76 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            IsLoading = false;
+            if (!_disposed && loadVersion == _loadVersion) IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task RefreshAsync()
+    {
+        if (!CanRefresh)
+        {
+            return;
+        }
+
+        IsRefreshing = true;
+        RefreshSeverity = InfoBarSeverity.Informational;
+        RefreshStatusMessage = "Refreshing Cloudflare data...";
+        try
+        {
+            var days = _shell.SelectedPeriod.Days();
+            long records;
+            if (ActiveTab == "webanalytics")
+            {
+                var result = await _webAnalyticsSync.SyncConfiguredAsync(days);
+                if (result is null)
+                {
+                    RefreshSeverity = InfoBarSeverity.Warning;
+                    RefreshStatusMessage = "Configure Cloudflare Web Analytics in Sources first.";
+                    return;
+                }
+                records = result.RecordsUpserted;
+                RefreshStatusMessage = $"Web Analytics updated for {result.Domain} ({Math.Min(days, 90)} days fetched).";
+            }
+            else
+            {
+                var results = await _cloudflareSync.SyncConfiguredAsync(_shell.SelectedDomain, days);
+                if (results.Count == 0)
+                {
+                    RefreshSeverity = InfoBarSeverity.Warning;
+                    RefreshStatusMessage = $"Configure Cloudflare Zone Analytics for {_shell.SelectedDomain} in Sources. Web Analytics has a separate connection and tab.";
+                    return;
+                }
+                records = results.Sum(result => result.RecordsUpserted);
+                RefreshStatusMessage = $"Zone Analytics updated for {results.Count} site(s).";
+            }
+            await LoadAsync();
+            RefreshSeverity = records > 0 ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
+            if (records == 0)
+            {
+                RefreshStatusMessage += " Cloudflare returned no data for the requested period.";
+            }
+        }
+        catch (Exception ex)
+        {
+            RefreshSeverity = InfoBarSeverity.Error;
+            RefreshStatusMessage = $"Refresh failed: {ApiErrorMessage.Sanitize(ex)}. Previously loaded data is still shown.";
+        }
+        finally
+        {
+            IsRefreshing = false;
         }
     }
 
     private void BuildTrafficTab(IReadOnlyList<TrafficDay> rows, IReadOnlyList<CountryData> countries, IReadOnlyList<PageData> pages)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var visitors = rows.Select(r => r.UniqueVisitors).ToArray();
+        var pageviews = rows.Select(r => r.Pageviews).ToArray();
         TrafficSeries = new ISeries[]
         {
-            CreateLine("Visitors", rows.Select(r => r.UniqueVisitors).ToArray(), ChartPalette.Accent, fill: true),
-            CreateLine("Pageviews", rows.Select(r => r.Pageviews).ToArray(), ChartPalette.Muted, fill: false),
+            ChartTheme.CreateMatteColumnSeries("Visitors", visitors, HighlightIndex(visitors)),
+            ChartTheme.CreateMutedColumnSeries("Pageviews", pageviews),
         };
         TrafficXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         TrafficYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -135,7 +231,7 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         TrafficPages = pages.Select(p => new BarRow { Label = p.Path, Value = p.Pageviews }).ToList();
     }
 
-    private void BuildCacheTab(IReadOnlyList<CacheDay> rows)
+    private void BuildCacheTab(List<CacheDay> rows)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
         var hitPct = rows.Select(r => r.HitRatio * 100.0).ToArray();
@@ -152,15 +248,16 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         CacheHitRatioText = totalReq > 0
             ? $"{(double)cachedReq / totalReq * 100.0:0.0}%"
             : "—";
-        CacheBytesSavedText = FormatBytes(cachedBytes);
+        CacheBytesSavedText = rows.Count > 0 ? FormatBytes(cachedBytes) : "—";
     }
 
     private void BuildSecurityTab(IReadOnlyList<SecurityDay> rows)
     {
         var labels = rows.Select(r => ShortDate(r.Date)).ToArray();
+        var threats = rows.Select(r => r.Threats).ToArray();
         SecuritySeries = new ISeries[]
         {
-            CreateLine("Threats", rows.Select(r => r.Threats).ToArray(), ChartPalette.Secondary, fill: true),
+            ChartTheme.CreateMatteColumnSeries("Threats", threats, LargestValueIndex(threats)),
         };
         SecurityXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         SecurityYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -171,13 +268,14 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
     {
         var insight = BuildStatusCodeInsight(rows);
 
-        StatusCodesSeries = insight.Groups.Select(group => new StackedColumnSeries<long>
-        {
-            Name = group.Label,
-            Values = group.Values,
-            Fill = new SolidColorPaint(StatusCodeGroupColor(group.Group)),
-            Stroke = null,
-        }).ToArray();
+        StatusCodesSeries = insight.Groups
+            .Select(group => ChartTheme.StyleStackedColumnSeries(new StackedColumnSeries<long>
+            {
+                Name = group.Label,
+                Values = group.Values,
+                Fill = new SolidColorPaint(StatusCodeGroupColor(group.Group)),
+            }))
+            .ToArray();
         StatusCodesXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = insight.Labels }) };
         StatusCodesYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
         StatusSuccessRateText = insight.SuccessRateText;
@@ -199,7 +297,9 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
             StatusCodeGroup.Redirect,
             StatusCodeGroup.ClientError,
             StatusCodeGroup.ServerError,
-        }.Select(group =>
+            StatusCodeGroup.Other,
+        }.Where(group => group != StatusCodeGroup.Other || rows.Any(row => ToStatusCodeGroup(row.StatusCode) == group))
+        .Select(group =>
         {
             var values = dates
                 .Select(date => rows
@@ -217,7 +317,7 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         }).ToList();
 
         var issueCodes = rows
-            .Where(row => row.StatusCode >= 400)
+            .Where(row => row.StatusCode is >= 400 and <= 599)
             .GroupBy(row => row.StatusCode)
             .Select(group => new
             {
@@ -263,7 +363,8 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         >= 200 and <= 299 => StatusCodeGroup.Success,
         >= 300 and <= 399 => StatusCodeGroup.Redirect,
         >= 400 and <= 499 => StatusCodeGroup.ClientError,
-        _ => StatusCodeGroup.ServerError,
+        >= 500 and <= 599 => StatusCodeGroup.ServerError,
+        _ => StatusCodeGroup.Other,
     };
 
     private static string StatusCodeGroupLabel(StatusCodeGroup group) => group switch
@@ -277,11 +378,11 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
 
     private static SKColor StatusCodeGroupColor(StatusCodeGroup group) => group switch
     {
-        StatusCodeGroup.Success => ChartPalette.Success,
-        StatusCodeGroup.Redirect => ChartPalette.Info,
-        StatusCodeGroup.ClientError => ChartPalette.Warning,
-        StatusCodeGroup.ServerError => ChartPalette.Danger,
-        _ => ChartPalette.Muted,
+        StatusCodeGroup.Success => ChartPalette.Success.WithAlpha(178),
+        StatusCodeGroup.Redirect => ChartPalette.Muted.WithAlpha(128),
+        StatusCodeGroup.ClientError => ChartPalette.Warning.WithAlpha(196),
+        StatusCodeGroup.ServerError => ChartPalette.Danger.WithAlpha(206),
+        _ => ChartPalette.Muted.WithAlpha(112),
     };
 
     private static string StatusCodeDescription(int statusCode) => statusCode switch
@@ -335,10 +436,12 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         IReadOnlyList<CountryData> countries)
     {
         var labels = daily.Select(r => ShortDate(r.Date)).ToArray();
+        var visits = daily.Select(r => r.Visits).ToArray();
+        var pageViews = daily.Select(r => r.PageViews).ToArray();
         WaSeries = new ISeries[]
         {
-            CreateLine("Visits", daily.Select(r => r.Visits).ToArray(), ChartPalette.Accent, fill: true),
-            CreateLine("Page views", daily.Select(r => r.PageViews).ToArray(), ChartPalette.Muted, fill: false),
+            ChartTheme.CreateMatteColumnSeries("Visits", visits, HighlightIndex(visits)),
+            ChartTheme.CreateMutedColumnSeries("Page views", pageViews),
         };
         WaXAxes = new[] { ChartTheme.StyleXAxis(new Axis { Labels = labels }) };
         WaYAxes = new[] { ChartTheme.StyleYAxis(new Axis { MinLimit = 0 }) };
@@ -348,19 +451,39 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
         WaCountries = countries.Select(c => new BarRow { Label = c.Country, Value = c.Value }).ToList();
     }
 
-    private static LineSeries<long> CreateLine(string name, long[] values, SKColor color, bool fill)
+    private static int? HighlightIndex(long[] values)
     {
-        return new LineSeries<long>
+        if (values.Length == 0 || values.All(value => value == 0))
         {
-            Name = name,
-            Values = values,
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryStroke = new SolidColorPaint(color) { StrokeThickness = 2 },
-            GeometryFill = new SolidColorPaint(color),
-            Fill = fill ? new SolidColorPaint(color.WithAlpha(40)) : null,
-            GeometrySize = 0,
-            LineSmoothness = 0.4,
-        };
+            return null;
+        }
+
+        var lastIndex = values.Length - 1;
+        if (values[lastIndex] > 0)
+        {
+            return lastIndex;
+        }
+
+        return LargestValueIndex(values);
+    }
+
+    private static int? LargestValueIndex(long[] values)
+    {
+        if (values.Length == 0 || values.All(value => value == 0))
+        {
+            return null;
+        }
+
+        var maxValue = values.Max();
+        for (var index = 0; index < values.Length; index++)
+        {
+            if (values[index] == maxValue)
+            {
+                return index;
+            }
+        }
+
+        return null;
     }
 
     private static LineSeries<double> CreateLine(string name, double[] values, SKColor color, bool fill)
@@ -389,7 +512,7 @@ public partial class CloudflareViewModel : ObservableObject, IDisposable
 
     private static string FormatBytes(long bytes)
     {
-        if (bytes <= 0) return "—";
+        if (bytes < 0) return "—";
         const long KB = 1024;
         const long MB = 1024 * KB;
         const long GB = 1024 * MB;

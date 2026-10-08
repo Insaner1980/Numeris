@@ -56,9 +56,9 @@ public static class PeriodOptions
 {
     public static readonly PeriodOption[] All =
     {
-        new(Period.Last7Days, Period.Last7Days.DisplayLabel()),
-        new(Period.Last30Days, Period.Last30Days.DisplayLabel()),
-        new(Period.Last90Days, Period.Last90Days.DisplayLabel()),
-        new(Period.All, Period.All.DisplayLabel()),
+        new(Period.Last7Days, Period.Last7Days.ShortLabel()),
+        new(Period.Last30Days, Period.Last30Days.ShortLabel()),
+        new(Period.Last90Days, Period.Last90Days.ShortLabel()),
+        new(Period.All, Period.All.ShortLabel()),
     };
 }

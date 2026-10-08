@@ -1,7 +1,10 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Globalization;
-using Microsoft.UI;
+using Windows.Foundation;
+using Windows.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -11,6 +14,8 @@ namespace Numeris.Controls;
 
 public sealed partial class HorizontalBars : UserControl
 {
+    private INotifyCollectionChanged? _itemsCollection;
+
     public HorizontalBars()
     {
         InitializeComponent();
@@ -26,12 +31,56 @@ public sealed partial class HorizontalBars : UserControl
         set => SetValue(ItemsProperty, value);
     }
 
+    public static readonly DependencyProperty HighlightTopValueProperty =
+        DependencyProperty.Register(nameof(HighlightTopValue), typeof(bool), typeof(HorizontalBars),
+            new PropertyMetadata(true, OnAppearanceChanged));
+
+    public bool HighlightTopValue
+    {
+        get => (bool)GetValue(HighlightTopValueProperty);
+        set => SetValue(HighlightTopValueProperty, value);
+    }
+
+    public static readonly DependencyProperty CompactProperty =
+        DependencyProperty.Register(nameof(Compact), typeof(bool), typeof(HorizontalBars),
+            new PropertyMetadata(false, OnAppearanceChanged));
+
+    public bool Compact
+    {
+        get => (bool)GetValue(CompactProperty);
+        set => SetValue(CompactProperty, value);
+    }
+
     private static void OnItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is HorizontalBars bars)
+        {
+            if (bars._itemsCollection is not null)
+            {
+                bars._itemsCollection.CollectionChanged -= bars.OnItemsCollectionChanged;
+            }
+
+            bars._itemsCollection = e.NewValue as INotifyCollectionChanged;
+            if (bars._itemsCollection is not null)
+            {
+                bars._itemsCollection.CollectionChanged += bars.OnItemsCollectionChanged;
+            }
+
+            bars.Render();
+        }
+    }
+
+    private static void OnAppearanceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is HorizontalBars bars)
         {
             bars.Render();
         }
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        Render();
     }
 
     private void Render()
@@ -43,7 +92,6 @@ public sealed partial class HorizontalBars : UserControl
             return;
         }
 
-        long max = 0;
         var rows = new List<BarRow>(Items);
         if (rows.Count == 0)
         {
@@ -51,20 +99,20 @@ public sealed partial class HorizontalBars : UserControl
             return;
         }
 
+        var max = Math.Max(0, rows.Max(row => row.Value));
+        var scaleMax = max <= 0 ? 1 : max;
+
+        var trackBrush = GetBrush("HorizontalBarTrackBrush");
+        var secondaryText = GetBrush("NumerisTextSecondaryBrush");
+        var tertiaryText = GetBrush("NumerisTextTertiaryBrush");
+        var barHeight = GetDouble(Compact ? "HorizontalBarCompactHeight" : "HorizontalBarHeight", Compact ? 5 : 7);
+        var barRadius = GetDouble(Compact ? "HorizontalBarCompactCornerRadius" : "HorizontalBarCornerRadius", Compact ? 2.5 : 3.5);
+        var rowSpacing = GetDouble(Compact ? "HorizontalBarCompactRowSpacing" : "HorizontalBarRowSpacing", Compact ? 8 : 12);
+        var fontSize = Compact ? 12 : 13;
+
         foreach (var row in rows)
         {
-            if (row.Value > max) max = row.Value;
-        }
-        if (max <= 0) max = 1;
-
-        var accent = (Brush)Application.Current.Resources["NumerisAccentBrush"];
-        var subdued = (Brush)Application.Current.Resources["HorizontalBarTrackBrush"];
-        var secondaryText = (Brush)Application.Current.Resources["NumerisTextSecondaryBrush"];
-        var tertiaryText = (Brush)Application.Current.Resources["NumerisTextTertiaryBrush"];
-
-        foreach (var row in rows)
-        {
-            var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+            var grid = new Grid { Margin = new Thickness(0, 0, 0, rowSpacing) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(GetDouble("HorizontalBarLabelWidth", 140)) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(GetDouble("HorizontalBarValueWidth", 80)) });
@@ -74,26 +122,27 @@ public sealed partial class HorizontalBars : UserControl
                 Text = row.Label,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                FontSize = 13,
+                FontSize = fontSize,
                 Foreground = secondaryText,
             };
             Grid.SetColumn(label, 0);
 
-            var trackContainer = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+            var trackContainer = new Grid { Height = barHeight, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
             var track = new Rectangle
             {
-                Fill = subdued,
-                RadiusX = 4,
-                RadiusY = 4,
+                Fill = trackBrush,
+                RadiusX = barRadius,
+                RadiusY = barRadius,
             };
             trackContainer.Children.Add(track);
 
-            var fillWidth = (double)row.Value / max;
+            var fillWidth = Math.Clamp((double)Math.Max(0, row.Value) / scaleMax, 0, 1);
+            var isHighlight = HighlightTopValue && row.Value == max && max > 0;
             var fill = new Rectangle
             {
-                Fill = accent,
-                RadiusX = 4,
-                RadiusY = 4,
+                Fill = CreateBarFill(isHighlight),
+                RadiusX = barRadius,
+                RadiusY = barRadius,
                 HorizontalAlignment = HorizontalAlignment.Left,
             };
             fill.SizeChanged += (s, e) => { /* width adjusted via parent SizeChanged below */ };
@@ -110,7 +159,7 @@ public sealed partial class HorizontalBars : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                FontSize = 13,
+                FontSize = fontSize,
                 Foreground = tertiaryText,
             };
             Grid.SetColumn(valueText, 2);
@@ -124,7 +173,7 @@ public sealed partial class HorizontalBars : UserControl
 
     private void RenderEmptyState()
     {
-        var tertiaryText = (Brush)Application.Current.Resources["NumerisTextTertiaryBrush"];
+        var tertiaryText = GetBrush("NumerisTextTertiaryBrush");
         ItemsHost.Items.Add(new TextBlock
         {
             Text = "No data",
@@ -133,9 +182,46 @@ public sealed partial class HorizontalBars : UserControl
         });
     }
 
+    private static LinearGradientBrush CreateBarFill(bool isHighlight)
+    {
+        var top = GetColor(isHighlight ? "ChartBarHighlightTopColor" : "ChartBarNeutralTopColor");
+        var mid = GetColor(isHighlight ? "ChartBarHighlightMidColor" : "ChartBarNeutralMidColor");
+        var bottom = GetColor(isHighlight ? "ChartBarHighlightBottomColor" : "ChartBarNeutralBottomColor");
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0.5),
+            EndPoint = new Point(1, 0.5),
+        };
+
+        brush.GradientStops.Add(new GradientStop { Color = top, Offset = 0 });
+        brush.GradientStops.Add(new GradientStop { Color = mid, Offset = 0.55 });
+        brush.GradientStops.Add(new GradientStop { Color = bottom, Offset = 1 });
+        return brush;
+    }
+
+    private static Brush GetBrush(string key)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Brush brush)
+        {
+            return brush;
+        }
+
+        throw new InvalidOperationException($"Missing brush resource '{key}'.");
+    }
+
+    private static Color GetColor(string key)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color color)
+        {
+            return color;
+        }
+
+        throw new InvalidOperationException($"Missing color resource '{key}'.");
+    }
+
     private static double GetDouble(string key, double fallback)
     {
-        return Application.Current.Resources.TryGetValue(key, out var value) && value is double number
+        return Application.Current?.Resources.TryGetValue(key, out var value) == true && value is double number
             ? number
             : fallback;
     }

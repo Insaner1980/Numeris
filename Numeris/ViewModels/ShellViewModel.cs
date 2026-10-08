@@ -1,7 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Numeris.Helpers;
 using Numeris.Models;
+using Numeris.Services.Database.Repositories;
 using Numeris.Services.Settings;
 
 namespace Numeris.ViewModels;
@@ -9,6 +14,7 @@ namespace Numeris.ViewModels;
 public partial class ShellViewModel : ObservableObject
 {
     private readonly SettingsStore _settingsStore;
+    private readonly ConnectionsRepository _connectionsRepo;
 
     [ObservableProperty]
     public partial Period SelectedPeriod { get; set; }
@@ -22,15 +28,45 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsRefreshing { get; set; }
 
-    public string[] AvailableDomains { get; } = { "all", Domains.KnitTools, Domains.Finnvek };
+    [ObservableProperty]
+    public partial string SettingsErrorMessage { get; set; } = "";
 
-    public ShellViewModel(SettingsStore settingsStore)
+    public bool HasSettingsError => !string.IsNullOrEmpty(SettingsErrorMessage);
+    partial void OnSettingsErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasSettingsError));
+
+    [ObservableProperty]
+    public partial string LegacyImportErrorMessage { get; set; } = "";
+
+    public bool HasLegacyImportError => !string.IsNullOrEmpty(LegacyImportErrorMessage);
+    partial void OnLegacyImportErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasLegacyImportError));
+
+    public string[] AvailableDomains { get; private set; } = { "all", Domains.KnitTools, Domains.Finnvek };
+
+    public ShellViewModel(SettingsStore settingsStore, ConnectionsRepository connectionsRepo)
     {
         _settingsStore = settingsStore;
+        _connectionsRepo = connectionsRepo;
+        UpdateAvailableDomains(connectionsRepo.ListConfiguredDomainsAsync().GetAwaiter().GetResult());
         var settings = _settingsStore.Load();
         SelectedPeriod = settings.SelectedPeriod;
         SelectedDomain = AvailableDomains.Contains(settings.SelectedDomain) ? settings.SelectedDomain : "all";
         LastPage = IsKnownPage(settings.LastPage) ? settings.LastPage : "dashboard";
+    }
+
+    public async Task RefreshAvailableDomainsAsync()
+        => UpdateAvailableDomains(await _connectionsRepo.ListConfiguredDomainsAsync());
+
+    private void UpdateAvailableDomains(IEnumerable<string> domains)
+    {
+        AvailableDomains = new[] { "all", Domains.KnitTools, Domains.Finnvek }
+            .Concat(domains.Where(domain => !string.IsNullOrWhiteSpace(domain)).Select(SiteIdentity.NormalizeDomain))
+            .Distinct()
+            .ToArray();
+
+        if (SelectedDomain is not null && !AvailableDomains.Contains(SelectedDomain))
+        {
+            SelectedDomain = "all";
+        }
     }
 
     partial void OnSelectedPeriodChanged(Period value) => SaveSettings();
@@ -39,14 +75,22 @@ public partial class ShellViewModel : ObservableObject
 
     private void SaveSettings()
     {
-        _settingsStore.Save(new ShellSettings
+        try
         {
-            SelectedPeriod = SelectedPeriod,
-            SelectedDomain = AvailableDomains.Contains(SelectedDomain) ? SelectedDomain : "all",
-            LastPage = IsKnownPage(LastPage) ? LastPage : "dashboard",
-        });
+            _settingsStore.Save(new ShellSettings
+            {
+                SelectedPeriod = SelectedPeriod,
+                SelectedDomain = AvailableDomains.Contains(SelectedDomain) ? SelectedDomain : "all",
+                LastPage = IsKnownPage(LastPage) ? LastPage : "dashboard",
+            });
+            SettingsErrorMessage = "";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SettingsErrorMessage = "Preferences could not be saved. Your selection is available for this session.";
+        }
     }
 
     private static bool IsKnownPage(string page)
-        => page is "dashboard" or "cloudflare" or "search" or "bing" or "performance" or "youtube" or "health" or "sources";
+        => page is "dashboard" or "cloudflare" or "search" or "bing" or "performance" or "health" or "sources";
 }

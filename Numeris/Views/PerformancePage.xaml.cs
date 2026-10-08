@@ -1,10 +1,9 @@
 using System.ComponentModel;
-using System.Linq;
+using System;
 using LiveChartsCore.SkiaSharpView.WinUI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Numeris.Models;
 using Numeris.Themes;
 using Numeris.ViewModels;
 
@@ -31,13 +30,14 @@ public sealed partial class PerformancePage : Page
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         BuildChart(ref _cruxChart, CruxChartHost);
-        BuildChart(ref _pageSpeedChart, PageSpeedChartHost);
+        BuildBarChart(ref _pageSpeedChart, PageSpeedChartHost);
 
+        await Shell.RefreshAvailableDomainsAsync();
+        if (!IsLoaded) return;
         _wiringUi = true;
         DomainCombo.ItemsSource = Shell.AvailableDomains;
         DomainCombo.SelectedItem = Shell.SelectedDomain;
-        PeriodCombo.ItemsSource = PeriodOptions.All;
-        PeriodCombo.SelectedItem = PeriodOptions.All.FirstOrDefault(option => option.Value == Shell.SelectedPeriod);
+        PeriodSelector.SelectedPeriod = Shell.SelectedPeriod;
         MetricCombo.ItemsSource = ViewModel.MetricOptions;
         MetricCombo.SelectedItem = ViewModel.SelectedMetric;
         FormFactorCombo.ItemsSource = ViewModel.FormFactorOptions;
@@ -47,12 +47,14 @@ public sealed partial class PerformancePage : Page
 
         ViewModel.PropertyChanged += OnViewModelChanged;
         await ViewModel.LoadAsync();
+        if (!IsLoaded) return;
         ApplyAllChartData();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged -= OnViewModelChanged;
+        ViewModel.Dispose();
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -77,6 +79,13 @@ public sealed partial class PerformancePage : Page
         if (chart is not null) return;
         chart = ChartTheme.CreateCartesianChart();
         host.Child = ChartTheme.CreateChartSurface(chart);
+    }
+
+    private static void BuildBarChart(ref CartesianChart? chart, Border host)
+    {
+        if (chart is not null) return;
+        chart = ChartTheme.CreateCartesianChart();
+        host.Child = ChartTheme.CreateBarChartSurface(chart);
     }
 
     private void ApplyAllChartData()
@@ -108,16 +117,21 @@ public sealed partial class PerformancePage : Page
         ViewModel.ActiveTab = tag;
     }
 
+    private void PageScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ReportContent.Height = Math.Max(e.NewSize.Height, ReportContent.MinHeight);
+    }
+
     private void DomainCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_wiringUi) return;
         if (DomainCombo.SelectedItem is string s) Shell.SelectedDomain = s;
     }
 
-    private void PeriodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void PeriodSelector_SelectionChanged(object? sender, EventArgs e)
     {
         if (_wiringUi) return;
-        if (PeriodCombo.SelectedItem is PeriodOption option) Shell.SelectedPeriod = option.Value;
+        Shell.SelectedPeriod = PeriodSelector.SelectedPeriod;
     }
 
     private void MetricCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -134,6 +148,6 @@ public sealed partial class PerformancePage : Page
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        await ViewModel.RefreshAsync();
     }
 }

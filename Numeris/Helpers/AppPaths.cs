@@ -11,6 +11,16 @@ public static class AppPaths
     public static string DatabasePath => Path.Combine(DataDir, "numeris.db");
     public static string SettingsPath => Path.Combine(DataDir, "settings.json");
     public static string LogsDir => Path.Combine(DataDir, "logs");
+    public static string LegacyNumerisDataDir
+    {
+        get
+        {
+            var dir = Path.Combine(DataDir, "legacy", "numeris");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+    }
+    public static string LegacyNumerisDatabasePath => Path.Combine(LegacyNumerisDataDir, "numeris.db");
 
     private static string ResolveDataDir()
     {

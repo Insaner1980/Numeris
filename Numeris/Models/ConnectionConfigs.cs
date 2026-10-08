@@ -96,26 +96,6 @@ public sealed class BingConnectionInfo
     public string? LastSync { get; set; }
 }
 
-public sealed class YouTubeConnectionConfig
-{
-    public string ClientId { get; set; } = "";
-    public string ChannelId { get; set; } = "";
-    public string ChannelTitle { get; set; } = "";
-    public string? LastValidatedAt { get; set; }
-}
-
-public sealed class YouTubeConnectionInfo
-{
-    public string Id { get; set; } = "youtube";
-    public string ClientId { get; set; } = "";
-    public string ChannelId { get; set; } = "";
-    public string ChannelTitle { get; set; } = "";
-    public bool HasClientSecret { get; set; }
-    public bool HasRefreshToken { get; set; }
-    public string Status { get; set; } = "disconnected";
-    public string? LastSync { get; set; }
-}
-
 public sealed class SyncResult
 {
     public string Domain { get; set; } = "";

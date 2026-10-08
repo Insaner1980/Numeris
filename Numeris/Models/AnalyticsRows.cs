@@ -56,9 +56,12 @@ public sealed class SitemapUrl
         string.Equals(Verdict, "PASS", System.StringComparison.OrdinalIgnoreCase)
         || (CoverageState?.StartsWith("Indexed", System.StringComparison.OrdinalIgnoreCase) ?? false);
 
-    public string IndexingStatusText => HasInspectionData
-        ? IsIndexed ? "Indexed" : "Not indexed"
-        : "";
+    public string IndexingStatusText => (HasInspectionData, IsIndexed) switch
+    {
+        (false, _) => "",
+        (_, true) => "Indexed",
+        _ => "Not indexed",
+    };
 
     public string CoverageStatusText => string.IsNullOrWhiteSpace(CoverageState)
         ? "—"
