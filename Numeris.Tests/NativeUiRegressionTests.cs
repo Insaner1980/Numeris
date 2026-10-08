@@ -79,6 +79,7 @@ internal static partial class NativeUiRegressionTests
                 services.AddSingleton(settings);
                 services.AddSingleton(CredentialVaultRegressionTests.CreateVault());
                 services.AddSingleton<ShellViewModel>();
+                services.AddTransient<Numeris.MainWindow>();
                 using var provider = services.BuildServiceProvider();
                 typeof(Numeris.App).GetProperty(nameof(Services))!.SetValue(null, provider);
                 window = new Window();
@@ -88,15 +89,72 @@ internal static partial class NativeUiRegressionTests
                 await CheckPagesAsync(window, provider);
                 CheckControls(window);
                 CheckConverters();
+                await CheckLegacyImportStartupAsync(this, provider, database, directory);
                 window.Content = null;
             }
             catch (Exception ex) { _fail(ex); }
             finally
             {
                 window?.Close();
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
                 Directory.Delete(directory, recursive: true);
                 Exit();
             }
+        }
+    }
+
+    private static async Task CheckLegacyImportStartupAsync(Numeris.App app, ServiceProvider provider,
+        SqliteDatabase database, string directory)
+    {
+        var sourcePath = Path.Combine(directory, "legacy.db");
+        using (var source = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={sourcePath};Pooling=False"))
+        {
+            source.Open();
+            source.Execute("""
+                CREATE TABLE connections (id TEXT, source TEXT, status TEXT, config TEXT);
+                INSERT INTO connections VALUES ('cf','cloudflare','connected','{"domain":"test.example","zone_id":"zone"}');
+                """);
+        }
+        var privateFailure = new UnauthorizedAccessException("Synthetic private credential detail");
+        var vault = CredentialVaultRegressionTests.CreateVault((_, _) => throw privateFailure);
+        var migration = new Numeris.Services.Migration.LegacyDataMigrationService(database, vault);
+        var import = typeof(Numeris.Services.Migration.LegacyDataMigrationService).GetMethod("ImportCloudflareAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic, null, new[] { typeof(string) }, null)!;
+        Exception? observedFailure = null;
+        foreach (var failImport in new[] { false, true })
+        {
+            var importCalled = false;
+            Action runImport = () =>
+            {
+                importCalled = true;
+                if (!failImport) return;
+                try { ((Task)import.Invoke(migration, new object[] { sourcePath })!).GetAwaiter().GetResult(); }
+                catch (Exception ex) { observedFailure = ex; throw; }
+            };
+            Window? mainWindow = null;
+            try
+            {
+                typeof(Numeris.App).GetMethod("LaunchMainWindow", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(app, new object[] { runImport });
+                mainWindow = (Window)typeof(Numeris.App).GetField("_window", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(app)!;
+                await Task.Delay(100);
+                var root = (FrameworkElement)mainWindow.Content;
+                var warning = (InfoBar)root.FindName("LegacyImportInfoBar");
+                Require(importCalled && root.IsLoaded && warning.IsOpen == failImport,
+                    "Startup must open the native main window and warn only when the optional legacy import fails");
+                if (failImport)
+                {
+                    Require(observedFailure is InvalidOperationException && ReferenceEquals(observedFailure.InnerException, privateFailure),
+                        "The migration must preserve the original credential read failure");
+                    Require(warning.Severity == InfoBarSeverity.Warning
+                        && warning.Message.Contains("Could not read saved credentials", StringComparison.Ordinal)
+                        && !warning.Message.Contains("Synthetic private credential detail", StringComparison.Ordinal),
+                        "The startup warning must expose safe credential recovery text without private details");
+                    provider.GetRequiredService<ShellViewModel>().SelectedPeriod = Period.Last30Days;
+                    Require(warning.IsOpen, "Saving shell preferences must not clear the legacy import warning");
+                }
+            }
+            finally { mainWindow?.Close(); }
         }
     }
 

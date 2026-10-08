@@ -92,10 +92,16 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <InfoBar IsOpen="{x:Bind _shell.HasSettingsError, Mode=OneWay}"
-                         Message="{x:Bind _shell.SettingsErrorMessage, Mode=OneWay}"
-                         Severity="Warning"
-                         IsClosable="False" />
+                <StackPanel>
+                    <InfoBar IsOpen="{x:Bind _shell.HasSettingsError, Mode=OneWay}"
+                             Message="{x:Bind _shell.SettingsErrorMessage, Mode=OneWay}"
+                             Severity="Warning"
+                             IsClosable="False" />
+                    <InfoBar x:Name="LegacyImportInfoBar"
+                             IsOpen="{x:Bind _shell.HasLegacyImportError, Mode=OneWay}"
+                             Message="{x:Bind _shell.LegacyImportErrorMessage, Mode=OneWay}"
+                             Severity="Warning" />
+                </StackPanel>
                 <Frame x:Name="ContentFrame" Grid.Row="1" />
             </Grid>
         </NavigationView>

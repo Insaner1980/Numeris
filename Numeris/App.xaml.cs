@@ -33,7 +33,25 @@ public partial class App : Application
         _ = Services.GetRequiredService<SqliteDatabase>();
         Services.GetRequiredService<CredentialVault>().RemoveRetiredCredentials();
         var migration = Services.GetRequiredService<LegacyDataMigrationService>();
-        migration.ImportAllAsync().GetAwaiter().GetResult();
+        LaunchMainWindow(() => migration.ImportAllAsync().GetAwaiter().GetResult());
+    }
+
+    internal void LaunchMainWindow(Action importLegacyData)
+    {
+        string? importError = null;
+        try
+        {
+            importLegacyData();
+        }
+        catch (Exception ex)
+        {
+            importError = $"Legacy data import could not finish: {ApiErrorMessage.Sanitize(ex)}. You can continue using Numeris and configure connections in Sources. Import will be retried on the next launch.";
+        }
+
+        if (importError is not null)
+        {
+            Services.GetRequiredService<ShellViewModel>().LegacyImportErrorMessage = importError;
+        }
 
         _window = Services.GetRequiredService<MainWindow>();
         _window.Activate();

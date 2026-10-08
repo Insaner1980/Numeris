@@ -2277,7 +2277,7 @@ Run("Sources page exposes status bars and guarded actions", () =>
 Run("Bing core sync persists dated reports and raw history", ProviderCoverageRegressionTests.BingPersistsCoreReportsAndHistory);
 Run("Bing rejected and malformed responses retain safe diagnostics", ProviderCoverageRegressionTests.BingErrorsPreserveStateAndDiagnostics);
 Run("Sitemap discovery and uptime map successful and failed HTTP responses", ProviderCoverageRegressionTests.SitemapDiscoveryAndUptimeMapResponses);
-Run("WinUI reports and controls work with empty and populated isolated storage", NativeUiRegressionTests.Run);
+Run("WinUI startup reports and controls work with empty and populated isolated storage", NativeUiRegressionTests.Run);
 
 static void RunCredentialVaultTests()
 {

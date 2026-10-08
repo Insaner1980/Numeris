@@ -34,6 +34,12 @@ public partial class ShellViewModel : ObservableObject
     public bool HasSettingsError => !string.IsNullOrEmpty(SettingsErrorMessage);
     partial void OnSettingsErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasSettingsError));
 
+    [ObservableProperty]
+    public partial string LegacyImportErrorMessage { get; set; } = "";
+
+    public bool HasLegacyImportError => !string.IsNullOrEmpty(LegacyImportErrorMessage);
+    partial void OnLegacyImportErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasLegacyImportError));
+
     public string[] AvailableDomains { get; private set; } = { "all", Domains.KnitTools, Domains.Finnvek };
 
     public ShellViewModel(SettingsStore settingsStore, ConnectionsRepository connectionsRepo)
